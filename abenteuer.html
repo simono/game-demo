@@ -1,0 +1,1020 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>Das Geheimnis der Geburtstagsparty</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #1a0a2e;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+        }
+        canvas {
+            display: block;
+            margin: 0 auto;
+            cursor: pointer;
+            image-rendering: pixelated;
+        }
+    </style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+// --- Responsive setup ---
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// --- Game State ---
+const State = { MENU: 0, PLAYING: 1, DIALOG: 2, INVENTORY: 3, ENDING: 4 };
+let state = State.MENU;
+let currentRoom = 'wohnzimmer';
+let selectedChar = 0;
+let dialogLines = [];
+let dialogIdx = 0;
+let dialogSpeaker = '';
+let dialogCallback = null;
+let inventory = [];
+let discoveredSecrets = [];
+let animTime = 0;
+let clickX = -1, clickY = -1;
+let walkTarget = null;
+let charX = 200, charY = 0;
+let showInventory = false;
+let selectedItem = null;
+let floatingTexts = [];
+let menuPulse = 0;
+let partyFlags = {};
+
+const W = () => canvas.width;
+const H = () => canvas.height;
+const S = () => Math.min(W() / 800, H() / 600);
+
+// --- Characters ---
+const characters = [
+    { name: 'Emil', color: '#4a9eff', hair: '#8B4513', trait: 'Der Neugierige', emoji: '🤓' },
+    { name: 'Anna', color: '#ff6b9d', hair: '#FFD700', trait: 'Die Clevere', emoji: '😎' },
+    { name: 'Jonas', color: '#50c878', hair: '#2F1B14', trait: 'Der Mutige', emoji: '💪' },
+    { name: 'Henrik', color: '#ffb347', hair: '#C41E3A', trait: 'Der Lustige', emoji: '😂' },
+];
+
+// --- Rooms ---
+const rooms = {
+    wohnzimmer: {
+        name: 'Wohnzimmer',
+        bg: '#2d1b4e',
+        floor: '#4a2d6e',
+        description: 'Ein festlich geschmücktes Wohnzimmer mit Luftballons und einer verdächtigen Torte.',
+        exits: { rechts: 'kueche', links: 'garten', oben: 'flur' },
+        objects: [
+            { id: 'torte', x: 350, y: 340, w: 100, h: 70, name: 'Verdächtige Torte',
+              look: 'Eine riesige Torte mit... bewegt sich da was drunter?!',
+              use: function() {
+                  if (discoveredSecrets.includes('torte')) {
+                      showDialog('Emil', 'Die Torte haben wir schon untersucht. Da steckt Opa Günther drin... warum auch immer.');
+                  } else if (inventory.includes('gabel')) {
+                      discoveredSecrets.push('torte');
+                      removeItem('gabel');
+                      showDialog('Anna', 'Ich pikse mal vorsichtig in die Torte...', () => {
+                          showDialog('Opa Günther', 'ÜBERRASCHUNG! Ich wollte aus der Torte springen, aber ich bin vor 2 Stunden eingeschlafen!', () => {
+                              showDialog('Henrik', 'Opa, du hast Sahne im Ohr.', () => {
+                                  showDialog('Opa Günther', 'Das ist keine Sahne, das ist mein Anti-Aging-Geheimrezept!');
+                                  floatText('Geheimnis #1 entdeckt: Opas Sahne-Spa!', 400, 200, '#FFD700');
+                              });
+                          });
+                      });
+                  } else {
+                      showDialog(getCurName(), 'Da steckt definitiv jemand drin. Ich brauche etwas Spitzes zum Nachforschen...');
+                  }
+              }
+            },
+            { id: 'sofa', x: 50, y: 300, w: 160, h: 90, name: 'Altes Sofa',
+              look: 'Ein Sofa, das schon bessere Tage gesehen hat. Unter den Kissen schimmert etwas.',
+              use: function() {
+                  if (!inventory.includes('fernbedienung') && !partyFlags.sofaChecked) {
+                      partyFlags.sofaChecked = true;
+                      inventory.push('fernbedienung');
+                      showDialog(getCurName(), 'Oh! Eine uralte Fernbedienung! Die hat bestimmt seit 2005 niemand mehr gesehen.', () => {
+                          floatText('+ Mysteriöse Fernbedienung', 130, 300, '#50c878');
+                      });
+                  } else {
+                      showDialog('Jonas', 'Nur noch Krümel und... ist das ein versteinerter Gummibärchen von 1998?');
+                  }
+              }
+            },
+            { id: 'bild', x: 580, y: 120, w: 80, h: 100, name: 'Schiefes Familienbild',
+              look: 'Ein Familienfoto. Alle lächeln gezwungen. Papa trägt eine schreckliche Perücke.',
+              use: function() {
+                  if (!discoveredSecrets.includes('bild')) {
+                      discoveredSecrets.push('bild');
+                      showDialog('Anna', 'Moment mal... hinter dem Bild ist ein kleiner Safe!', () => {
+                          showDialog('Emil', 'Der Code besteht aus 3 Ziffern. Steht da "Geburtsjahr der Katze"??', () => {
+                              showDialog('Henrik', 'Die Katze hat Geburtstag?! Wieso feiert NIEMAND die Katze?!', () => {
+                                  floatText('Geheimnis #2 entdeckt: Der geheime Safe!', 400, 200, '#FFD700');
+                              });
+                          });
+                      });
+                  } else if (!partyFlags.safeOpen && inventory.includes('katzenpass')) {
+                      partyFlags.safeOpen = true;
+                      removeItem('katzenpass');
+                      inventory.push('tagebuch');
+                      showDialog('Emil', 'Im Katzenpass steht: Geboren 2019. Also Code 019...', () => {
+                          showDialog('Anna', '*KLICK* Der Safe ist offen! Da ist... Papas geheimes Tagebuch!', () => {
+                              floatText('+ Papas Tagebuch', 400, 200, '#50c878');
+                          });
+                      });
+                  } else if (partyFlags.safeOpen) {
+                      showDialog(getCurName(), 'Der Safe ist leer. Papas Geheimnisse sind jetzt unsere Geheimnisse.');
+                  } else {
+                      showDialog('Emil', 'Wir brauchen das Geburtsjahr der Katze. Wo könnte das stehen?');
+                  }
+              }
+            },
+            { id: 'luftballons', x: 300, y: 60, w: 200, h: 80, name: 'Luftballons',
+              look: 'Bunte Luftballons. Einer hat die Form einer Bratwurst. Norddeutsche Deko.',
+              use: function() {
+                  showDialog('Henrik', 'BRATWURST-BALLON! Das ist das Beste, was ich je gesehen habe!', () => {
+                      showDialog('Jonas', 'Henrik, du bist leicht zu begeistern.', () => {
+                          showDialog('Henrik', 'Du bist nur neidisch, weil du keinen Bratwurst-Ballon hast.');
+                      });
+                  });
+              }
+            },
+        ]
+    },
+    kueche: {
+        name: 'Küche',
+        bg: '#1b3d4e',
+        floor: '#2d5a6e',
+        description: 'Eine Küche voller Partyessen. Der Kühlschrank brummt verdächtig laut.',
+        exits: { links: 'wohnzimmer' },
+        objects: [
+            { id: 'kuehlschrank', x: 500, y: 200, w: 120, h: 200, name: 'Verdächtiger Kühlschrank',
+              look: 'Der Kühlschrank vibriert und macht Geräusche wie ein startender Traktor.',
+              use: function() {
+                  if (!discoveredSecrets.includes('kuehlschrank')) {
+                      discoveredSecrets.push('kuehlschrank');
+                      showDialog('Jonas', 'Ich mache den Kühlschrank auf und... WOAH!', () => {
+                          showDialog('Anna', 'Sind das... 47 Packungen Pudding?! SIEBENUNDVIERZIG?!', () => {
+                              showDialog('Emil', 'Da ist ein Zettel: "NICHT ANFASSEN - GEHEIMER PUDDING-VORRAT - PAPA"', () => {
+                                  showDialog('Henrik', 'Euer Vater hat ein Pudding-Problem. Respekt.', () => {
+                                      floatText('Geheimnis #3 entdeckt: Papas Pudding-Sucht!', 400, 200, '#FFD700');
+                                  });
+                              });
+                          });
+                      });
+                  } else {
+                      showDialog('Henrik', '47 Puddings. Ich zähle jeden Tag nochmal. Es werden nicht weniger.');
+                  }
+              }
+            },
+            { id: 'schublade', x: 100, y: 350, w: 140, h: 50, name: 'Besteckschublade',
+              look: 'Eine Schublade voller Besteck und... Geheimnisse?',
+              use: function() {
+                  if (!inventory.includes('gabel')) {
+                      inventory.push('gabel');
+                      showDialog(getCurName(), 'Eine besonders spitze Kuchengabel! Die könnte nützlich sein.', () => {
+                          floatText('+ Spitze Kuchengabel', 170, 350, '#50c878');
+                      });
+                  } else {
+                      showDialog(getCurName(), 'Nur noch normales Besteck. Und ein Löffel, der aussieht wie ein kleiner Dinosaurier.');
+                  }
+              }
+            },
+            { id: 'spuele', x: 280, y: 280, w: 120, h: 80, name: 'Spüle',
+              look: 'Eine Spüle voller Geschirr. Mama hat aufgegeben.',
+              use: function() {
+                  showDialog('Anna', 'In der Spüle liegt eine Tasse mit der Aufschrift "Weltbester Papa".', () => {
+                      showDialog('Jonas', 'Daneben eine zweite Tasse: "Weltbester Pudding-Esser".', () => {
+                          showDialog('Emil', 'Papa hat seine Prioritäten.');
+                      });
+                  });
+              }
+            },
+            { id: 'radio', x: 50, y: 180, w: 80, h: 60, name: 'Altes Radio',
+              look: 'Ein Radio aus den 90ern. Es spielt leise "99 Luftballons".',
+              use: function() {
+                  if (inventory.includes('fernbedienung') && !partyFlags.radioPlayed) {
+                      partyFlags.radioPlayed = true;
+                      removeItem('fernbedienung');
+                      showDialog('Henrik', 'Ich drücke mal den Knopf auf der Fernbedienung...', () => {
+                          showDialog('Anna', 'Das Radio spielt jetzt... Helene Fischer?! In voller Lautstärke?!', () => {
+                              showDialog('Jonas', 'ALLE NACHBARN KÖNNEN DAS HÖREN!', () => {
+                                  showDialog('Henrik', 'Atemlos durch die Nacht! ATEMLOS! 🎵', () => {
+                                      showDialog('Emil', 'Henrik, bitte. Wir haben einen Ruf zu verlieren.');
+                                  });
+                              });
+                          });
+                      });
+                  } else if (!inventory.includes('fernbedienung') && !partyFlags.radioPlayed) {
+                      showDialog(getCurName(), 'Das Radio reagiert auf nichts. Vielleicht brauche ich eine Fernbedienung?');
+                  } else {
+                      showDialog('Henrik', '🎵 Atemlooos durch die Naaacht... 🎵');
+                  }
+              }
+            }
+        ]
+    },
+    garten: {
+        name: 'Garten',
+        bg: '#0a2e1b',
+        floor: '#1a4e2b',
+        description: 'Ein Garten mit Lichterketten und einem Planschbecken. Die Katze thront auf dem Grill.',
+        exits: { rechts: 'wohnzimmer' },
+        objects: [
+            { id: 'katze', x: 450, y: 280, w: 100, h: 80, name: 'Majestätische Katze',
+              look: 'Die Katze "Herr Schnurrbert" sitzt auf dem Grill und urteilt über alle.',
+              use: function() {
+                  if (!partyFlags.katzeGestreichelt) {
+                      partyFlags.katzeGestreichelt = true;
+                      showDialog('Jonas', 'Komm her, Herr Schnurrbert, du flauschiges Ding!', () => {
+                          showDialog('Anna', 'Er trägt ein... Halsband mit einem USB-Stick?!', () => {
+                              showDialog('Emil', 'Wer hängt einer Katze einen USB-Stick um?!', () => {
+                                  showDialog('Henrik', 'Ein Spion! Herr Schnurrbert ist ein SPION!', () => {
+                                      showDialog('Anna', 'Henrik, er ist eine Katze.', () => {
+                                          showDialog('Henrik', 'Das ist genau das, was ein Spion sagen würde.');
+                                      });
+                                  });
+                              });
+                          });
+                      });
+                  } else {
+                      showDialog('Jonas', 'Herr Schnurrbert schnurrt. Oder er plant die Weltherrschaft. Schwer zu sagen.');
+                  }
+              }
+            },
+            { id: 'planschbecken', x: 100, y: 320, w: 180, h: 80, name: 'Planschbecken',
+              look: 'Ein Planschbecken. Im Februar. Mutig.',
+              use: function() {
+                  if (!discoveredSecrets.includes('planschbecken')) {
+                      discoveredSecrets.push('planschbecken');
+                      showDialog('Emil', 'Im Planschbecken schwimmen... Gummienten?', () => {
+                          showDialog('Anna', 'Das sind nicht einfach Gummienten. Jede hat einen Namen auf dem Bauch!', () => {
+                              showDialog('Jonas', '"Ente 1: Dieter", "Ente 2: Jürgen", "Ente 3: Karl-Heinz"...', () => {
+                                  showDialog('Henrik', 'Das ist Mamas geheime Enten-Sammlung! Sie hat NAMEN für ihre Enten!', () => {
+                                      showDialog('Emil', 'Da ist ein Zettel: "Meine kleinen Freunde - Bitte nicht anfassen - Mama"', () => {
+                                          floatText('Geheimnis #4 entdeckt: Mamas Enten-Imperium!', 400, 200, '#FFD700');
+                                      });
+                                  });
+                              });
+                          });
+                      });
+                  } else {
+                      showDialog('Henrik', 'Dieter, Jürgen und Karl-Heinz. Die coolsten Enten der Stadt.');
+                  }
+              }
+            },
+            { id: 'lichterketten', x: 200, y: 60, w: 400, h: 60, name: 'Lichterketten',
+              look: 'Wunderschöne Lichterketten. Bestimmt seit Weihnachten nicht abgehängt.',
+              use: function() {
+                  showDialog('Anna', 'Die hängen hier schon seit drei Jahren. Mama nennt es "Dauer-Deko".', () => {
+                      showDialog('Jonas', 'Ich nenne es "Faulheit mit Stil".');
+                  });
+              }
+            },
+            { id: 'grill', x: 450, y: 350, w: 120, h: 60, name: 'Grill',
+              look: 'Ein Grill. Herr Schnurrbert hat ihn als sein persönliches Eigentum deklariert.',
+              use: function() {
+                  showDialog('Jonas', 'Ich will grillen!', () => {
+                      showDialog('Anna', 'Die Katze sagt Nein.', () => {
+                          showDialog('Jonas', '...okay.');
+                      });
+                  });
+              }
+            }
+        ]
+    },
+    flur: {
+        name: 'Flur',
+        bg: '#2e1b3d',
+        floor: '#4e2d5a',
+        description: 'Ein enger Flur mit Familienfotos und einem mysteriösen Schrank.',
+        exits: { unten: 'wohnzimmer' },
+        objects: [
+            { id: 'schrank', x: 300, y: 200, w: 140, h: 220, name: 'Mysteriöser Schrank',
+              look: 'Ein alter Schrank. Aus dem Inneren kommt leises Kichern. Oder Einbildung?',
+              use: function() {
+                  if (!discoveredSecrets.includes('schrank') && inventory.includes('tagebuch')) {
+                      discoveredSecrets.push('schrank');
+                      showDialog('Emil', 'Laut dem Tagebuch ist im Schrank Papas geheimes...', () => {
+                          showDialog('Anna', '*öffnet den Schrank* ...BOYBAND-KOSTÜM?!?!', () => {
+                              showDialog('Jonas', 'Da ist ein Foto! Papa war in einer BOYBAND! "Die Flotten Fünf"!', () => {
+                                  showDialog('Henrik', 'OH MEIN GOTT. Er hat PAILLETTEN getragen!', () => {
+                                      showDialog('Emil', 'Papa... der Mann, der sagt "Moderne Musik ist Krach"... war in einer BOYBAND.', () => {
+                                          showDialog('Anna', 'Und er war... der Lead-Sänger?! DA STEHT "SEXY STEFAN"!', () => {
+                                              showDialog('Henrik', 'Das ist der beste Tag meines Lebens. SEXY STEFAN!', () => {
+                                                  floatText('LETZTES GEHEIMNIS: Papas Boyband-Karriere!', 400, 200, '#FFD700');
+                                                  if (discoveredSecrets.length >= 5) {
+                                                      setTimeout(() => { state = State.ENDING; }, 2000);
+                                                  }
+                                              });
+                                          });
+                                      });
+                                  });
+                              });
+                          });
+                      });
+                  } else if (discoveredSecrets.includes('schrank')) {
+                      showDialog('Henrik', 'SEXY STEFAN! Ich kann nicht aufhören zu lachen!');
+                  } else {
+                      showDialog(getCurName(), 'Der Schrank ist abgeschlossen. Vielleicht gibt es irgendwo einen Hinweis...');
+                  }
+              }
+            },
+            { id: 'garderobe', x: 50, y: 250, w: 100, h: 170, name: 'Garderobe',
+              look: 'Jacken über Jacken. Hier hat seit Jahren niemand aufgeräumt.',
+              use: function() {
+                  if (!inventory.includes('katzenpass') && !partyFlags.garderobeChecked) {
+                      partyFlags.garderobeChecked = true;
+                      inventory.push('katzenpass');
+                      showDialog('Anna', 'In einer Jackentasche... ein KATZENPASS?! Für "Herr Schnurrbert von Flauschingen"?!', () => {
+                          showDialog('Emil', 'Die Katze hat einen Adels-Nachnamen. Natürlich.', () => {
+                              floatText('+ Katzenpass', 100, 300, '#50c878');
+                          });
+                      });
+                  } else {
+                      showDialog(getCurName(), 'Nur alte Jacken und der Geruch von verlorenen Träumen.');
+                  }
+              }
+            },
+            { id: 'fotos', x: 550, y: 150, w: 120, h: 200, name: 'Familienfotos',
+              look: 'Eine Wand voller Familienfotos. Auf jedem einzelnen blinzelt jemand.',
+              use: function() {
+                  showDialog('Jonas', 'Auf JEDEM Foto blinzelt Papa. Auf jedem einzelnen!', () => {
+                      showDialog('Anna', 'Das ist statistisch unmöglich.', () => {
+                          showDialog('Henrik', 'Oder er macht es ABSICHTLICH.', () => {
+                              showDialog('Emil', '...das wäre gleichzeitig traurig und genial.');
+                          });
+                      });
+                  });
+              }
+            },
+            { id: 'schuhe', x: 550, y: 380, w: 120, h: 60, name: 'Schuhberg',
+              look: 'Ein Berg aus Schuhen. Hier gilt das Gesetz des Dschungels.',
+              use: function() {
+                  showDialog('Henrik', 'Ich zähle 34 einzelne Schuhe. EINZELNE. Wo sind die Partner?!', () => {
+                      showDialog('Anna', 'Das ist eines der großen ungelösten Rätsel der Menschheit.');
+                  });
+              }
+            }
+        ]
+    }
+};
+
+// --- Helper functions ---
+function getCurName() { return characters[selectedChar].name; }
+
+function removeItem(id) {
+    const idx = inventory.indexOf(id);
+    if (idx >= 0) inventory.splice(idx, 1);
+}
+
+function showDialog(speaker, text, callback) {
+    state = State.DIALOG;
+    dialogSpeaker = speaker;
+    dialogLines = wrapText(text, 60);
+    dialogIdx = 0;
+    dialogCallback = callback || null;
+}
+
+function wrapText(text, maxLen) {
+    const words = text.split(' ');
+    const lines = [];
+    let line = '';
+    for (const w of words) {
+        if ((line + ' ' + w).trim().length > maxLen) {
+            lines.push(line.trim());
+            line = w;
+        } else {
+            line = (line + ' ' + w).trim();
+        }
+    }
+    if (line) lines.push(line);
+    return lines;
+}
+
+function floatText(text, x, y, color) {
+    floatingTexts.push({ text, x, y, color, life: 180 });
+}
+
+function getSpeakerColor(name) {
+    const ch = characters.find(c => c.name === name);
+    if (ch) return ch.color;
+    if (name === 'Opa Günther') return '#c0c0c0';
+    return '#ffffff';
+}
+
+// --- Drawing functions ---
+function drawPixelChar(x, y, scale, color, hair) {
+    const s = scale;
+    // Body
+    ctx.fillStyle = color;
+    ctx.fillRect(x - 6*s, y - 20*s, 12*s, 20*s);
+    // Head
+    ctx.fillStyle = '#ffcc99';
+    ctx.fillRect(x - 5*s, y - 32*s, 10*s, 12*s);
+    // Hair
+    ctx.fillStyle = hair;
+    ctx.fillRect(x - 6*s, y - 35*s, 12*s, 5*s);
+    // Eyes
+    ctx.fillStyle = '#000';
+    ctx.fillRect(x - 3*s, y - 28*s, 2*s, 2*s);
+    ctx.fillRect(x + 1*s, y - 28*s, 2*s, 2*s);
+    // Legs
+    ctx.fillStyle = '#333';
+    ctx.fillRect(x - 5*s, y, 4*s, 8*s);
+    ctx.fillRect(x + 1*s, y, 4*s, 8*s);
+}
+
+function drawRoom() {
+    const room = rooms[currentRoom];
+    const s = S();
+
+    // Sky / bg
+    const grad = ctx.createLinearGradient(0, 0, 0, H());
+    grad.addColorStop(0, room.bg);
+    grad.addColorStop(1, room.floor);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W(), H());
+
+    // Floor line
+    const floorY = H() * 0.72;
+    ctx.fillStyle = room.floor;
+    ctx.fillRect(0, floorY, W(), H() - floorY);
+    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, floorY);
+    ctx.lineTo(W(), floorY);
+    ctx.stroke();
+
+    // Room name
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.font = `${14 * s}px 'Courier New', monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText(`📍 ${room.name}`, W() / 2, 25 * s);
+
+    // Draw room-specific decorations
+    drawRoomDecor(room);
+
+    // Draw objects
+    for (const obj of room.objects) {
+        drawObject(obj, s);
+    }
+
+    // Draw exits
+    drawExits(room, s);
+
+    // Draw active character
+    const ch = characters[selectedChar];
+    const cy = floorY - 8 * s;
+    drawPixelChar(charX, cy, s * 2.5, ch.color, ch.hair);
+
+    // Character name
+    ctx.fillStyle = ch.color;
+    ctx.font = `bold ${12 * s}px 'Courier New', monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText(ch.name, charX, cy + 22 * s);
+
+    // Draw description bar
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(0, H() - 50 * s, W(), 50 * s);
+    ctx.fillStyle = '#ddd';
+    ctx.font = `${13 * s}px 'Courier New', monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText(room.description, W() / 2, H() - 25 * s);
+
+    // Character selector
+    drawCharSelector(s);
+
+    // Inventory button
+    drawInventoryButton(s);
+
+    // Secrets counter
+    ctx.fillStyle = '#FFD700';
+    ctx.font = `bold ${14 * s}px 'Courier New', monospace`;
+    ctx.textAlign = 'right';
+    ctx.fillText(`Geheimnisse: ${discoveredSecrets.length}/5`, W() - 15 * s, 25 * s);
+}
+
+function drawRoomDecor(room) {
+    const s = S();
+    const t = animTime;
+
+    if (currentRoom === 'wohnzimmer') {
+        // Balloons
+        for (let i = 0; i < 8; i++) {
+            const bx = 100 * s + i * 80 * s;
+            const by = 80 * s + Math.sin(t * 0.03 + i) * 10 * s;
+            const colors = ['#ff4444', '#44ff44', '#4444ff', '#ffff44', '#ff44ff', '#44ffff', '#ff8844', '#88ff44'];
+            ctx.fillStyle = colors[i % colors.length];
+            ctx.beginPath();
+            ctx.ellipse(bx, by, 15 * s, 20 * s, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#666';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(bx, by + 20 * s);
+            ctx.lineTo(bx + Math.sin(t * 0.05 + i) * 5, by + 50 * s);
+            ctx.stroke();
+        }
+    } else if (currentRoom === 'kueche') {
+        // Shelves
+        for (let i = 0; i < 3; i++) {
+            ctx.fillStyle = '#5a3d2e';
+            ctx.fillRect(200 * s, (140 + i * 80) * s, 250 * s, 8 * s);
+        }
+    } else if (currentRoom === 'garten') {
+        // Stars
+        for (let i = 0; i < 30; i++) {
+            const sx = (i * 137.5) % W();
+            const sy = (i * 73.1) % (H() * 0.5);
+            const bright = 0.3 + 0.7 * Math.abs(Math.sin(t * 0.02 + i));
+            ctx.fillStyle = `rgba(255,255,255,${bright})`;
+            ctx.fillRect(sx, sy, 2, 2);
+        }
+        // Lights string
+        for (let i = 0; i < 12; i++) {
+            const lx = 80 * s + i * 55 * s;
+            const ly = 70 * s + Math.sin(i * 0.8) * 10 * s;
+            const lcolors = ['#ffee44', '#ff4444', '#44ff44', '#4488ff'];
+            ctx.fillStyle = lcolors[i % 4];
+            ctx.globalAlpha = 0.6 + 0.4 * Math.sin(t * 0.05 + i);
+            ctx.beginPath();
+            ctx.arc(lx, ly, 5 * s, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+        }
+    } else if (currentRoom === 'flur') {
+        // Wallpaper pattern
+        for (let i = 0; i < 20; i++) {
+            for (let j = 0; j < 8; j++) {
+                ctx.fillStyle = 'rgba(255,255,255,0.03)';
+                ctx.fillRect(i * 40 * s, j * 55 * s, 20 * s, 25 * s);
+            }
+        }
+    }
+}
+
+function drawObject(obj, s) {
+    const x = obj.x * s;
+    const y = obj.y * s;
+    const w = obj.w * s;
+    const h = obj.h * s;
+
+    // Object highlight
+    const pulse = 0.3 + 0.15 * Math.sin(animTime * 0.05 + obj.x);
+    ctx.fillStyle = `rgba(255,255,255,${pulse})`;
+    ctx.strokeStyle = `rgba(255,255,200,${pulse + 0.1})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, 6);
+    ctx.fill();
+    ctx.stroke();
+
+    // Object name
+    ctx.fillStyle = '#fff';
+    ctx.font = `${11 * s}px 'Courier New', monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText(obj.name, x + w/2, y - 5 * s);
+}
+
+function drawExits(room, s) {
+    for (const [dir, target] of Object.entries(room.exits)) {
+        const rn = rooms[target].name;
+        let x, y, arrow;
+        if (dir === 'links') { x = 20 * s; y = H() * 0.5; arrow = '◀'; }
+        else if (dir === 'rechts') { x = W() - 20 * s; y = H() * 0.5; arrow = '▶'; }
+        else if (dir === 'oben') { x = W() / 2; y = 50 * s; arrow = '▲'; }
+        else if (dir === 'unten') { x = W() / 2; y = H() * 0.68; arrow = '▼'; }
+        else continue;
+
+        const pulse = 0.5 + 0.3 * Math.sin(animTime * 0.06);
+        ctx.fillStyle = `rgba(255,255,100,${pulse})`;
+        ctx.font = `bold ${20 * s}px 'Courier New', monospace`;
+        ctx.textAlign = 'center';
+        ctx.fillText(arrow, x, y);
+        ctx.font = `${11 * s}px 'Courier New', monospace`;
+        ctx.fillText(`→ ${rn}`, x, y + 18 * s);
+    }
+}
+
+function drawCharSelector(s) {
+    const startX = 10 * s;
+    const startY = 50 * s;
+    for (let i = 0; i < 4; i++) {
+        const ch = characters[i];
+        const y = startY + i * 35 * s;
+        const isActive = i === selectedChar;
+        ctx.fillStyle = isActive ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.3)';
+        ctx.beginPath();
+        ctx.roundRect(startX, y, 100 * s, 28 * s, 5);
+        ctx.fill();
+        if (isActive) {
+            ctx.strokeStyle = ch.color;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+        ctx.fillStyle = ch.color;
+        ctx.font = `bold ${12 * s}px 'Courier New', monospace`;
+        ctx.textAlign = 'left';
+        ctx.fillText(`${ch.emoji} ${ch.name}`, startX + 5 * s, y + 18 * s);
+    }
+}
+
+function drawInventoryButton(s) {
+    const bx = W() - 110 * s;
+    const by = 40 * s;
+    ctx.fillStyle = inventory.length > 0 ? 'rgba(80,200,120,0.4)' : 'rgba(100,100,100,0.3)';
+    ctx.beginPath();
+    ctx.roundRect(bx, by, 100 * s, 30 * s, 5);
+    ctx.fill();
+    ctx.strokeStyle = '#50c878';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.font = `${12 * s}px 'Courier New', monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText(`🎒 (${inventory.length})`, bx + 50 * s, by + 20 * s);
+}
+
+function drawInventoryScreen() {
+    ctx.fillStyle = 'rgba(0,0,0,0.85)';
+    ctx.fillRect(0, 0, W(), H());
+
+    const s = S();
+    ctx.fillStyle = '#FFD700';
+    ctx.font = `bold ${24 * s}px 'Courier New', monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText('🎒 Inventar', W()/2, 50 * s);
+
+    const itemNames = {
+        'gabel': '🍴 Spitze Kuchengabel',
+        'fernbedienung': '📺 Mysteriöse Fernbedienung',
+        'katzenpass': '🐱 Katzenpass (Herr Schnurrbert v. Flauschingen)',
+        'tagebuch': '📖 Papas geheimes Tagebuch'
+    };
+
+    if (inventory.length === 0) {
+        ctx.fillStyle = '#888';
+        ctx.font = `${16 * s}px 'Courier New', monospace`;
+        ctx.fillText('Nichts im Inventar. Klicke auf Dinge!', W()/2, H()/2);
+    } else {
+        for (let i = 0; i < inventory.length; i++) {
+            const y = 100 * s + i * 45 * s;
+            ctx.fillStyle = 'rgba(255,255,255,0.1)';
+            ctx.beginPath();
+            ctx.roundRect(W()/2 - 200 * s, y, 400 * s, 35 * s, 5);
+            ctx.fill();
+            ctx.fillStyle = '#fff';
+            ctx.font = `${14 * s}px 'Courier New', monospace`;
+            ctx.textAlign = 'center';
+            ctx.fillText(itemNames[inventory[i]] || inventory[i], W()/2, y + 23 * s);
+        }
+    }
+
+    ctx.fillStyle = '#aaa';
+    ctx.font = `${14 * s}px 'Courier New', monospace`;
+    ctx.fillText('[ Klicken zum Schließen ]', W()/2, H() - 40 * s);
+}
+
+function drawDialog() {
+    const s = S();
+
+    // Dim background
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillRect(0, 0, W(), H());
+
+    // Dialog box
+    const bh = 130 * s;
+    const by = H() - bh - 20 * s;
+    ctx.fillStyle = 'rgba(10,10,40,0.95)';
+    ctx.beginPath();
+    ctx.roundRect(20 * s, by, W() - 40 * s, bh, 10);
+    ctx.fill();
+    ctx.strokeStyle = getSpeakerColor(dialogSpeaker);
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // Speaker name
+    ctx.fillStyle = getSpeakerColor(dialogSpeaker);
+    ctx.font = `bold ${16 * s}px 'Courier New', monospace`;
+    ctx.textAlign = 'left';
+    ctx.fillText(dialogSpeaker, 40 * s, by + 30 * s);
+
+    // Text
+    ctx.fillStyle = '#fff';
+    ctx.font = `${14 * s}px 'Courier New', monospace`;
+    for (let i = 0; i < dialogLines.length; i++) {
+        ctx.fillText(dialogLines[i], 40 * s, by + 55 * s + i * 20 * s);
+    }
+
+    // Continue hint
+    const blink = Math.sin(animTime * 0.1) > 0;
+    if (blink) {
+        ctx.fillStyle = '#888';
+        ctx.font = `${12 * s}px 'Courier New', monospace`;
+        ctx.textAlign = 'right';
+        ctx.fillText('▶ Klicken zum Fortfahren', W() - 40 * s, by + bh - 15 * s);
+    }
+}
+
+function drawMenu() {
+    const s = S();
+    menuPulse += 0.03;
+
+    // Background
+    const grad = ctx.createLinearGradient(0, 0, 0, H());
+    grad.addColorStop(0, '#1a0a2e');
+    grad.addColorStop(0.5, '#2d1b4e');
+    grad.addColorStop(1, '#0a2e1b');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W(), H());
+
+    // Floating party items
+    const emojis = ['🎈', '🎂', '🎉', '🎊', '🎁', '🎵', '🍰', '🧁'];
+    for (let i = 0; i < emojis.length; i++) {
+        const x = (i * 97 + animTime * 0.5) % (W() + 50) - 25;
+        const y = 50 + (i * 73) % (H() * 0.6) + Math.sin(animTime * 0.02 + i) * 20;
+        ctx.globalAlpha = 0.3;
+        ctx.font = `${30 * s}px serif`;
+        ctx.textAlign = 'center';
+        ctx.fillText(emojis[i], x, y);
+        ctx.globalAlpha = 1;
+    }
+
+    // Title
+    const titleY = H() * 0.2;
+    ctx.fillStyle = '#FFD700';
+    ctx.font = `bold ${28 * s}px 'Courier New', monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText('🎂 Das Geheimnis der', W()/2, titleY);
+    ctx.fillText('Geburtstagsparty 🎂', W()/2, titleY + 35 * s);
+
+    // Subtitle
+    ctx.fillStyle = '#aaa';
+    ctx.font = `${14 * s}px 'Courier New', monospace`;
+    ctx.fillText('Ein Point-and-Click Abenteuer', W()/2, titleY + 75 * s);
+
+    // Characters
+    const charY = H() * 0.5;
+    for (let i = 0; i < 4; i++) {
+        const ch = characters[i];
+        const cx = W()/2 + (i - 1.5) * 100 * s;
+        const bob = Math.sin(animTime * 0.04 + i * 1.5) * 5 * s;
+        drawPixelChar(cx, charY + bob, s * 3, ch.color, ch.hair);
+        ctx.fillStyle = ch.color;
+        ctx.font = `bold ${12 * s}px 'Courier New', monospace`;
+        ctx.fillText(ch.name, cx, charY + bob + 30 * s);
+        ctx.fillStyle = '#888';
+        ctx.font = `${10 * s}px 'Courier New', monospace`;
+        ctx.fillText(ch.trait, cx, charY + bob + 44 * s);
+    }
+
+    // Start button
+    const btnPulse = 0.85 + 0.15 * Math.sin(menuPulse * 3);
+    const btnW = 260 * s * btnPulse;
+    const btnH = 50 * s * btnPulse;
+    const btnX = W()/2 - btnW/2;
+    const btnY = H() * 0.78 - btnH/2;
+
+    ctx.fillStyle = '#4a9eff';
+    ctx.beginPath();
+    ctx.roundRect(btnX, btnY, btnW, btnH, 10);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${18 * s}px 'Courier New', monospace`;
+    ctx.fillText('▶ Abenteuer starten!', W()/2, H() * 0.78 + 6 * s);
+
+    // Instructions
+    ctx.fillStyle = '#666';
+    ctx.font = `${11 * s}px 'Courier New', monospace`;
+    ctx.fillText('Klicke auf Objekte zum Untersuchen • Finde alle 5 Geheimnisse!', W()/2, H() * 0.92);
+}
+
+function drawEnding() {
+    const s = S();
+    animTime++;
+
+    const grad = ctx.createLinearGradient(0, 0, 0, H());
+    grad.addColorStop(0, '#2d1b4e');
+    grad.addColorStop(1, '#1a0a2e');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W(), H());
+
+    // Confetti
+    for (let i = 0; i < 50; i++) {
+        const x = (i * 67 + animTime * (1 + i % 3)) % W();
+        const y = (i * 43 + animTime * (2 + i % 2)) % H();
+        const colors = ['#ff4444', '#44ff44', '#4444ff', '#ffff44', '#ff44ff', '#FFD700'];
+        ctx.fillStyle = colors[i % colors.length];
+        ctx.globalAlpha = 0.7;
+        ctx.fillRect(x, y, 6 * s, 6 * s);
+    }
+    ctx.globalAlpha = 1;
+
+    ctx.fillStyle = '#FFD700';
+    ctx.font = `bold ${30 * s}px 'Courier New', monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText('🎉 ALLE GEHEIMNISSE ENTDECKT! 🎉', W()/2, H() * 0.12);
+
+    const secrets = [
+        '🎂 Opa Günther schläft in der Torte (mit Sahne-Spa)',
+        '🧊 Papa hortet 47 Puddings im Kühlschrank',
+        '📸 Hinter dem Familienbild ist ein Safe',
+        '🦆 Mama hat eine geheime Gummienten-Sammlung',
+        '🎤 Papa war Lead-Sänger "Sexy Stefan" in einer Boyband'
+    ];
+
+    ctx.font = `${13 * s}px 'Courier New', monospace`;
+    for (let i = 0; i < secrets.length; i++) {
+        ctx.fillStyle = '#fff';
+        ctx.fillText(secrets[i], W()/2, H() * 0.25 + i * 30 * s);
+    }
+
+    // Final scene
+    ctx.fillStyle = '#4a9eff';
+    ctx.font = `bold ${16 * s}px 'Courier New', monospace`;
+    ctx.fillText('Die vier Freunde nach der Party:', W()/2, H() * 0.58);
+
+    ctx.fillStyle = '#ff6b9d';
+    ctx.font = `${13 * s}px 'Courier New', monospace`;
+    const epilog = [
+        'Henrik: "Ich nenne Papa ab jetzt nur noch Sexy Stefan."',
+        'Anna: "Wenn das die Nachbarn erfahren..."',
+        'Jonas: "Herr Schnurrbert von Flauschingen weiß alles. Er urteilt."',
+        'Emil: "Das war die beste Geburtstagsparty aller Zeiten."',
+        '',
+        'Papa (aus dem Off): "HAT JEMAND MEINEN PUDDING ANGEFASST?!"',
+    ];
+    for (let i = 0; i < epilog.length; i++) {
+        ctx.fillStyle = i === epilog.length - 1 ? '#ffcc44' : '#ddd';
+        ctx.fillText(epilog[i], W()/2, H() * 0.66 + i * 24 * s);
+    }
+
+    ctx.fillStyle = '#888';
+    ctx.font = `${14 * s}px 'Courier New', monospace`;
+    ctx.fillText('🎂 ENDE 🎂', W()/2, H() * 0.92);
+    ctx.font = `${11 * s}px 'Courier New', monospace`;
+    ctx.fillText('[ Klicken für Neustart ]', W()/2, H() * 0.96);
+}
+
+function drawFloatingTexts() {
+    const s = S();
+    for (let i = floatingTexts.length - 1; i >= 0; i--) {
+        const ft = floatingTexts[i];
+        ft.y -= 0.5;
+        ft.life--;
+        const alpha = Math.min(1, ft.life / 60);
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = ft.color;
+        ctx.font = `bold ${16 * s}px 'Courier New', monospace`;
+        ctx.textAlign = 'center';
+        ctx.fillText(ft.text, ft.x * s, ft.y * s);
+        ctx.globalAlpha = 1;
+        if (ft.life <= 0) floatingTexts.splice(i, 1);
+    }
+}
+
+// --- Input handling ---
+function handleClick(mx, my) {
+    const s = S();
+
+    if (state === State.MENU) {
+        // Check start button
+        const btnW = 260 * s;
+        const btnH = 50 * s;
+        const btnX = W()/2 - btnW/2;
+        const btnY = H() * 0.78 - btnH/2;
+        if (mx >= btnX && mx <= btnX + btnW && my >= btnY && my <= btnY + btnH) {
+            state = State.PLAYING;
+            currentRoom = 'wohnzimmer';
+            charX = W() / 2;
+        }
+        return;
+    }
+
+    if (state === State.ENDING) {
+        // Reset game
+        state = State.MENU;
+        inventory = [];
+        discoveredSecrets = [];
+        partyFlags = {};
+        return;
+    }
+
+    if (state === State.DIALOG) {
+        if (dialogCallback) {
+            const cb = dialogCallback;
+            dialogCallback = null;
+            state = State.PLAYING;
+            cb();
+        } else {
+            state = State.PLAYING;
+        }
+        return;
+    }
+
+    if (showInventory) {
+        showInventory = false;
+        return;
+    }
+
+    // Check character selector
+    const startX = 10 * s;
+    const startY = 50 * s;
+    for (let i = 0; i < 4; i++) {
+        const y = startY + i * 35 * s;
+        if (mx >= startX && mx <= startX + 100 * s && my >= y && my <= y + 28 * s) {
+            selectedChar = i;
+            return;
+        }
+    }
+
+    // Check inventory button
+    const ibx = W() - 110 * s;
+    const iby = 40 * s;
+    if (mx >= ibx && mx <= ibx + 100 * s && my >= iby && my <= iby + 30 * s) {
+        showInventory = true;
+        return;
+    }
+
+    // Check exits
+    const room = rooms[currentRoom];
+    for (const [dir, target] of Object.entries(room.exits)) {
+        let ex, ey, ew = 60 * s, eh = 40 * s;
+        if (dir === 'links') { ex = 0; ey = H() * 0.5 - 30 * s; ew = 50 * s; eh = 60 * s; }
+        else if (dir === 'rechts') { ex = W() - 50 * s; ey = H() * 0.5 - 30 * s; ew = 50 * s; eh = 60 * s; }
+        else if (dir === 'oben') { ex = W()/2 - 60 * s; ey = 30 * s; ew = 120 * s; eh = 50 * s; }
+        else if (dir === 'unten') { ex = W()/2 - 60 * s; ey = H() * 0.63; ew = 120 * s; eh = 50 * s; }
+        else continue;
+        if (mx >= ex && mx <= ex + ew && my >= ey && my <= ey + eh) {
+            currentRoom = target;
+            charX = W() / 2;
+            return;
+        }
+    }
+
+    // Check objects
+    for (const obj of room.objects) {
+        const ox = obj.x * s, oy = obj.y * s, ow = obj.w * s, oh = obj.h * s;
+        if (mx >= ox && mx <= ox + ow && my >= oy && my <= oy + oh) {
+            // Walk towards object
+            charX = ox + ow / 2;
+            obj.use();
+            return;
+        }
+    }
+
+    // Walk to clicked position
+    if (my > H() * 0.5 && my < H() * 0.75) {
+        charX = mx;
+    }
+}
+
+canvas.addEventListener('click', (e) => {
+    e.preventDefault();
+    handleClick(e.clientX, e.clientY);
+});
+canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    if (e.touches.length > 0) {
+        handleClick(e.touches[0].clientX, e.touches[0].clientY);
+    }
+}, { passive: false });
+
+// --- Game Loop ---
+function gameLoop() {
+    animTime++;
+    ctx.clearRect(0, 0, W(), H());
+
+    if (state === State.MENU) {
+        drawMenu();
+    } else if (state === State.ENDING) {
+        drawEnding();
+    } else {
+        drawRoom();
+        drawFloatingTexts();
+        if (showInventory) drawInventoryScreen();
+        if (state === State.DIALOG) drawDialog();
+    }
+
+    requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+</body>
+</html>
