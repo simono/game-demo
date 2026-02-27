@@ -82,7 +82,7 @@ const rooms = {
         bg: '#2d1b4e',
         floor: '#4a2d6e',
         description: 'Ein festlich geschmücktes Wohnzimmer mit Luftballons und einer verdächtigen Torte.',
-        exits: { rechts: 'kueche', links: 'garten', oben: 'flur' },
+        exits: { rechts: 'kueche', links: 'garten', unten: 'flur' },
         objects: [
             { id: 'torte', x: 420, y: 340, w: 100, h: 70, name: 'Verdächtige Torte',
               look: 'Eine riesige Torte mit... bewegt sich da was drunter?!',
@@ -147,7 +147,7 @@ const rooms = {
                   }
               }
             },
-            { id: 'luftballons', x: 480, y: 170, w: 220, h: 50, name: 'Luftballons',
+            { id: 'luftballons', x: 250, y: 170, w: 220, h: 50, name: 'Luftballons',
               look: 'Bunte Luftballons. Einer hat die Form einer Bratwurst. Norddeutsche Deko.',
               use: function() {
                   showDialog('Henrik', 'BRATWURST-BALLON! Das ist das Beste, was ich je gesehen habe!', () => {
@@ -306,7 +306,7 @@ const rooms = {
         bg: '#2e1b3d',
         floor: '#4e2d5a',
         description: 'Ein enger Flur mit Familienfotos und einem mysteriösen Schrank.',
-        exits: { unten: 'wohnzimmer' },
+        exits: { oben: 'wohnzimmer' },
         objects: [
             { id: 'schrank', x: 300, y: 200, w: 140, h: 220, name: 'Mysteriöser Schrank',
               look: 'Ein alter Schrank. Aus dem Inneren kommt leises Kichern. Oder Einbildung?',
@@ -561,10 +561,9 @@ function drawRoomDecor(room) {
     const t = animTime;
 
     if (currentRoom === 'wohnzimmer') {
-        // Balloons (split into two groups to leave gap for Flur exit)
-        const balloonXs = [60, 130, 200, 520, 590, 660, 730];
-        for (let i = 0; i < balloonXs.length; i++) {
-            const bx = balloonXs[i] * s;
+        // Balloons
+        for (let i = 0; i < 8; i++) {
+            const bx = 100 * s + i * 80 * s;
             const by = 80 * s + Math.sin(t * 0.03 + i) * 10 * s;
             const colors = ['#ff4444', '#44ff44', '#4444ff', '#ffff44', '#ff44ff', '#44ffff', '#ff8844', '#88ff44'];
             ctx.fillStyle = colors[i % colors.length];
