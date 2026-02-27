@@ -35,6 +35,8 @@ function resize() {
     canvas.height = window.innerHeight;
 }
 window.addEventListener('resize', resize);
+window.addEventListener('load', resize);
+document.addEventListener('DOMContentLoaded', resize);
 resize();
 
 // --- Game State ---
@@ -787,37 +789,41 @@ function drawMenu() {
         ctx.globalAlpha = 1;
     }
 
-    // Title
-    const titleY = H() * 0.2;
+    // Title — scale font to fit screen width
+    const titleY = H() * 0.15;
+    const titleSize = Math.min(28 * s, W() / 18);
     ctx.fillStyle = '#FFD700';
-    ctx.font = `bold ${28 * s}px 'Courier New', monospace`;
+    ctx.font = `bold ${titleSize}px 'Courier New', monospace`;
     ctx.textAlign = 'center';
-    ctx.fillText('🎂 Das Geheimnis der', W()/2, titleY);
-    ctx.fillText('Geburtstagsparty 🎂', W()/2, titleY + 35 * s);
+    ctx.fillText('Das Geheimnis der', W()/2, titleY);
+    ctx.fillText('Geburtstagsparty', W()/2, titleY + titleSize * 1.3);
 
     // Subtitle
     ctx.fillStyle = '#aaa';
-    ctx.font = `${14 * s}px 'Courier New', monospace`;
-    ctx.fillText('Ein Point-and-Click Abenteuer', W()/2, titleY + 75 * s);
+    ctx.font = `${Math.min(14 * s, W() / 30)}px 'Courier New', monospace`;
+    ctx.fillText('Ein Point-and-Click Abenteuer', W()/2, titleY + titleSize * 2.8);
 
-    // Characters
-    const charY = H() * 0.5;
+    // Characters — spread based on actual screen width
+    const charY = H() * 0.52;
+    const charSpacing = Math.min(W() / 5, 100 * s);
     for (let i = 0; i < 4; i++) {
         const ch = characters[i];
-        const cx = W()/2 + (i - 1.5) * 100 * s;
+        const cx = W()/2 + (i - 1.5) * charSpacing;
         const bob = Math.sin(animTime * 0.04 + i * 1.5) * 5 * s;
-        drawPixelChar(cx, charY + bob, s * 3, ch.color, ch.hair);
+        const charScale = Math.min(s * 3, charSpacing / 35);
+        drawPixelChar(cx, charY + bob, charScale, ch.color, ch.hair);
         ctx.fillStyle = ch.color;
-        ctx.font = `bold ${12 * s}px 'Courier New', monospace`;
+        ctx.font = `bold ${Math.min(12 * s, charSpacing / 7)}px 'Courier New', monospace`;
+        ctx.textAlign = 'center';
         ctx.fillText(ch.name, cx, charY + bob + 30 * s);
         ctx.fillStyle = '#888';
-        ctx.font = `${10 * s}px 'Courier New', monospace`;
+        ctx.font = `${Math.min(10 * s, charSpacing / 9)}px 'Courier New', monospace`;
         ctx.fillText(ch.trait, cx, charY + bob + 44 * s);
     }
 
     // Start button
     const btnPulse = 0.85 + 0.15 * Math.sin(menuPulse * 3);
-    const btnW = 260 * s * btnPulse;
+    const btnW = Math.min(260 * s, W() * 0.7) * btnPulse;
     const btnH = 50 * s * btnPulse;
     const btnX = W()/2 - btnW/2;
     const btnY = H() * 0.78 - btnH/2;
@@ -827,13 +833,14 @@ function drawMenu() {
     ctx.roundRect(btnX, btnY, btnW, btnH, 10);
     ctx.fill();
     ctx.fillStyle = '#fff';
-    ctx.font = `bold ${18 * s}px 'Courier New', monospace`;
+    ctx.font = `bold ${Math.min(18 * s, W() / 25)}px 'Courier New', monospace`;
     ctx.fillText('▶ Abenteuer starten!', W()/2, H() * 0.78 + 6 * s);
 
     // Instructions
     ctx.fillStyle = '#666';
-    ctx.font = `${11 * s}px 'Courier New', monospace`;
-    ctx.fillText('Klicke auf Objekte zum Untersuchen • Finde alle 5 Geheimnisse!', W()/2, H() * 0.92);
+    const instrSize = Math.min(11 * s, W() / 42);
+    ctx.font = `${instrSize}px 'Courier New', monospace`;
+    ctx.fillText('Klicke auf Objekte • Finde alle 5 Geheimnisse!', W()/2, H() * 0.92);
 }
 
 function drawEnding() {
@@ -857,50 +864,52 @@ function drawEnding() {
     }
     ctx.globalAlpha = 1;
 
+    const fs = Math.min(13 * s, W() / 35);
+
     ctx.fillStyle = '#FFD700';
-    ctx.font = `bold ${30 * s}px 'Courier New', monospace`;
+    ctx.font = `bold ${Math.min(24 * s, W() / 18)}px 'Courier New', monospace`;
     ctx.textAlign = 'center';
-    ctx.fillText('🎉 ALLE GEHEIMNISSE ENTDECKT! 🎉', W()/2, H() * 0.12);
+    ctx.fillText('ALLE GEHEIMNISSE ENTDECKT!', W()/2, H() * 0.10);
 
     const secrets = [
-        '🎂 Opa Günther schläft in der Torte (mit Sahne-Spa)',
-        '🧊 Papa hortet 47 Puddings im Kühlschrank',
-        '📸 Hinter dem Familienbild ist ein Safe',
-        '🦆 Mama hat eine geheime Gummienten-Sammlung',
-        '🎤 Papa war Lead-Sänger "Sexy Stefan" in einer Boyband'
+        'Opa Günther schläft in der Torte',
+        'Papa hortet 47 Puddings im Kühlschrank',
+        'Hinter dem Familienbild ist ein Safe',
+        'Mama hat eine geheime Enten-Sammlung',
+        'Papa war Boyband-Sänger "Sexy Stefan"'
     ];
 
-    ctx.font = `${13 * s}px 'Courier New', monospace`;
+    ctx.font = `${fs}px 'Courier New', monospace`;
     for (let i = 0; i < secrets.length; i++) {
         ctx.fillStyle = '#fff';
-        ctx.fillText(secrets[i], W()/2, H() * 0.25 + i * 30 * s);
+        ctx.fillText(secrets[i], W()/2, H() * 0.20 + i * 26 * s);
     }
 
     // Final scene
     ctx.fillStyle = '#4a9eff';
-    ctx.font = `bold ${16 * s}px 'Courier New', monospace`;
-    ctx.fillText('Die vier Freunde nach der Party:', W()/2, H() * 0.58);
+    ctx.font = `bold ${Math.min(15 * s, W() / 28)}px 'Courier New', monospace`;
+    ctx.fillText('Die vier Freunde nach der Party:', W()/2, H() * 0.53);
 
-    ctx.fillStyle = '#ff6b9d';
-    ctx.font = `${13 * s}px 'Courier New', monospace`;
+    const epilogFs = Math.min(12 * s, W() / 38);
+    ctx.font = `${epilogFs}px 'Courier New', monospace`;
     const epilog = [
-        'Henrik: "Ich nenne Papa ab jetzt nur noch Sexy Stefan."',
+        'Henrik: "Ab jetzt heißt Papa Sexy Stefan."',
         'Anna: "Wenn das die Nachbarn erfahren..."',
-        'Jonas: "Herr Schnurrbert von Flauschingen weiß alles. Er urteilt."',
-        'Emil: "Das war die beste Geburtstagsparty aller Zeiten."',
+        'Jonas: "Herr Schnurrbert weiß alles."',
+        'Emil: "Beste Geburtstagsparty aller Zeiten."',
         '',
-        'Papa (aus dem Off): "HAT JEMAND MEINEN PUDDING ANGEFASST?!"',
+        'Papa: "HAT JEMAND MEINEN PUDDING ANGEFASST?!"',
     ];
     for (let i = 0; i < epilog.length; i++) {
         ctx.fillStyle = i === epilog.length - 1 ? '#ffcc44' : '#ddd';
-        ctx.fillText(epilog[i], W()/2, H() * 0.66 + i * 24 * s);
+        ctx.fillText(epilog[i], W()/2, H() * 0.60 + i * 22 * s);
     }
 
     ctx.fillStyle = '#888';
-    ctx.font = `${14 * s}px 'Courier New', monospace`;
-    ctx.fillText('🎂 ENDE 🎂', W()/2, H() * 0.92);
-    ctx.font = `${11 * s}px 'Courier New', monospace`;
-    ctx.fillText('[ Klicken für Neustart ]', W()/2, H() * 0.96);
+    ctx.font = `${Math.min(14 * s, W() / 30)}px 'Courier New', monospace`;
+    ctx.fillText('ENDE', W()/2, H() * 0.90);
+    ctx.font = `${Math.min(11 * s, W() / 38)}px 'Courier New', monospace`;
+    ctx.fillText('[ Klicken für Neustart ]', W()/2, H() * 0.95);
 }
 
 function drawFloatingTexts() {
@@ -1032,6 +1041,8 @@ canvas.addEventListener('touchstart', (e) => {
 
 // --- Game Loop ---
 function gameLoop() {
+    // Re-check size every frame for the first second to fix timing issues
+    if (animTime < 60) resize();
     animTime++;
     ctx.clearRect(0, 0, W(), H());
 
