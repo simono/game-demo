@@ -395,15 +395,20 @@ function showDialog(speaker, text, callback) {
 }
 
 function wrapText(text, maxLen) {
+    // Wrap based on pixel width using the current dialog font
+    const f = FS();
+    ctx.font = `${15 * f}px system-ui, -apple-system, sans-serif`;
+    const maxW = W() - 50 * f; // dialog box inner width
     const words = text.split(' ');
     const lines = [];
     let line = '';
     for (const w of words) {
-        if ((line + ' ' + w).trim().length > maxLen) {
+        const test = (line + ' ' + w).trim();
+        if (ctx.measureText(test).width > maxW && line) {
             lines.push(line.trim());
             line = w;
         } else {
-            line = (line + ' ' + w).trim();
+            line = test;
         }
     }
     if (line) lines.push(line);
@@ -511,9 +516,16 @@ function drawRoom() {
     ctx.lineTo(W(), H() - barH);
     ctx.stroke();
     ctx.fillStyle = '#fff';
-    ctx.font = `${Math.min(13 * f, W() / 32)}px system-ui, -apple-system, sans-serif`;
+    const descFs = Math.min(13 * f, W() / 32);
+    ctx.font = `${descFs}px system-ui, -apple-system, sans-serif`;
     ctx.textAlign = 'center';
-    ctx.fillText(room.description, W() / 2, H() - barH / 2 + 5 * f);
+    // Truncate with ellipsis if too wide
+    let desc = room.description;
+    const maxDescW = W() - 20 * f;
+    while (ctx.measureText(desc).width > maxDescW && desc.length > 10) {
+        desc = desc.slice(0, -4) + '…';
+    }
+    ctx.fillText(desc, W() / 2, H() - barH / 2 + 5 * f);
 
     // Character selector
     drawCharSelector(f);
