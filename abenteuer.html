@@ -505,8 +505,25 @@ function drawRoom() {
     ctx.fillText(ch.name, charX, cy + 24 * s);
     ctx.shadowBlur = 0;
 
-    // Draw description bar
-    const barH = 40 * f;
+    // Draw description bar — word-wrap into 1-2 lines
+    const descFs = Math.min(13 * f, W() / 32);
+    ctx.font = `${descFs}px system-ui, -apple-system, sans-serif`;
+    const descMaxW = W() * 0.92;
+    const descWords = room.description.split(' ');
+    const descLines = [];
+    let descLine = '';
+    for (const dw of descWords) {
+        const test = (descLine + ' ' + dw).trim();
+        if (ctx.measureText(test).width > descMaxW && descLine) {
+            descLines.push(descLine.trim());
+            descLine = dw;
+        } else {
+            descLine = test;
+        }
+    }
+    if (descLine) descLines.push(descLine.trim());
+    const lineH = descFs * 1.3;
+    const barH = Math.max(40 * f, descLines.length * lineH + 12 * f);
     ctx.fillStyle = 'rgba(0,0,0,0.85)';
     ctx.fillRect(0, H() - barH, W(), barH);
     ctx.strokeStyle = 'rgba(255,255,255,0.15)';
@@ -516,16 +533,12 @@ function drawRoom() {
     ctx.lineTo(W(), H() - barH);
     ctx.stroke();
     ctx.fillStyle = '#fff';
-    const descFs = Math.min(13 * f, W() / 32);
     ctx.font = `${descFs}px system-ui, -apple-system, sans-serif`;
     ctx.textAlign = 'center';
-    // Truncate with ellipsis if too wide
-    let desc = room.description;
-    const maxDescW = W() * 0.88;
-    while (ctx.measureText(desc).width > maxDescW && desc.length > 10) {
-        desc = desc.slice(0, -4) + '…';
+    const descTopY = H() - barH / 2 - (descLines.length - 1) * lineH / 2;
+    for (let dl = 0; dl < descLines.length; dl++) {
+        ctx.fillText(descLines[dl], W() / 2, descTopY + dl * lineH + descFs * 0.35);
     }
-    ctx.fillText(desc, W() / 2, H() - barH / 2 + 5 * f);
 
     // Character selector
     drawCharSelector(f);
