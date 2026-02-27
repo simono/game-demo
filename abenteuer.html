@@ -64,7 +64,8 @@ let partyFlags = {};
 
 const W = () => window.innerWidth;
 const H = () => window.innerHeight;
-const S = () => Math.min(W() / 420, H() / 320);
+const S = () => Math.min(W() / 800, H() / 600);       // layout scale (object positions)
+const FS = () => Math.min(W() / 420, H() / 320);      // font scale (text size)
 
 // --- Characters ---
 const characters = [
@@ -445,6 +446,7 @@ function drawPixelChar(x, y, scale, color, hair) {
 function drawRoom() {
     const room = rooms[currentRoom];
     const s = S();
+    const f = FS();
 
     // Sky / bg
     const grad = ctx.createLinearGradient(0, 0, 0, H());
@@ -465,12 +467,12 @@ function drawRoom() {
     ctx.stroke();
 
     // Room name
-    ctx.font = `bold ${16 * s}px system-ui, -apple-system, sans-serif`;
+    ctx.font = `bold ${16 * f}px system-ui, -apple-system, sans-serif`;
     ctx.textAlign = 'center';
     ctx.shadowColor = 'rgba(0,0,0,0.9)';
     ctx.shadowBlur = 6;
     ctx.fillStyle = '#fff';
-    ctx.fillText(`📍 ${room.name}`, W() / 2, 25 * s);
+    ctx.fillText(`📍 ${room.name}`, W() / 2, 25 * f);
     ctx.shadowBlur = 0;
 
     // Draw room-specific decorations
@@ -493,38 +495,39 @@ function drawRoom() {
     ctx.shadowColor = 'rgba(0,0,0,0.9)';
     ctx.shadowBlur = 6;
     ctx.fillStyle = ch.color;
-    ctx.font = `bold ${14 * s}px system-ui, -apple-system, sans-serif`;
+    ctx.font = `bold ${14 * f}px system-ui, -apple-system, sans-serif`;
     ctx.textAlign = 'center';
     ctx.fillText(ch.name, charX, cy + 24 * s);
     ctx.shadowBlur = 0;
 
     // Draw description bar
+    const barH = 40 * f;
     ctx.fillStyle = 'rgba(0,0,0,0.85)';
-    ctx.fillRect(0, H() - 55 * s, W(), 55 * s);
+    ctx.fillRect(0, H() - barH, W(), barH);
     ctx.strokeStyle = 'rgba(255,255,255,0.15)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(0, H() - 55 * s);
-    ctx.lineTo(W(), H() - 55 * s);
+    ctx.moveTo(0, H() - barH);
+    ctx.lineTo(W(), H() - barH);
     ctx.stroke();
     ctx.fillStyle = '#fff';
-    ctx.font = `${15 * s}px system-ui, -apple-system, sans-serif`;
+    ctx.font = `${Math.min(13 * f, W() / 32)}px system-ui, -apple-system, sans-serif`;
     ctx.textAlign = 'center';
-    ctx.fillText(room.description, W() / 2, H() - 25 * s);
+    ctx.fillText(room.description, W() / 2, H() - barH / 2 + 5 * f);
 
     // Character selector
-    drawCharSelector(s);
+    drawCharSelector(f);
 
     // Inventory button
-    drawInventoryButton(s);
+    drawInventoryButton(f);
 
     // Secrets counter
     ctx.shadowColor = 'rgba(0,0,0,0.9)';
     ctx.shadowBlur = 6;
     ctx.fillStyle = '#FFD700';
-    ctx.font = `bold ${16 * s}px system-ui, -apple-system, sans-serif`;
+    ctx.font = `bold ${14 * f}px system-ui, -apple-system, sans-serif`;
     ctx.textAlign = 'right';
-    ctx.fillText(`Geheimnisse: ${discoveredSecrets.length}/5`, W() - 15 * s, 25 * s);
+    ctx.fillText(`${discoveredSecrets.length}/5 ⭐`, W() - 10 * f, 25 * f);
     ctx.shadowBlur = 0;
 }
 
@@ -592,6 +595,7 @@ function drawObject(obj, s) {
     const y = obj.y * s;
     const w = obj.w * s;
     const h = obj.h * s;
+    const f = FS();
 
     // Object highlight — dark tint with bright border
     const pulse = 0.6 + 0.3 * Math.sin(animTime * 0.05 + obj.x);
@@ -604,26 +608,27 @@ function drawObject(obj, s) {
     ctx.stroke();
 
     // Object name with dark background pill
-    ctx.font = `bold ${13 * s}px system-ui, -apple-system, sans-serif`;
+    ctx.font = `bold ${13 * f}px system-ui, -apple-system, sans-serif`;
     ctx.textAlign = 'center';
-    const nameW = ctx.measureText(obj.name).width + 12 * s;
+    const nameW = ctx.measureText(obj.name).width + 12 * f;
     const nameX = x + w/2 - nameW/2;
-    const nameY = y - 20 * s;
+    const nameY = y - 22 * f;
     ctx.fillStyle = 'rgba(0,0,0,0.75)';
     ctx.beginPath();
-    ctx.roundRect(nameX, nameY, nameW, 18 * s, 4);
+    ctx.roundRect(nameX, nameY, nameW, 20 * f, 4);
     ctx.fill();
     ctx.fillStyle = '#ffe066';
-    ctx.fillText(obj.name, x + w/2, y - 6 * s);
+    ctx.fillText(obj.name, x + w/2, y - 7 * f);
 }
 
 function drawExits(room, s) {
+    const f = FS();
     for (const [dir, target] of Object.entries(room.exits)) {
         const rn = rooms[target].name;
         let x, y, arrow;
-        if (dir === 'links') { x = 20 * s; y = H() * 0.5; arrow = '◀'; }
-        else if (dir === 'rechts') { x = W() - 20 * s; y = H() * 0.5; arrow = '▶'; }
-        else if (dir === 'oben') { x = W() / 2; y = 50 * s; arrow = '▲'; }
+        if (dir === 'links') { x = 25 * f; y = H() * 0.5; arrow = '◀'; }
+        else if (dir === 'rechts') { x = W() - 25 * f; y = H() * 0.5; arrow = '▶'; }
+        else if (dir === 'oben') { x = W() / 2; y = 50 * f; arrow = '▲'; }
         else if (dir === 'unten') { x = W() / 2; y = H() * 0.68; arrow = '▼'; }
         else continue;
 
@@ -631,106 +636,107 @@ function drawExits(room, s) {
         ctx.shadowColor = 'rgba(0,0,0,0.9)';
         ctx.shadowBlur = 8;
         ctx.fillStyle = `rgba(255,255,100,${pulse})`;
-        ctx.font = `bold ${24 * s}px system-ui, -apple-system, sans-serif`;
+        ctx.font = `bold ${22 * f}px system-ui, -apple-system, sans-serif`;
         ctx.textAlign = 'center';
         ctx.fillText(arrow, x, y);
-        ctx.font = `bold ${13 * s}px system-ui, -apple-system, sans-serif`;
+        ctx.font = `bold ${12 * f}px system-ui, -apple-system, sans-serif`;
         ctx.fillStyle = '#fff';
-        ctx.fillText(`→ ${rn}`, x, y + 20 * s);
+        ctx.fillText(`→ ${rn}`, x, y + 20 * f);
         ctx.shadowBlur = 0;
     }
 }
 
-function drawCharSelector(s) {
-    const startX = 10 * s;
-    const startY = 50 * s;
+function drawCharSelector(f) {
+    const startX = 8 * f;
+    const startY = 42 * f;
     for (let i = 0; i < 4; i++) {
         const ch = characters[i];
-        const y = startY + i * 35 * s;
+        const y = startY + i * 28 * f;
         const isActive = i === selectedChar;
         ctx.fillStyle = isActive ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.5)';
         ctx.beginPath();
-        ctx.roundRect(startX, y, 110 * s, 30 * s, 6);
+        ctx.roundRect(startX, y, 90 * f, 24 * f, 6);
         ctx.fill();
         ctx.strokeStyle = isActive ? ch.color : 'rgba(255,255,255,0.2)';
         ctx.lineWidth = isActive ? 2 : 1;
         ctx.stroke();
         ctx.fillStyle = isActive ? '#fff' : ch.color;
-        ctx.font = `bold ${14 * s}px system-ui, -apple-system, sans-serif`;
+        ctx.font = `bold ${12 * f}px system-ui, -apple-system, sans-serif`;
         ctx.textAlign = 'left';
-        ctx.fillText(`${ch.emoji} ${ch.name}`, startX + 8 * s, y + 20 * s);
+        ctx.fillText(`${ch.emoji} ${ch.name}`, startX + 6 * f, y + 17 * f);
     }
 }
 
-function drawInventoryButton(s) {
-    const bx = W() - 110 * s;
-    const by = 40 * s;
+function drawInventoryButton(f) {
+    const bw = 55 * f;
+    const bx = W() - bw - 8 * f;
+    const by = 8 * f;
     ctx.fillStyle = inventory.length > 0 ? 'rgba(20,80,40,0.8)' : 'rgba(30,30,30,0.7)';
     ctx.beginPath();
-    ctx.roundRect(bx, by, 100 * s, 32 * s, 6);
+    ctx.roundRect(bx, by, bw, 24 * f, 6);
     ctx.fill();
     ctx.strokeStyle = inventory.length > 0 ? '#50c878' : '#666';
     ctx.lineWidth = 2;
     ctx.stroke();
     ctx.fillStyle = '#fff';
-    ctx.font = `bold ${14 * s}px system-ui, -apple-system, sans-serif`;
+    ctx.font = `bold ${12 * f}px system-ui, -apple-system, sans-serif`;
     ctx.textAlign = 'center';
-    ctx.fillText(`🎒 (${inventory.length})`, bx + 50 * s, by + 21 * s);
+    ctx.fillText(`🎒 ${inventory.length}`, bx + bw / 2, by + 17 * f);
 }
 
 function drawInventoryScreen() {
     ctx.fillStyle = 'rgba(0,0,0,0.85)';
     ctx.fillRect(0, 0, W(), H());
 
-    const s = S();
+    const f = FS();
     ctx.fillStyle = '#FFD700';
-    ctx.font = `bold ${24 * s}px system-ui, -apple-system, sans-serif`;
+    ctx.font = `bold ${22 * f}px system-ui, -apple-system, sans-serif`;
     ctx.textAlign = 'center';
-    ctx.fillText('🎒 Inventar', W()/2, 50 * s);
+    ctx.fillText('🎒 Inventar', W()/2, 45 * f);
 
     const itemNames = {
         'gabel': '🍴 Spitze Kuchengabel',
         'fernbedienung': '📺 Mysteriöse Fernbedienung',
-        'katzenpass': '🐱 Katzenpass (Herr Schnurrbert v. Flauschingen)',
+        'katzenpass': '🐱 Katzenpass (Herr Schnurrbert)',
         'tagebuch': '📖 Papas geheimes Tagebuch'
     };
 
     if (inventory.length === 0) {
         ctx.fillStyle = '#888';
-        ctx.font = `${16 * s}px system-ui, -apple-system, sans-serif`;
-        ctx.fillText('Nichts im Inventar. Klicke auf Dinge!', W()/2, H()/2);
+        ctx.font = `${15 * f}px system-ui, -apple-system, sans-serif`;
+        ctx.fillText('Nichts im Inventar.', W()/2, H()/2);
     } else {
         for (let i = 0; i < inventory.length; i++) {
-            const y = 100 * s + i * 45 * s;
+            const y = 80 * f + i * 40 * f;
             ctx.fillStyle = 'rgba(255,255,255,0.1)';
             ctx.beginPath();
-            ctx.roundRect(W()/2 - 200 * s, y, 400 * s, 35 * s, 5);
+            ctx.roundRect(20 * f, y, W() - 40 * f, 32 * f, 5);
             ctx.fill();
             ctx.fillStyle = '#fff';
-            ctx.font = `${14 * s}px system-ui, -apple-system, sans-serif`;
+            ctx.font = `${14 * f}px system-ui, -apple-system, sans-serif`;
             ctx.textAlign = 'center';
-            ctx.fillText(itemNames[inventory[i]] || inventory[i], W()/2, y + 23 * s);
+            ctx.fillText(itemNames[inventory[i]] || inventory[i], W()/2, y + 22 * f);
         }
     }
 
     ctx.fillStyle = '#aaa';
-    ctx.font = `${14 * s}px system-ui, -apple-system, sans-serif`;
-    ctx.fillText('[ Klicken zum Schließen ]', W()/2, H() - 40 * s);
+    ctx.font = `${13 * f}px system-ui, -apple-system, sans-serif`;
+    ctx.fillText('[ Tippen zum Schließen ]', W()/2, H() - 30 * f);
 }
 
 function drawDialog() {
-    const s = S();
+    const f = FS();
 
     // Dim background
-    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
     ctx.fillRect(0, 0, W(), H());
 
     // Dialog box
-    const bh = 150 * s;
-    const by = H() - bh - 20 * s;
+    const bh = 120 * f;
+    const by = H() - bh - 10 * f;
     ctx.fillStyle = 'rgba(5,5,30,0.97)';
     ctx.beginPath();
-    ctx.roundRect(20 * s, by, W() - 40 * s, bh, 10);
+    ctx.roundRect(10 * f, by, W() - 20 * f, bh, 10);
     ctx.fill();
     ctx.strokeStyle = getSpeakerColor(dialogSpeaker);
     ctx.lineWidth = 3;
@@ -738,37 +744,37 @@ function drawDialog() {
 
     // Speaker name
     ctx.fillStyle = getSpeakerColor(dialogSpeaker);
-    ctx.font = `bold ${20 * s}px system-ui, -apple-system, sans-serif`;
+    ctx.font = `bold ${17 * f}px system-ui, -apple-system, sans-serif`;
     ctx.textAlign = 'left';
-    ctx.fillText(dialogSpeaker, 40 * s, by + 32 * s);
+    ctx.fillText(dialogSpeaker, 20 * f, by + 25 * f);
 
     // Separator line
     ctx.strokeStyle = 'rgba(255,255,255,0.15)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(40 * s, by + 40 * s);
-    ctx.lineTo(W() - 60 * s, by + 40 * s);
+    ctx.moveTo(20 * f, by + 32 * f);
+    ctx.lineTo(W() - 30 * f, by + 32 * f);
     ctx.stroke();
 
     // Text
     ctx.fillStyle = '#fff';
-    ctx.font = `${17 * s}px system-ui, -apple-system, sans-serif`;
+    ctx.font = `${15 * f}px system-ui, -apple-system, sans-serif`;
     for (let i = 0; i < dialogLines.length; i++) {
-        ctx.fillText(dialogLines[i], 40 * s, by + 62 * s + i * 24 * s);
+        ctx.fillText(dialogLines[i], 20 * f, by + 50 * f + i * 20 * f);
     }
 
     // Continue hint
     const blink = Math.sin(animTime * 0.1) > 0;
     if (blink) {
         ctx.fillStyle = '#aaa';
-        ctx.font = `bold ${13 * s}px system-ui, -apple-system, sans-serif`;
+        ctx.font = `bold ${11 * f}px system-ui, -apple-system, sans-serif`;
         ctx.textAlign = 'right';
-        ctx.fillText('▶ Klicken zum Fortfahren', W() - 40 * s, by + bh - 15 * s);
+        ctx.fillText('▶ Weiter', W() - 20 * f, by + bh - 10 * f);
     }
 }
 
 function drawMenu() {
-    const s = S();
+    const s = FS();
     menuPulse += 0.03;
 
     // Background
@@ -846,7 +852,7 @@ function drawMenu() {
 }
 
 function drawEnding() {
-    const s = S();
+    const s = FS();
     animTime++;
 
     const grad = ctx.createLinearGradient(0, 0, 0, H());
@@ -916,6 +922,7 @@ function drawEnding() {
 
 function drawFloatingTexts() {
     const s = S();
+    const f = FS();
     for (let i = floatingTexts.length - 1; i >= 0; i--) {
         const ft = floatingTexts[i];
         ft.y -= 0.5;
@@ -925,7 +932,7 @@ function drawFloatingTexts() {
         ctx.shadowColor = 'rgba(0,0,0,0.95)';
         ctx.shadowBlur = 10;
         ctx.fillStyle = ft.color;
-        ctx.font = `bold ${18 * s}px system-ui, -apple-system, sans-serif`;
+        ctx.font = `bold ${Math.min(16 * f, W() / 24)}px system-ui, -apple-system, sans-serif`;
         ctx.textAlign = 'center';
         ctx.fillText(ft.text, ft.x * s, ft.y * s);
         ctx.shadowBlur = 0;
@@ -937,11 +944,12 @@ function drawFloatingTexts() {
 // --- Input handling ---
 function handleClick(mx, my) {
     const s = S();
+    const f = FS();
 
     if (state === State.MENU) {
-        // Check start button
-        const btnW = 260 * s;
-        const btnH = 50 * s;
+        // Check start button — use font scale to match drawMenu
+        const btnW = Math.min(260 * f, W() * 0.7);
+        const btnH = 50 * f;
         const btnX = W()/2 - btnW/2;
         const btnY = H() * 0.78 - btnH/2;
         if (mx >= btnX && mx <= btnX + btnW && my >= btnY && my <= btnY + btnH) {
@@ -953,7 +961,6 @@ function handleClick(mx, my) {
     }
 
     if (state === State.ENDING) {
-        // Reset game
         state = State.MENU;
         inventory = [];
         discoveredSecrets = [];
@@ -978,33 +985,34 @@ function handleClick(mx, my) {
         return;
     }
 
-    // Check character selector
-    const startX = 10 * s;
-    const startY = 50 * s;
+    // Check character selector (uses font scale)
+    const startX = 8 * f;
+    const startY = 42 * f;
     for (let i = 0; i < 4; i++) {
-        const y = startY + i * 35 * s;
-        if (mx >= startX && mx <= startX + 100 * s && my >= y && my <= y + 28 * s) {
+        const y = startY + i * 28 * f;
+        if (mx >= startX && mx <= startX + 90 * f && my >= y && my <= y + 24 * f) {
             selectedChar = i;
             return;
         }
     }
 
-    // Check inventory button
-    const ibx = W() - 110 * s;
-    const iby = 40 * s;
-    if (mx >= ibx && mx <= ibx + 100 * s && my >= iby && my <= iby + 30 * s) {
+    // Check inventory button (uses font scale)
+    const ibw = 55 * f;
+    const ibx = W() - ibw - 8 * f;
+    const iby = 8 * f;
+    if (mx >= ibx && mx <= ibx + ibw && my >= iby && my <= iby + 24 * f) {
         showInventory = true;
         return;
     }
 
-    // Check exits
+    // Check exits (uses font scale for positions to match drawExits)
     const room = rooms[currentRoom];
     for (const [dir, target] of Object.entries(room.exits)) {
-        let ex, ey, ew = 60 * s, eh = 40 * s;
-        if (dir === 'links') { ex = 0; ey = H() * 0.5 - 30 * s; ew = 50 * s; eh = 60 * s; }
-        else if (dir === 'rechts') { ex = W() - 50 * s; ey = H() * 0.5 - 30 * s; ew = 50 * s; eh = 60 * s; }
-        else if (dir === 'oben') { ex = W()/2 - 60 * s; ey = 30 * s; ew = 120 * s; eh = 50 * s; }
-        else if (dir === 'unten') { ex = W()/2 - 60 * s; ey = H() * 0.63; ew = 120 * s; eh = 50 * s; }
+        let ex, ey, ew = 60 * f, eh = 50 * f;
+        if (dir === 'links') { ex = 0; ey = H() * 0.5 - 30 * f; ew = 50 * f; eh = 60 * f; }
+        else if (dir === 'rechts') { ex = W() - 50 * f; ey = H() * 0.5 - 30 * f; ew = 50 * f; eh = 60 * f; }
+        else if (dir === 'oben') { ex = W()/2 - 60 * f; ey = 30 * f; ew = 120 * f; eh = 50 * f; }
+        else if (dir === 'unten') { ex = W()/2 - 60 * f; ey = H() * 0.63; ew = 120 * f; eh = 50 * f; }
         else continue;
         if (mx >= ex && mx <= ex + ew && my >= ey && my <= ey + eh) {
             currentRoom = target;
