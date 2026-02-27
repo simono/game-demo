@@ -508,7 +508,7 @@ function drawRoom() {
     // Draw description bar — word-wrap into 1-2 lines
     const descFs = Math.min(13 * f, W() / 32);
     ctx.font = `${descFs}px system-ui, -apple-system, sans-serif`;
-    const descMaxW = W() * 0.92;
+    const descMaxW = W() * 0.78;
     const descWords = room.description.split(' ');
     const descLines = [];
     let descLine = '';
