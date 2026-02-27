@@ -17,9 +17,9 @@
         }
         canvas {
             display: block;
-            margin: 0 auto;
+            width: 100%;
+            height: 100%;
             cursor: pointer;
-            image-rendering: pixelated;
         }
     </style>
 </head>
@@ -31,8 +31,10 @@ const ctx = canvas.getContext('2d');
 
 // --- Responsive setup ---
 function resize() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = window.innerWidth * dpr;
+    canvas.height = window.innerHeight * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 window.addEventListener('resize', resize);
 window.addEventListener('load', resize);
@@ -60,8 +62,8 @@ let floatingTexts = [];
 let menuPulse = 0;
 let partyFlags = {};
 
-const W = () => canvas.width;
-const H = () => canvas.height;
+const W = () => window.innerWidth;
+const H = () => window.innerHeight;
 const S = () => Math.min(W() / 800, H() / 600);
 
 // --- Characters ---
