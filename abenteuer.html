@@ -105,7 +105,7 @@ const rooms = {
                   }
               }
             },
-            { id: 'sofa', x: 50, y: 300, w: 160, h: 90, name: 'Altes Sofa',
+            { id: 'sofa', x: 190, y: 300, w: 140, h: 90, name: 'Altes Sofa',
               look: 'Ein Sofa, das schon bessere Tage gesehen hat. Unter den Kissen schimmert etwas.',
               use: function() {
                   if (!inventory.includes('fernbedienung') && !partyFlags.sofaChecked) {
@@ -185,7 +185,7 @@ const rooms = {
                   }
               }
             },
-            { id: 'schublade', x: 100, y: 350, w: 140, h: 50, name: 'Besteckschublade',
+            { id: 'schublade', x: 200, y: 360, w: 140, h: 50, name: 'Besteckschublade',
               look: 'Eine Schublade voller Besteck und... Geheimnisse?',
               use: function() {
                   if (!inventory.includes('gabel')) {
@@ -208,7 +208,7 @@ const rooms = {
                   });
               }
             },
-            { id: 'radio', x: 50, y: 180, w: 80, h: 60, name: 'Altes Radio',
+            { id: 'radio', x: 200, y: 180, w: 80, h: 60, name: 'Altes Radio',
               look: 'Ein Radio aus den 90ern. Es spielt leise "99 Luftballons".',
               use: function() {
                   if (inventory.includes('fernbedienung') && !partyFlags.radioPlayed) {
@@ -260,7 +260,7 @@ const rooms = {
                   }
               }
             },
-            { id: 'planschbecken', x: 100, y: 320, w: 180, h: 80, name: 'Planschbecken',
+            { id: 'planschbecken', x: 200, y: 320, w: 180, h: 80, name: 'Planschbecken',
               look: 'Ein Planschbecken. Im Februar. Mutig.',
               use: function() {
                   if (!discoveredSecrets.includes('planschbecken')) {
@@ -338,7 +338,7 @@ const rooms = {
                   }
               }
             },
-            { id: 'garderobe', x: 50, y: 250, w: 100, h: 170, name: 'Garderobe',
+            { id: 'garderobe', x: 180, y: 250, w: 100, h: 170, name: 'Garderobe',
               look: 'Jacken über Jacken. Hier hat seit Jahren niemand aufgeräumt.',
               use: function() {
                   if (!inventory.includes('katzenpass') && !partyFlags.garderobeChecked) {
@@ -521,7 +521,7 @@ function drawRoom() {
     ctx.textAlign = 'center';
     // Truncate with ellipsis if too wide
     let desc = room.description;
-    const maxDescW = W() - 20 * f;
+    const maxDescW = W() * 0.88;
     while (ctx.measureText(desc).width > maxDescW && desc.length > 10) {
         desc = desc.slice(0, -4) + '…';
     }
@@ -568,7 +568,7 @@ function drawRoomDecor(room) {
         // Shelves
         for (let i = 0; i < 3; i++) {
             ctx.fillStyle = '#5a3d2e';
-            ctx.fillRect(200 * s, (140 + i * 80) * s, 250 * s, 8 * s);
+            ctx.fillRect(250 * s, (140 + i * 80) * s, 220 * s, 8 * s);
         }
     } else if (currentRoom === 'garten') {
         // Stars
