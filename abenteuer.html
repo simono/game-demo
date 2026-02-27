@@ -461,10 +461,13 @@ function drawRoom() {
     ctx.stroke();
 
     // Room name
-    ctx.fillStyle = 'rgba(255,255,255,0.6)';
-    ctx.font = `${14 * s}px 'Courier New', monospace`;
+    ctx.font = `bold ${16 * s}px 'Courier New', monospace`;
     ctx.textAlign = 'center';
+    ctx.shadowColor = 'rgba(0,0,0,0.9)';
+    ctx.shadowBlur = 6;
+    ctx.fillStyle = '#fff';
     ctx.fillText(`📍 ${room.name}`, W() / 2, 25 * s);
+    ctx.shadowBlur = 0;
 
     // Draw room-specific decorations
     drawRoomDecor(room);
@@ -483,16 +486,25 @@ function drawRoom() {
     drawPixelChar(charX, cy, s * 2.5, ch.color, ch.hair);
 
     // Character name
+    ctx.shadowColor = 'rgba(0,0,0,0.9)';
+    ctx.shadowBlur = 6;
     ctx.fillStyle = ch.color;
-    ctx.font = `bold ${12 * s}px 'Courier New', monospace`;
+    ctx.font = `bold ${14 * s}px 'Courier New', monospace`;
     ctx.textAlign = 'center';
-    ctx.fillText(ch.name, charX, cy + 22 * s);
+    ctx.fillText(ch.name, charX, cy + 24 * s);
+    ctx.shadowBlur = 0;
 
     // Draw description bar
-    ctx.fillStyle = 'rgba(0,0,0,0.7)';
-    ctx.fillRect(0, H() - 50 * s, W(), 50 * s);
-    ctx.fillStyle = '#ddd';
-    ctx.font = `${13 * s}px 'Courier New', monospace`;
+    ctx.fillStyle = 'rgba(0,0,0,0.85)';
+    ctx.fillRect(0, H() - 55 * s, W(), 55 * s);
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, H() - 55 * s);
+    ctx.lineTo(W(), H() - 55 * s);
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.font = `${15 * s}px 'Courier New', monospace`;
     ctx.textAlign = 'center';
     ctx.fillText(room.description, W() / 2, H() - 25 * s);
 
@@ -503,10 +515,13 @@ function drawRoom() {
     drawInventoryButton(s);
 
     // Secrets counter
+    ctx.shadowColor = 'rgba(0,0,0,0.9)';
+    ctx.shadowBlur = 6;
     ctx.fillStyle = '#FFD700';
-    ctx.font = `bold ${14 * s}px 'Courier New', monospace`;
+    ctx.font = `bold ${16 * s}px 'Courier New', monospace`;
     ctx.textAlign = 'right';
     ctx.fillText(`Geheimnisse: ${discoveredSecrets.length}/5`, W() - 15 * s, 25 * s);
+    ctx.shadowBlur = 0;
 }
 
 function drawRoomDecor(room) {
@@ -574,21 +589,28 @@ function drawObject(obj, s) {
     const w = obj.w * s;
     const h = obj.h * s;
 
-    // Object highlight
-    const pulse = 0.3 + 0.15 * Math.sin(animTime * 0.05 + obj.x);
-    ctx.fillStyle = `rgba(255,255,255,${pulse})`;
-    ctx.strokeStyle = `rgba(255,255,200,${pulse + 0.1})`;
+    // Object highlight — dark tint with bright border
+    const pulse = 0.6 + 0.3 * Math.sin(animTime * 0.05 + obj.x);
+    ctx.fillStyle = `rgba(255,255,200,0.08)`;
+    ctx.strokeStyle = `rgba(255,255,100,${pulse})`;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.roundRect(x, y, w, h, 6);
     ctx.fill();
     ctx.stroke();
 
-    // Object name
-    ctx.fillStyle = '#fff';
-    ctx.font = `${11 * s}px 'Courier New', monospace`;
+    // Object name with dark background pill
+    ctx.font = `bold ${13 * s}px 'Courier New', monospace`;
     ctx.textAlign = 'center';
-    ctx.fillText(obj.name, x + w/2, y - 5 * s);
+    const nameW = ctx.measureText(obj.name).width + 12 * s;
+    const nameX = x + w/2 - nameW/2;
+    const nameY = y - 20 * s;
+    ctx.fillStyle = 'rgba(0,0,0,0.75)';
+    ctx.beginPath();
+    ctx.roundRect(nameX, nameY, nameW, 18 * s, 4);
+    ctx.fill();
+    ctx.fillStyle = '#ffe066';
+    ctx.fillText(obj.name, x + w/2, y - 6 * s);
 }
 
 function drawExits(room, s) {
@@ -601,13 +623,17 @@ function drawExits(room, s) {
         else if (dir === 'unten') { x = W() / 2; y = H() * 0.68; arrow = '▼'; }
         else continue;
 
-        const pulse = 0.5 + 0.3 * Math.sin(animTime * 0.06);
+        const pulse = 0.7 + 0.3 * Math.sin(animTime * 0.06);
+        ctx.shadowColor = 'rgba(0,0,0,0.9)';
+        ctx.shadowBlur = 8;
         ctx.fillStyle = `rgba(255,255,100,${pulse})`;
-        ctx.font = `bold ${20 * s}px 'Courier New', monospace`;
+        ctx.font = `bold ${24 * s}px 'Courier New', monospace`;
         ctx.textAlign = 'center';
         ctx.fillText(arrow, x, y);
-        ctx.font = `${11 * s}px 'Courier New', monospace`;
-        ctx.fillText(`→ ${rn}`, x, y + 18 * s);
+        ctx.font = `bold ${13 * s}px 'Courier New', monospace`;
+        ctx.fillStyle = '#fff';
+        ctx.fillText(`→ ${rn}`, x, y + 20 * s);
+        ctx.shadowBlur = 0;
     }
 }
 
@@ -618,36 +644,34 @@ function drawCharSelector(s) {
         const ch = characters[i];
         const y = startY + i * 35 * s;
         const isActive = i === selectedChar;
-        ctx.fillStyle = isActive ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.3)';
+        ctx.fillStyle = isActive ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.5)';
         ctx.beginPath();
-        ctx.roundRect(startX, y, 100 * s, 28 * s, 5);
+        ctx.roundRect(startX, y, 110 * s, 30 * s, 6);
         ctx.fill();
-        if (isActive) {
-            ctx.strokeStyle = ch.color;
-            ctx.lineWidth = 2;
-            ctx.stroke();
-        }
-        ctx.fillStyle = ch.color;
-        ctx.font = `bold ${12 * s}px 'Courier New', monospace`;
+        ctx.strokeStyle = isActive ? ch.color : 'rgba(255,255,255,0.2)';
+        ctx.lineWidth = isActive ? 2 : 1;
+        ctx.stroke();
+        ctx.fillStyle = isActive ? '#fff' : ch.color;
+        ctx.font = `bold ${14 * s}px 'Courier New', monospace`;
         ctx.textAlign = 'left';
-        ctx.fillText(`${ch.emoji} ${ch.name}`, startX + 5 * s, y + 18 * s);
+        ctx.fillText(`${ch.emoji} ${ch.name}`, startX + 8 * s, y + 20 * s);
     }
 }
 
 function drawInventoryButton(s) {
     const bx = W() - 110 * s;
     const by = 40 * s;
-    ctx.fillStyle = inventory.length > 0 ? 'rgba(80,200,120,0.4)' : 'rgba(100,100,100,0.3)';
+    ctx.fillStyle = inventory.length > 0 ? 'rgba(20,80,40,0.8)' : 'rgba(30,30,30,0.7)';
     ctx.beginPath();
-    ctx.roundRect(bx, by, 100 * s, 30 * s, 5);
+    ctx.roundRect(bx, by, 100 * s, 32 * s, 6);
     ctx.fill();
-    ctx.strokeStyle = '#50c878';
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = inventory.length > 0 ? '#50c878' : '#666';
+    ctx.lineWidth = 2;
     ctx.stroke();
     ctx.fillStyle = '#fff';
-    ctx.font = `${12 * s}px 'Courier New', monospace`;
+    ctx.font = `bold ${14 * s}px 'Courier New', monospace`;
     ctx.textAlign = 'center';
-    ctx.fillText(`🎒 (${inventory.length})`, bx + 50 * s, by + 20 * s);
+    ctx.fillText(`🎒 (${inventory.length})`, bx + 50 * s, by + 21 * s);
 }
 
 function drawInventoryScreen() {
@@ -698,9 +722,9 @@ function drawDialog() {
     ctx.fillRect(0, 0, W(), H());
 
     // Dialog box
-    const bh = 130 * s;
+    const bh = 150 * s;
     const by = H() - bh - 20 * s;
-    ctx.fillStyle = 'rgba(10,10,40,0.95)';
+    ctx.fillStyle = 'rgba(5,5,30,0.97)';
     ctx.beginPath();
     ctx.roundRect(20 * s, by, W() - 40 * s, bh, 10);
     ctx.fill();
@@ -710,22 +734,30 @@ function drawDialog() {
 
     // Speaker name
     ctx.fillStyle = getSpeakerColor(dialogSpeaker);
-    ctx.font = `bold ${16 * s}px 'Courier New', monospace`;
+    ctx.font = `bold ${20 * s}px 'Courier New', monospace`;
     ctx.textAlign = 'left';
-    ctx.fillText(dialogSpeaker, 40 * s, by + 30 * s);
+    ctx.fillText(dialogSpeaker, 40 * s, by + 32 * s);
+
+    // Separator line
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(40 * s, by + 40 * s);
+    ctx.lineTo(W() - 60 * s, by + 40 * s);
+    ctx.stroke();
 
     // Text
     ctx.fillStyle = '#fff';
-    ctx.font = `${14 * s}px 'Courier New', monospace`;
+    ctx.font = `${17 * s}px 'Courier New', monospace`;
     for (let i = 0; i < dialogLines.length; i++) {
-        ctx.fillText(dialogLines[i], 40 * s, by + 55 * s + i * 20 * s);
+        ctx.fillText(dialogLines[i], 40 * s, by + 62 * s + i * 24 * s);
     }
 
     // Continue hint
     const blink = Math.sin(animTime * 0.1) > 0;
     if (blink) {
-        ctx.fillStyle = '#888';
-        ctx.font = `${12 * s}px 'Courier New', monospace`;
+        ctx.fillStyle = '#aaa';
+        ctx.font = `bold ${13 * s}px 'Courier New', monospace`;
         ctx.textAlign = 'right';
         ctx.fillText('▶ Klicken zum Fortfahren', W() - 40 * s, by + bh - 15 * s);
     }
@@ -879,10 +911,13 @@ function drawFloatingTexts() {
         ft.life--;
         const alpha = Math.min(1, ft.life / 60);
         ctx.globalAlpha = alpha;
+        ctx.shadowColor = 'rgba(0,0,0,0.95)';
+        ctx.shadowBlur = 10;
         ctx.fillStyle = ft.color;
-        ctx.font = `bold ${16 * s}px 'Courier New', monospace`;
+        ctx.font = `bold ${18 * s}px 'Courier New', monospace`;
         ctx.textAlign = 'center';
         ctx.fillText(ft.text, ft.x * s, ft.y * s);
+        ctx.shadowBlur = 0;
         ctx.globalAlpha = 1;
         if (ft.life <= 0) floatingTexts.splice(i, 1);
     }
