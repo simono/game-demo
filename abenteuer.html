@@ -88,14 +88,14 @@ const rooms = {
               look: 'Eine riesige Torte mit... bewegt sich da was drunter?!',
               use: function() {
                   if (discoveredSecrets.includes('torte')) {
-                      showDialog('Emil', 'Die Torte haben wir schon untersucht. Da steckt Opa Günther drin... warum auch immer.');
+                      showDialog('Emil', 'Die Torte haben wir schon untersucht. Da steckt Opa Lars drin... warum auch immer.');
                   } else if (inventory.includes('gabel')) {
                       discoveredSecrets.push('torte');
                       removeItem('gabel');
                       showDialog('Anna', 'Ich pikse mal vorsichtig in die Torte...', () => {
-                          showDialog('Opa Günther', 'ÜBERRASCHUNG! Ich wollte aus der Torte springen, aber ich bin vor 2 Stunden eingeschlafen!', () => {
+                          showDialog('Opa Lars', 'ÜBERRASCHUNG! Ich wollte aus der Torte springen, aber ich bin vor 2 Stunden eingeschlafen!', () => {
                               showDialog('Henrik', 'Opa, du hast Sahne im Ohr.', () => {
-                                  showDialog('Opa Günther', 'Das ist keine Sahne, das ist mein Anti-Aging-Geheimrezept!');
+                                  showDialog('Opa Lars', 'Das ist keine Sahne, das ist mein Anti-Aging-Geheimrezept!');
                                   floatText('Geheimnis #1 entdeckt: Opas Sahne-Spa!', 400, 200, '#FFD700');
                               });
                           });
@@ -318,8 +318,8 @@ const rooms = {
                               showDialog('Jonas', 'Da ist ein Foto! Papa war in einer BOYBAND! "Die Flotten Fünf"!', () => {
                                   showDialog('Henrik', 'OH MEIN GOTT. Er hat PAILLETTEN getragen!', () => {
                                       showDialog('Emil', 'Papa... der Mann, der sagt "Moderne Musik ist Krach"... war in einer BOYBAND.', () => {
-                                          showDialog('Anna', 'Und er war... der Lead-Sänger?! DA STEHT "SEXY STEFAN"!', () => {
-                                              showDialog('Henrik', 'Das ist der beste Tag meines Lebens. SEXY STEFAN!', () => {
+                                          showDialog('Anna', 'Und er war... der Lead-Sänger?! DA STEHT "SEXY SIMMELBÄR"!', () => {
+                                              showDialog('Henrik', 'Das ist der beste Tag meines Lebens. SEXY SIMMELBÄR!', () => {
                                                   floatText('LETZTES GEHEIMNIS: Papas Boyband-Karriere!', 400, 200, '#FFD700');
                                                   if (discoveredSecrets.length >= 5) {
                                                       setTimeout(() => { state = State.ENDING; }, 2000);
@@ -332,7 +332,7 @@ const rooms = {
                           });
                       });
                   } else if (discoveredSecrets.includes('schrank')) {
-                      showDialog('Henrik', 'SEXY STEFAN! Ich kann nicht aufhören zu lachen!');
+                      showDialog('Henrik', 'SEXY SIMMELBÄR! Ich kann nicht aufhören zu lachen!');
                   } else {
                       showDialog(getCurName(), 'Der Schrank ist abgeschlossen. Vielleicht gibt es irgendwo einen Hinweis...');
                   }
@@ -422,7 +422,7 @@ function floatText(text, x, y, color) {
 function getSpeakerColor(name) {
     const ch = characters.find(c => c.name === name);
     if (ch) return ch.color;
-    if (name === 'Opa Günther') return '#c0c0c0';
+    if (name === 'Opa Lars') return '#c0c0c0';
     return '#ffffff';
 }
 
@@ -905,11 +905,11 @@ function drawEnding() {
     ctx.fillText('ALLE GEHEIMNISSE ENTDECKT!', W()/2, H() * 0.10);
 
     const secrets = [
-        'Opa Günther schläft in der Torte',
+        'Opa Lars schläft in der Torte',
         'Papa hortet 47 Puddings im Kühlschrank',
         'Hinter dem Familienbild ist ein Safe',
         'Mama hat eine geheime Enten-Sammlung',
-        'Papa war Boyband-Sänger "Sexy Stefan"'
+        'Papa war Boyband-Sänger "Sexy Simmelbär"'
     ];
 
     ctx.font = `${fs}px system-ui, -apple-system, sans-serif`;
@@ -926,7 +926,7 @@ function drawEnding() {
     const epilogFs = Math.min(12 * s, W() / 38);
     ctx.font = `${epilogFs}px system-ui, -apple-system, sans-serif`;
     const epilog = [
-        'Henrik: "Ab jetzt heißt Papa Sexy Stefan."',
+        'Henrik: "Ab jetzt heißt Papa Sexy Simmelbär."',
         'Anna: "Wenn das die Nachbarn erfahren..."',
         'Jonas: "Herr Schnurrbert weiß alles."',
         'Emil: "Beste Geburtstagsparty aller Zeiten."',
