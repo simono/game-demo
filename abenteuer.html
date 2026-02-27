@@ -84,7 +84,7 @@ const rooms = {
         description: 'Ein festlich geschmücktes Wohnzimmer mit Luftballons und einer verdächtigen Torte.',
         exits: { rechts: 'kueche', links: 'garten', oben: 'flur' },
         objects: [
-            { id: 'torte', x: 350, y: 340, w: 100, h: 70, name: 'Verdächtige Torte',
+            { id: 'torte', x: 420, y: 340, w: 100, h: 70, name: 'Verdächtige Torte',
               look: 'Eine riesige Torte mit... bewegt sich da was drunter?!',
               use: function() {
                   if (discoveredSecrets.includes('torte')) {
@@ -147,7 +147,7 @@ const rooms = {
                   }
               }
             },
-            { id: 'luftballons', x: 300, y: 60, w: 200, h: 80, name: 'Luftballons',
+            { id: 'luftballons', x: 250, y: 170, w: 220, h: 50, name: 'Luftballons',
               look: 'Bunte Luftballons. Einer hat die Form einer Bratwurst. Norddeutsche Deko.',
               use: function() {
                   showDialog('Henrik', 'BRATWURST-BALLON! Das ist das Beste, was ich je gesehen habe!', () => {
@@ -185,7 +185,7 @@ const rooms = {
                   }
               }
             },
-            { id: 'schublade', x: 200, y: 360, w: 140, h: 50, name: 'Besteckschublade',
+            { id: 'schublade', x: 200, y: 400, w: 130, h: 40, name: 'Besteckschublade',
               look: 'Eine Schublade voller Besteck und... Geheimnisse?',
               use: function() {
                   if (!inventory.includes('gabel')) {
@@ -198,7 +198,7 @@ const rooms = {
                   }
               }
             },
-            { id: 'spuele', x: 280, y: 280, w: 120, h: 80, name: 'Spüle',
+            { id: 'spuele', x: 310, y: 250, w: 110, h: 70, name: 'Spüle',
               look: 'Eine Spüle voller Geschirr. Mama hat aufgegeben.',
               use: function() {
                   showDialog('Anna', 'In der Spüle liegt eine Tasse mit der Aufschrift "Weltbester Papa".', () => {
@@ -239,7 +239,7 @@ const rooms = {
         description: 'Ein Garten mit Lichterketten und einem Planschbecken. Die Katze thront auf dem Grill.',
         exits: { rechts: 'wohnzimmer' },
         objects: [
-            { id: 'katze', x: 450, y: 280, w: 100, h: 80, name: 'Majestätische Katze',
+            { id: 'katze', x: 430, y: 220, w: 100, h: 70, name: 'Majestätische Katze',
               look: 'Die Katze "Herr Schnurrbert" sitzt auf dem Grill und urteilt über alle.',
               use: function() {
                   if (!partyFlags.katzeGestreichelt) {
@@ -289,7 +289,7 @@ const rooms = {
                   });
               }
             },
-            { id: 'grill', x: 450, y: 350, w: 120, h: 60, name: 'Grill',
+            { id: 'grill', x: 450, y: 370, w: 120, h: 50, name: 'Grill',
               look: 'Ein Grill. Herr Schnurrbert hat ihn als sein persönliches Eigentum deklariert.',
               use: function() {
                   showDialog('Jonas', 'Ich will grillen!', () => {
