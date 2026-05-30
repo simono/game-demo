@@ -360,8 +360,25 @@ let score = { red: 0, blue: 0 };
 let goalTeam = '';
 let gameState = 'menu'; // 'menu' | 'playing' | 'goal'
 let playerTeam = 'red'; // welches Team der Spieler steuert
+let controlledIdx = 0;  // Index im eigenen Team (0/1/2)
 
-function getCP() { return playerTeam === 'red' ? redP : blueP; }
+function getCP() {
+  const t = playerTeam === 'red' ? redTeam : blueTeam;
+  return t[controlledIdx];
+}
+
+function switchPlayer() {
+  const t = playerTeam === 'red' ? redTeam : blueTeam;
+  // Wechsel zum Spieler der dem Ball am nächsten ist (außer dem aktuellen)
+  let best = (controlledIdx + 1) % t.length;
+  let bestDist = Infinity;
+  for (let i = 0; i < t.length; i++) {
+    if (i === controlledIdx) continue;
+    const d = Math.hypot(t[i].x - ball.x, t[i].y - ball.y);
+    if (d < bestDist) { bestDist = d; best = i; }
+  }
+  controlledIdx = best;
+}
 
 function resetPositions() {
   redP.x=0.28;  redP.y=0.5;  redP.vx=0;  redP.vy=0;
@@ -371,6 +388,7 @@ function resetPositions() {
   blueP2.x=0.82;blueP2.y=0.32;blueP2.vx=0;blueP2.vy=0;
   blueP3.x=0.82;blueP3.y=0.68;blueP3.vx=0;blueP3.vy=0;
   ball.x=0.5; ball.y=0.5; ball.vx=0; ball.vy=0;
+  controlledIdx = 0;
   ballOwner = getCP();
 }
 
@@ -405,8 +423,8 @@ function doTackle() {
 
 // ── Eingabe ─────────────────────────────────────────────────────────
 const dpad      = { up:false, down:false, left:false, right:false };
-const btnActive = { shoot:false, pass:false, tackle:false };
-const touched   = {}; // touch-id → 'up'|'down'|'left'|'right'|'shoot'|'pass'|'tackle'
+const btnActive = { shoot:false, pass:false, tackle:false, switch:false };
+const touched   = {};
 
 function getDpad() {
   const w=W(), h=H(), s=Math.min(w,h)*0.12;
@@ -423,13 +441,16 @@ function getDpad() {
 
 function getActionBtns() {
   const w=W(), h=H(), r=Math.min(w,h)*0.08;
-  const g = r*0.3, margin = w*0.06;
-  const cx = w - margin - r*2 - g;
-  const cy = h - r*3.2;
+  const g=r*0.3, margin=w*0.06;
+  const rx = w - margin - r - g;   // rechte Spalte
+  const lx = rx - r*2 - g;         // linke Spalte
+  const by = h - r - margin*0.8;   // untere Reihe
+  const ty = by - r*2 - g;         // obere Reihe
   return {
-    shoot:  {x:cx+r+g, y:cy,       r},
-    pass:   {x:cx-r-g, y:cy,       r},
-    tackle: {x:cx,     y:cy-r*2.2, r},
+    shoot:  {x:rx, y:by, r},   // unten rechts
+    pass:   {x:lx, y:by, r},   // unten links
+    tackle: {x:rx, y:ty, r},   // oben rechts
+    switch: {x:lx, y:ty, r},   // oben links
   };
 }
 
@@ -449,9 +470,10 @@ function onTouchStart(tx,ty,id) {
   if (gameState === 'menu') { if (!menuButtonHit(tx,ty)) menuButtonHit(tx,ty); return; }
   if (gameState === 'goal') { gameState = 'playing'; return; }
   const ab=getActionBtns(), dp=getDpad();
-  if (hitBtn(tx,ty,ab.shoot))  { btnActive.shoot=true;  touched[id]='shoot';  doShoot();  return; }
-  if (hitBtn(tx,ty,ab.pass))   { btnActive.pass=true;   touched[id]='pass';   doPass();   return; }
-  if (hitBtn(tx,ty,ab.tackle)) { btnActive.tackle=true; touched[id]='tackle'; doTackle(); return; }
+  if (hitBtn(tx,ty,ab.shoot))  { btnActive.shoot=true;  touched[id]='shoot';  doShoot();       return; }
+  if (hitBtn(tx,ty,ab.pass))   { btnActive.pass=true;   touched[id]='pass';   doPass();        return; }
+  if (hitBtn(tx,ty,ab.tackle)) { btnActive.tackle=true; touched[id]='tackle'; doTackle();      return; }
+  if (hitBtn(tx,ty,ab.switch)) { btnActive.switch=true; touched[id]='switch'; switchPlayer();  return; }
   for (const dir of ['up','down','left','right']) {
     if (hitDpad(tx,ty,dp[dir])) { dpad[dir]=true; touched[id]=dir; return; }
   }
@@ -459,7 +481,7 @@ function onTouchStart(tx,ty,id) {
 
 function onTouchEnd(id) {
   const what=touched[id]; if(!what) return;
-  if (what==='shoot'||what==='pass'||what==='tackle') btnActive[what]=false;
+  if (['shoot','pass','tackle','switch'].includes(what)) btnActive[what]=false;
   else dpad[what]=false;
   delete touched[id];
 }
@@ -542,7 +564,7 @@ function updateAI() {
   }
 
   // ── Eigene Mitspieler (KI, nicht der gesteuerte Spieler) ──
-  const teammates = myTeam.slice(1); // ohne redP bzw blueP
+  const teammates = myTeam.filter(p => p !== cp);
   const mySupY = [0.28, 0.72];
   const mySuppX = playerTeam==='red' ? 0.38 : 0.62;
   for (let i=0; i<teammates.length; i++) {
@@ -578,9 +600,10 @@ function update() {
   if (dpad.right || keys['ArrowRight'] || keys['d']) mvx += 1;
   if (dpad.up    || keys['ArrowUp']    || keys['w']) mvy -= 1;
   if (dpad.down  || keys['ArrowDown']  || keys['s']) mvy += 1;
-  if (keys[' ']||keys['Enter']) { doShoot(); keys[' ']=false; keys['Enter']=false; }
-  if (keys['f']||keys['p'])     { doPass();  keys['f']=false; keys['p']=false; }
-  if (keys['t']||keys['g'])     { doTackle();keys['t']=false; keys['g']=false; }
+  if (keys[' ']||keys['Enter']) { doShoot();      keys[' ']=false; keys['Enter']=false; }
+  if (keys['f']||keys['p'])     { doPass();       keys['f']=false; keys['p']=false; }
+  if (keys['t']||keys['g'])     { doTackle();     keys['t']=false; keys['g']=false; }
+  if (keys['x']||keys['Tab'])   { switchPlayer(); keys['x']=false; keys['Tab']=false; }
 
   const mlen=Math.sqrt(mvx*mvx+mvy*mvy)||1;
   const spd=Math.min(Math.sqrt(mvx*mvx+mvy*mvy),1)*SPEED;
@@ -650,11 +673,22 @@ function drawUI() {
   }
 
   // Aktions-Buttons
+  // Pfeil über dem kontrollierten Spieler
+  const cp2 = getCP();
+  const pulse = Math.abs(Math.sin(Date.now()*0.006));
+  ctx.save();
+  ctx.fillStyle = `rgba(255,230,0,${0.6+pulse*0.4})`;
+  ctx.font = `bold ${Math.min(w,h)*0.045}px system-ui`;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('▼', cp2.x*w, cp2.y*h - Math.min(w,h)*0.12 - pulse*4);
+  ctx.restore();
+
   const bs=getActionBtns();
   const infos={
-    shoot:  {emoji:'⚽',label:'Schuss',    color:'#c0392b'},
-    pass:   {emoji:'→',  label:'Passen',  color:'#d35400'},
-    tackle: {emoji:'💪', label:'Zweikampf',color:'#27ae60'},
+    shoot:  {emoji:'⚽', label:'Schuss',    color:'#c0392b'},
+    pass:   {emoji:'→',  label:'Passen',   color:'#d35400'},
+    tackle: {emoji:'💪', label:'Zweikampf', color:'#27ae60'},
+    switch: {emoji:'🔄', label:'Wechsel',   color:'#7d3c98'},
   };
   for (const [k,b] of Object.entries(bs)) {
     if(!b) continue;
