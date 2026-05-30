@@ -233,29 +233,46 @@ function drawBall(x, y, r) {
   ctx.restore();
 }
 
-function drawPlayer(x, y, size, color, label) {
+function drawPlayer(x, y, size, color, label, celebrate=false) {
   ctx.save();
 
-  // Schatten
+  // Jubel: hüpfen
+  const bounce = celebrate ? Math.abs(Math.sin(Date.now()*0.01)) * size * 0.5 : 0;
+  y -= bounce;
+
+  // Schatten (kleiner beim Hüpfen)
   ctx.fillStyle = 'rgba(0,0,0,0.2)';
   ctx.beginPath();
-  ctx.ellipse(x + 2, y + size * 1.7 + 3, size * 0.6, size * 0.2, 0, 0, Math.PI * 2);
+  const shadowScale = celebrate ? Math.max(0.3, 1 - bounce/size) : 1;
+  ctx.ellipse(x + 2, y + size * 1.7 + bounce + 3, size * 0.6 * shadowScale, size * 0.15 * shadowScale, 0, 0, Math.PI * 2);
   ctx.fill();
 
   // Beine
   ctx.strokeStyle = '#333';
   ctx.lineWidth = size * 0.22;
   ctx.lineCap = 'round';
-  // Linkes Bein
-  ctx.beginPath();
-  ctx.moveTo(x - size * 0.18, y + size * 0.9);
-  ctx.lineTo(x - size * 0.28, y + size * 1.7);
-  ctx.stroke();
-  // Rechtes Bein
-  ctx.beginPath();
-  ctx.moveTo(x + size * 0.18, y + size * 0.9);
-  ctx.lineTo(x + size * 0.28, y + size * 1.7);
-  ctx.stroke();
+  if (celebrate) {
+    // Beine angewinkelt beim Jubel
+    ctx.beginPath();
+    ctx.moveTo(x - size * 0.18, y + size * 0.9);
+    ctx.lineTo(x - size * 0.35, y + size * 1.4);
+    ctx.lineTo(x - size * 0.15, y + size * 1.7);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x + size * 0.18, y + size * 0.9);
+    ctx.lineTo(x + size * 0.35, y + size * 1.4);
+    ctx.lineTo(x + size * 0.15, y + size * 1.7);
+    ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(x - size * 0.18, y + size * 0.9);
+    ctx.lineTo(x - size * 0.28, y + size * 1.7);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x + size * 0.18, y + size * 0.9);
+    ctx.lineTo(x + size * 0.28, y + size * 1.7);
+    ctx.stroke();
+  }
 
   // Schuhe
   ctx.fillStyle = '#222';
@@ -272,18 +289,30 @@ function drawPlayer(x, y, size, color, label) {
   ctx.ellipse(x, y + size * 0.55, size * 0.42, size * 0.48, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Arme
+  // Arme — beim Jubel hoch gestreckt in V-Form
   ctx.strokeStyle = color;
   ctx.lineWidth = size * 0.2;
   ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(x - size * 0.38, y + size * 0.3);
-  ctx.lineTo(x - size * 0.65, y + size * 0.85);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(x + size * 0.38, y + size * 0.3);
-  ctx.lineTo(x + size * 0.65, y + size * 0.85);
-  ctx.stroke();
+  if (celebrate) {
+    const wave = Math.sin(Date.now()*0.008) * size * 0.15;
+    ctx.beginPath();
+    ctx.moveTo(x - size * 0.38, y + size * 0.3);
+    ctx.lineTo(x - size * 0.75, y - size * 0.45 + wave);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x + size * 0.38, y + size * 0.3);
+    ctx.lineTo(x + size * 0.75, y - size * 0.45 - wave);
+    ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(x - size * 0.38, y + size * 0.3);
+    ctx.lineTo(x - size * 0.65, y + size * 0.85);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x + size * 0.38, y + size * 0.3);
+    ctx.lineTo(x + size * 0.65, y + size * 0.85);
+    ctx.stroke();
+  }
 
   // Kopf
   const headGrad = ctx.createRadialGradient(x - size * 0.1, y - size * 0.15, size * 0.05, x, y, size * 0.38);
@@ -300,29 +329,51 @@ function drawPlayer(x, y, size, color, label) {
   ctx.ellipse(x, y - size * 0.22, size * 0.35, size * 0.18, 0, Math.PI, Math.PI * 2);
   ctx.fill();
 
-  // Augen
-  ctx.fillStyle = '#fff';
-  ctx.beginPath();
-  ctx.ellipse(x - size * 0.13, y - size * 0.04, size * 0.09, size * 0.1, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.ellipse(x + size * 0.13, y - size * 0.04, size * 0.09, size * 0.1, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#1a1a1a';
-  ctx.beginPath();
-  ctx.arc(x - size * 0.11, y - size * 0.04, size * 0.055, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(x + size * 0.15, y - size * 0.04, size * 0.055, 0, Math.PI * 2);
-  ctx.fill();
+  // Augen — beim Jubel geschlossen (Bogen)
+  if (celebrate) {
+    ctx.strokeStyle = '#1a1a1a';
+    ctx.lineWidth = size * 0.06;
+    ctx.beginPath();
+    ctx.arc(x - size * 0.13, y - size * 0.04, size * 0.09, Math.PI, 0);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(x + size * 0.13, y - size * 0.04, size * 0.09, Math.PI, 0);
+    ctx.stroke();
+  } else {
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.ellipse(x - size * 0.13, y - size * 0.04, size * 0.09, size * 0.1, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(x + size * 0.13, y - size * 0.04, size * 0.09, size * 0.1, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#1a1a1a';
+    ctx.beginPath();
+    ctx.arc(x - size * 0.11, y - size * 0.04, size * 0.055, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(x + size * 0.15, y - size * 0.04, size * 0.055, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
-  // Mund (lächeln)
+  // Mund — beim Jubel breites offenes Lachen
   ctx.strokeStyle = '#a0522d';
   ctx.lineWidth = size * 0.06;
   ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.arc(x, y + size * 0.1, size * 0.15, 0.2, Math.PI - 0.2);
-  ctx.stroke();
+  if (celebrate) {
+    ctx.beginPath();
+    ctx.arc(x, y + size * 0.1, size * 0.22, 0.05, Math.PI - 0.05);
+    ctx.stroke();
+    // Zähne
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(x, y + size * 0.18, size * 0.14, 0, Math.PI);
+    ctx.fill();
+  } else {
+    ctx.beginPath();
+    ctx.arc(x, y + size * 0.1, size * 0.15, 0.2, Math.PI - 0.2);
+    ctx.stroke();
+  }
 
   // Nummer / Label auf Trikot
   ctx.fillStyle = 'rgba(255,255,255,0.9)';
@@ -790,9 +841,11 @@ function loop() {
   update();
 
   const ps=Math.min(w,h)*0.07;
+  const scoringTeam = gameState==='goal' ? goalTeam : '';
   for (const p of allPlayers) {
     const color = p.team==='red' ? '#e74c3c' : '#2980b9';
-    drawPlayer(p.x*w, p.y*h-ps*1.5, ps, color, p.num);
+    const cel = (scoringTeam==='rot' && p.team==='red') || (scoringTeam==='blau' && p.team==='blue');
+    drawPlayer(p.x*w, p.y*h-ps*1.5, ps, color, p.num, cel);
   }
 
   const ballR=Math.min(w,h)*0.022;
