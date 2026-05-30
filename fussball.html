@@ -336,7 +336,7 @@ function drawPlayer(x, y, size, color, label) {
 
 // ── Spiellogik ──────────────────────────────────────────────────────
 const SPEED       = 0.004;
-const AI_SPEED    = 0.002;
+const AI_SPEED    = 0.0014;
 const BALL_FRIC   = 0.92;
 const KICK_SPD    = 0.022;
 const PASS_SPD    = 0.014;
@@ -357,9 +357,11 @@ const allPlayers = [...redTeam, ...blueTeam];
 let ball  = { x: 0.5, y: 0.5, vx: 0, vy: 0 };
 let ballOwner = redP; // Spieler-Objekt oder null
 let score = { red: 0, blue: 0 };
-let goalAnim = 0;
 let goalTeam = '';
 let gameState = 'menu'; // 'menu' | 'playing' | 'goal'
+let playerTeam = 'red'; // welches Team der Spieler steuert
+
+function getCP() { return playerTeam === 'red' ? redP : blueP; }
 
 function resetPositions() {
   redP.x=0.28;  redP.y=0.5;  redP.vx=0;  redP.vy=0;
@@ -369,30 +371,35 @@ function resetPositions() {
   blueP2.x=0.82;blueP2.y=0.32;blueP2.vx=0;blueP2.vy=0;
   blueP3.x=0.82;blueP3.y=0.68;blueP3.vx=0;blueP3.vy=0;
   ball.x=0.5; ball.y=0.5; ball.vx=0; ball.vy=0;
-  ballOwner=redP;
+  ballOwner = getCP();
 }
 
 // ── Aktionen ────────────────────────────────────────────────────────
 function doShoot() {
-  if (ballOwner !== redP) return;
-  const dy=0.5-ball.y, dx=FR-ball.x, len=Math.sqrt(dx*dx+dy*dy)||1;
+  const cp = getCP();
+  if (ballOwner !== cp) return;
+  const goalX = playerTeam === 'red' ? FR : FL;
+  const dy=0.5-ball.y, dx=goalX-ball.x, len=Math.sqrt(dx*dx+dy*dy)||1;
   ball.vx=(dx/len)*KICK_SPD; ball.vy=(dy/len)*KICK_SPD+(Math.random()-0.5)*0.006;
   ballOwner=null;
 }
 
 function doPass() {
-  if (ballOwner !== redP) return;
-  let dx=redP.vx||PASS_SPD, dy=redP.vy||0;
+  const cp = getCP();
+  if (ballOwner !== cp) return;
+  const fwd = playerTeam === 'red' ? PASS_SPD : -PASS_SPD;
+  let dx=cp.vx||fwd, dy=cp.vy||0;
   const len=Math.sqrt(dx*dx+dy*dy)||1;
   ball.vx=(dx/len)*PASS_SPD; ball.vy=(dy/len)*PASS_SPD;
   ballOwner=null;
 }
 
 function doTackle() {
-  for (const bp of blueTeam) {
-    if (ballOwner !== bp) continue;
-    const dx=redP.x-bp.x, dy=redP.y-bp.y;
-    if (Math.sqrt(dx*dx+dy*dy) < TACKLE_DIST) { ballOwner=redP; break; }
+  const cp = getCP();
+  const opponents = playerTeam === 'red' ? blueTeam : redTeam;
+  for (const op of opponents) {
+    if (ballOwner !== op) continue;
+    if (Math.hypot(cp.x-op.x, cp.y-op.y) < TACKLE_DIST) { ballOwner=cp; break; }
   }
 }
 
@@ -429,8 +436,18 @@ function getActionBtns() {
 function hitDpad(tx,ty,b) { return Math.abs(tx-b.x)<b.s*0.6 && Math.abs(ty-b.y)<b.s*0.6; }
 function hitBtn(tx,ty,b)  { const dx=tx-b.x,dy=ty-b.y; return dx*dx+dy*dy<b.r*b.r*1.8; }
 
+function menuButtonHit(tx, ty) {
+  const w=W(), h=H(), bw=w*0.55, bh=h*0.1, bx=w/2-bw/2;
+  if (tx>=bx && tx<=bx+bw) {
+    if (ty>=h*0.44 && ty<=h*0.44+bh) { playerTeam='red';  ballOwner=redP;  gameState='playing'; return true; }
+    if (ty>=h*0.57 && ty<=h*0.57+bh) { playerTeam='blue'; ballOwner=blueP; gameState='playing'; return true; }
+  }
+  return false;
+}
+
 function onTouchStart(tx,ty,id) {
-  if (gameState === 'menu' || gameState === 'goal') { gameState = 'playing'; return; }
+  if (gameState === 'menu') { if (!menuButtonHit(tx,ty)) menuButtonHit(tx,ty); return; }
+  if (gameState === 'goal') { gameState = 'playing'; return; }
   const ab=getActionBtns(), dp=getDpad();
   if (hitBtn(tx,ty,ab.shoot))  { btnActive.shoot=true;  touched[id]='shoot';  doShoot();  return; }
   if (hitBtn(tx,ty,ab.pass))   { btnActive.pass=true;   touched[id]='pass';   doPass();   return; }
@@ -473,7 +490,12 @@ canvas.addEventListener('touchcancel', e=>{                    for(const t of e.
 const keys={};
 window.addEventListener('keydown', e=>{
   if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
-  if (gameState === 'menu' || gameState === 'goal') { gameState = 'playing'; return; }
+  if (gameState === 'menu') {
+    if (e.key==='r'||e.key==='R') { playerTeam='red';  ballOwner=redP;  gameState='playing'; }
+    if (e.key==='b'||e.key==='B') { playerTeam='blue'; ballOwner=blueP; gameState='playing'; }
+    return;
+  }
+  if (gameState === 'goal') { gameState = 'playing'; return; }
   keys[e.key]=true;
 });
 window.addEventListener('keyup', e=>{ keys[e.key]=false; });
@@ -490,52 +512,57 @@ function moveTo(p, tx, ty, spd) {
 
 function updateAI() {
   aiShootCooldown--;
+  const myTeam  = playerTeam === 'red' ? redTeam  : blueTeam;
+  const foeTeam = playerTeam === 'red' ? blueTeam : redTeam;
+  const cp       = getCP();
+  const foeGoalX = playerTeam === 'red' ? FL : FR;
+  const myGoalX  = playerTeam === 'red' ? FR : FL;
+  const foeClose = playerTeam === 'red' ? (p => p.x < 0.38) : (p => p.x > 0.62);
+  const myClose  = playerTeam === 'red' ? (p => p.x > 0.65) : (p => p.x < 0.35);
 
-  // ── Blaues Team ──
-  const blueSupport = [[FL+0.08,0.3],[FL+0.08,0.7]];
-  for (let i=0; i<blueTeam.length; i++) {
-    const bp = blueTeam[i];
-    if (ballOwner===bp) {
-      if (bp.x<0.38 && aiShootCooldown<=0) {
-        const dx=0-bp.x, dy=0.5-bp.y, len=Math.sqrt(dx*dx+dy*dy)||1;
-        ball.vx=(dx/len)*KICK_SPD; ball.vy=(dy/len)*KICK_SPD+(Math.random()-0.5)*0.007;
-        ballOwner=null; aiShootCooldown=60;
-      } else {
-        moveTo(bp, FL+0.06, 0.5, AI_SPEED);
-      }
-    } else if (ballOwner && ballOwner.team==='red') {
-      moveTo(bp, ballOwner.x, ballOwner.y, AI_SPEED);
-      if (Math.hypot(bp.x-ballOwner.x, bp.y-ballOwner.y)<TACKLE_DIST*0.85 && Math.random()<0.025) ballOwner=bp;
+  // ── Gegnerisches Team (alle KI) ──
+  const foeSupY = [0.5, 0.3, 0.7];
+  for (let i=0; i<foeTeam.length; i++) {
+    const fp = foeTeam[i];
+    const sx = foeGoalX + (playerTeam==='red' ? 0.06 : -0.06);
+    if (ballOwner===fp) {
+      if (foeClose(fp) && aiShootCooldown<=0) {
+        const dx=foeGoalX-fp.x, dy=0.5-fp.y, len=Math.hypot(dx,dy)||1;
+        ball.vx=(dx/len)*KICK_SPD; ball.vy=(dy/len)*KICK_SPD+(Math.random()-0.5)*0.01;
+        ballOwner=null; aiShootCooldown=70;
+      } else { moveTo(fp, sx, foeSupY[i], AI_SPEED); }
+    } else if (ballOwner && ballOwner.team===playerTeam) {
+      moveTo(fp, ballOwner.x, ballOwner.y, AI_SPEED);
+      if (Math.hypot(fp.x-ballOwner.x,fp.y-ballOwner.y)<TACKLE_DIST*0.8 && Math.random()<0.012) ballOwner=fp;
     } else if (!ballOwner) {
-      moveTo(bp, ball.x, ball.y, AI_SPEED);
+      moveTo(fp, ball.x, ball.y, AI_SPEED);
     } else {
-      const [sx,sy] = blueSupport[i] || [FL+0.1, 0.5];
-      moveTo(bp, sx, sy, AI_SPEED*0.7);
+      moveTo(fp, sx, foeSupY[i], AI_SPEED*0.65);
     }
   }
 
-  // ── Rote Mitspieler (KI) ──
-  const redSupport = [[0.4,0.28],[0.4,0.72]];
-  for (let i=0; i<[redP2,redP3].length; i++) {
-    const rp = [redP2,redP3][i];
+  // ── Eigene Mitspieler (KI, nicht der gesteuerte Spieler) ──
+  const teammates = myTeam.slice(1); // ohne redP bzw blueP
+  const mySupY = [0.28, 0.72];
+  const mySuppX = playerTeam==='red' ? 0.38 : 0.62;
+  for (let i=0; i<teammates.length; i++) {
+    const rp = teammates[i];
     if (ballOwner===rp) {
-      if (rp.x>0.65 && aiShootCooldown<=0) {
-        const dx=FR-ball.x, dy=0.5-ball.y, len=Math.sqrt(dx*dx+dy*dy)||1;
+      if (myClose(rp) && aiShootCooldown<=0) {
+        const dx=myGoalX-ball.x, dy=0.5-ball.y, len=Math.hypot(dx,dy)||1;
         ball.vx=(dx/len)*KICK_SPD; ball.vy=(dy/len)*KICK_SPD;
         ballOwner=null; aiShootCooldown=60;
       } else {
-        // Pass zu redP
-        const dx=redP.x-rp.x, dy=redP.y-rp.y, len=Math.sqrt(dx*dx+dy*dy)||1;
+        const dx=cp.x-rp.x, dy=cp.y-rp.y, len=Math.hypot(dx,dy)||1;
         ball.vx=(dx/len)*PASS_SPD; ball.vy=(dy/len)*PASS_SPD;
         ballOwner=null;
       }
     } else if (!ballOwner) {
-      moveTo(rp, ball.x, ball.y, AI_SPEED*0.85);
-    } else if (ballOwner && ballOwner.team==='blue') {
-      moveTo(rp, ballOwner.x, ballOwner.y, AI_SPEED*0.85);
+      moveTo(rp, ball.x, ball.y, AI_SPEED*0.8);
+    } else if (ballOwner && ballOwner.team!==playerTeam) {
+      moveTo(rp, ballOwner.x, ballOwner.y, AI_SPEED*0.8);
     } else {
-      const [sx,sy] = redSupport[i];
-      moveTo(rp, sx, sy, AI_SPEED*0.7);
+      moveTo(rp, mySuppX, mySupY[i], AI_SPEED*0.65);
     }
   }
 }
@@ -544,7 +571,8 @@ function updateAI() {
 function update() {
   if (gameState !== 'playing') return;
 
-  // Rot bewegen (D-Pad + Tastatur)
+  // Spieler bewegen
+  const cp = getCP();
   let mvx = 0, mvy = 0;
   if (dpad.left  || keys['ArrowLeft']  || keys['a']) mvx -= 1;
   if (dpad.right || keys['ArrowRight'] || keys['d']) mvx += 1;
@@ -556,9 +584,9 @@ function update() {
 
   const mlen=Math.sqrt(mvx*mvx+mvy*mvy)||1;
   const spd=Math.min(Math.sqrt(mvx*mvx+mvy*mvy),1)*SPEED;
-  redP.vx=mvx/mlen*spd; redP.vy=mvy/mlen*spd;
-  redP.x=Math.max(FL,Math.min(FR,redP.x+redP.vx));
-  redP.y=Math.max(FT,Math.min(FB,redP.y+redP.vy));
+  cp.vx=mvx/mlen*spd; cp.vy=mvy/mlen*spd;
+  cp.x=Math.max(FL,Math.min(FR,cp.x+cp.vx));
+  cp.y=Math.max(FT,Math.min(FB,cp.y+cp.vy));
 
   updateAI();
 
@@ -649,23 +677,43 @@ function drawUI() {
     ctx.restore();
   }
 
-  // Startbildschirm
+  // Hauptmenü mit Teamauswahl
   if (gameState === 'menu') {
     ctx.save();
-    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fillRect(0, 0, w, h);
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+
+    // Titel
     ctx.fillStyle = '#fff';
-    ctx.font = `bold ${Math.min(w*0.13, 60)}px system-ui`;
+    ctx.font = `bold ${Math.min(w*0.13, 58)}px system-ui`;
     ctx.shadowColor = '#27ae60'; ctx.shadowBlur = 30;
-    ctx.fillText('⚽ FUSSBALL', w/2, h*0.38);
+    ctx.fillText('⚽ FUSSBALL', w/2, h*0.22);
     ctx.shadowBlur = 0;
-    const blink = Math.sin(Date.now()*0.004) > 0;
-    if (blink) {
-      ctx.fillStyle = '#feca57';
-      ctx.font = `bold ${Math.min(w*0.06, 26)}px system-ui`;
-      ctx.fillText('Drückt eine Taste zum Starten', w/2, h*0.54);
-    }
+
+    ctx.font = `bold ${Math.min(w*0.055, 24)}px system-ui`;
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.fillText('Wählt euer Team:', w/2, h*0.36);
+
+    // Team-Buttons
+    const bw=w*0.55, bh=h*0.1, bx=w/2-bw/2;
+    const rby=h*0.44, bby=h*0.57;
+
+    // Rot
+    ctx.fillStyle = '#c0392b';
+    roundRect(bx, rby, bw, bh, bh*0.3); ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,0.7)'; ctx.lineWidth=3; ctx.stroke();
+    ctx.fillStyle='#fff';
+    ctx.font=`bold ${Math.min(w*0.07,30)}px system-ui`;
+    ctx.fillText('🔴  Team Rot', w/2, rby+bh/2);
+
+    // Blau
+    ctx.fillStyle = '#2471a3';
+    roundRect(bx, bby, bw, bh, bh*0.3); ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,0.7)'; ctx.lineWidth=3; ctx.stroke();
+    ctx.fillStyle='#fff';
+    ctx.fillText('🔵  Team Blau', w/2, bby+bh/2);
+
     ctx.restore();
     return;
   }
