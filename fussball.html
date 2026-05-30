@@ -396,9 +396,9 @@ const btnActive = { shoot:false, pass:false, tackle:false };
 const touched   = {}; // touch-id → 'up'|'down'|'left'|'right'|'shoot'|'pass'|'tackle'
 
 function getDpad() {
-  const w=W(), h=H(), s=Math.min(w,h)*0.13;
-  const g = s*0.15, margin = 16;
-  const cx = margin + s*1.5 + g;   // linke Taste hat immer 'margin' Abstand zum Rand
+  const w=W(), h=H(), s=Math.min(w,h)*0.12;
+  const g = s*0.15, margin = w*0.06;
+  const cx = margin + s*1.5 + g;
   const cy = h - s*2.8;
   return {
     up:    {x:cx,     y:cy-s-g, s},
@@ -409,9 +409,9 @@ function getDpad() {
 }
 
 function getActionBtns() {
-  const w=W(), h=H(), r=Math.min(w,h)*0.085;
-  const g = r*0.3, margin = 16;
-  const cx = w - margin - r*2 - g;  // rechte Taste hat immer 'margin' Abstand zum Rand
+  const w=W(), h=H(), r=Math.min(w,h)*0.08;
+  const g = r*0.3, margin = w*0.06;
+  const cx = w - margin - r*2 - g;
   const cy = h - r*3.2;
   return {
     shoot:  {x:cx+r+g, y:cy,       r},
