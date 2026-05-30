@@ -396,8 +396,8 @@ const btnActive = { shoot:false, pass:false, tackle:false };
 const touched   = {}; // touch-id → 'up'|'down'|'left'|'right'|'shoot'|'pass'|'tackle'
 
 function getDpad() {
-  const w=W(), h=H(), s=Math.min(w,h)*0.17;
-  const cx=w*0.2, cy=h*0.8, g=s*0.1;
+  const w=W(), h=H(), s=Math.min(w,h)*0.13;
+  const cx=w*0.23, cy=h*0.78, g=s*0.15;
   return {
     up:    {x:cx,     y:cy-s-g, s},
     down:  {x:cx,     y:cy+s+g, s},
@@ -407,8 +407,8 @@ function getDpad() {
 }
 
 function getActionBtns() {
-  const w=W(), h=H(), r=Math.min(w,h)*0.11;
-  const cx=w*0.8, cy=h*0.8, g=r*0.2;
+  const w=W(), h=H(), r=Math.min(w,h)*0.085;
+  const cx=w*0.77, cy=h*0.78, g=r*0.3;
   return {
     shoot:  {x:cx+r+g, y:cy,       r},
     pass:   {x:cx-r-g, y:cy,       r},
