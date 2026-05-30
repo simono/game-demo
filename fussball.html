@@ -40,6 +40,7 @@ window.addEventListener('resize', resize);
 window.addEventListener('load', resize);
 document.addEventListener('DOMContentLoaded', resize);
 resize();
+let resizeFrames = 0;
 
 const W = () => window.innerWidth;
 const H = () => window.innerHeight;
@@ -652,6 +653,7 @@ function drawUI() {
 
 // ── Schleife ────────────────────────────────────────────────────────
 function loop() {
+  if (resizeFrames < 60) { resize(); resizeFrames++; }
   const w=W(), h=H();
   ctx.clearRect(0,0,w,h);
   drawField();
