@@ -494,11 +494,14 @@ let blueP3 = { x:0.82, y:0.68, vx:0, vy:0, team:'blue', num:'4'  };
 const redTeam   = [redP, redP2, redP3];
 const blueTeam  = [blueP, blueP2, blueP3];
 const allPlayers = [...redTeam, ...blueTeam];
+const KOELN   = { name: '1. FC Köln',  short: 'KÖL', color: '#e3000f', light: '#ff3a3a' };
+const SCHALKE = { name: 'Schalke 04', short: 'S04', color: '#004c9f', light: '#1a6cc8' };
+
 let ball  = { x: 0.5, y: 0.5, vx: 0, vy: 0 };
-let ballOwner = redP; // Spieler-Objekt oder null
+let ballOwner = redP;
 let score = { red: 0, blue: 0 };
 let goalTeam = '';
-let gameState = 'menu'; // 'menu' | 'playing' | 'goal'
+let gameState = 'menu';
 let playerTeam = 'red'; // welches Team der Spieler steuert
 let teamChosen = false; // true wenn Team gewählt aber noch nicht gestartet
 let controlledIdx = 0;  // Index im eigenen Team (0/1/2)
@@ -774,11 +777,11 @@ function update() {
     if (ball.y<FT) { ball.y=FT; ball.vy*=-0.7; }
     if (ball.y>FB) { ball.y=FB; ball.vy*=-0.7; }
     if (ball.x<FL) {
-      if (ball.y>GOAL_T && ball.y<GOAL_B) { score.blue++; goalTeam='blau'; gameState='goal'; resetPositions(); return; }
+      if (ball.y>GOAL_T && ball.y<GOAL_B) { score.blue++; goalTeam='blue'; gameState='goal'; resetPositions(); return; }
       ball.x=FL; ball.vx*=-0.7;
     }
     if (ball.x>FR) {
-      if (ball.y>GOAL_T && ball.y<GOAL_B) { score.red++; goalTeam='rot'; gameState='goal'; resetPositions(); return; }
+      if (ball.y>GOAL_T && ball.y<GOAL_B) { score.red++; goalTeam='red'; gameState='goal'; resetPositions(); return; }
       ball.x=FR; ball.vx*=-0.7;
     }
     for (const p of allPlayers) {
@@ -793,17 +796,17 @@ function drawUI() {
 
   // Ergebnis oben
   ctx.save();
-  ctx.fillStyle='rgba(0,0,0,0.5)';
-  roundRect(w/2-72,6,144,38,19);
+  ctx.fillStyle='rgba(0,0,0,0.55)';
+  roundRect(w/2-110,5,220,42,21);
   ctx.fill();
-  ctx.font='bold 24px system-ui';
+  ctx.font='bold 13px system-ui';
   ctx.textBaseline='middle';
-  ctx.fillStyle='#e74c3c'; ctx.textAlign='right';
-  ctx.fillText(score.red,  w/2-12, 26);
-  ctx.fillStyle='#fff';    ctx.textAlign='center';
-  ctx.fillText(':',        w/2,    26);
-  ctx.fillStyle='#2980b9'; ctx.textAlign='left';
-  ctx.fillText(score.blue, w/2+12, 26);
+  ctx.fillStyle=KOELN.light;   ctx.textAlign='right';  ctx.fillText(KOELN.short,  w/2-38, 18);
+  ctx.fillStyle=SCHALKE.light; ctx.textAlign='left';   ctx.fillText(SCHALKE.short,w/2+38, 18);
+  ctx.font='bold 26px system-ui';
+  ctx.fillStyle=KOELN.light;   ctx.textAlign='right';  ctx.fillText(score.red,  w/2-14, 34);
+  ctx.fillStyle='#fff';        ctx.textAlign='center'; ctx.fillText(':',        w/2,    34);
+  ctx.fillStyle=SCHALKE.light; ctx.textAlign='left';   ctx.fillText(score.blue, w/2+14, 34);
   ctx.restore();
 
   // D-Pad zeichnen
@@ -890,27 +893,27 @@ function drawUI() {
 
     ctx.font=`bold ${Math.min(w*0.07,30)}px system-ui`;
 
-    // Rot
+    // Köln
     const redChosen = teamChosen && playerTeam==='red';
-    ctx.fillStyle = redChosen ? '#e74c3c' : '#c0392b';
-    ctx.shadowColor = redChosen ? '#e74c3c' : 'transparent';
-    ctx.shadowBlur = redChosen ? 18 : 0;
+    ctx.fillStyle = redChosen ? KOELN.light : KOELN.color;
+    ctx.shadowColor = redChosen ? KOELN.light : 'transparent';
+    ctx.shadowBlur = redChosen ? 20 : 0;
     roundRect(bx, rby, bw, bh, bh*0.3); ctx.fill();
     ctx.shadowBlur=0;
-    ctx.strokeStyle=redChosen?'#fff':'rgba(255,255,255,0.7)'; ctx.lineWidth=redChosen?4:3; ctx.stroke();
+    ctx.strokeStyle=redChosen?'#fff':'rgba(255,255,255,0.6)'; ctx.lineWidth=redChosen?4:2.5; ctx.stroke();
     ctx.fillStyle='#fff';
-    ctx.fillText((redChosen?'✅ ':'🔴  ')+'Team Rot', w/2, rby+bh/2);
+    ctx.fillText((redChosen?'✅  ':'🔴  ')+KOELN.name, w/2, rby+bh/2);
 
-    // Blau
+    // Schalke
     const blueChosen = teamChosen && playerTeam==='blue';
-    ctx.fillStyle = blueChosen ? '#2e86c1' : '#2471a3';
-    ctx.shadowColor = blueChosen ? '#2e86c1' : 'transparent';
-    ctx.shadowBlur = blueChosen ? 18 : 0;
+    ctx.fillStyle = blueChosen ? SCHALKE.light : SCHALKE.color;
+    ctx.shadowColor = blueChosen ? SCHALKE.light : 'transparent';
+    ctx.shadowBlur = blueChosen ? 20 : 0;
     roundRect(bx, bby, bw, bh, bh*0.3); ctx.fill();
     ctx.shadowBlur=0;
-    ctx.strokeStyle=blueChosen?'#fff':'rgba(255,255,255,0.7)'; ctx.lineWidth=blueChosen?4:3; ctx.stroke();
+    ctx.strokeStyle=blueChosen?'#fff':'rgba(255,255,255,0.6)'; ctx.lineWidth=blueChosen?4:2.5; ctx.stroke();
     ctx.fillStyle='#fff';
-    ctx.fillText((blueChosen?'✅ ':'🔵  ')+'Team Blau', w/2, bby+bh/2);
+    ctx.fillText((blueChosen?'✅  ':'🔵  ')+SCHALKE.name, w/2, bby+bh/2);
 
     // Jetzt starten
     if (teamChosen) {
@@ -930,18 +933,18 @@ function drawUI() {
 
   // Tor-Bildschirm
   if (gameState === 'goal') {
+    const team = goalTeam==='red' ? KOELN : SCHALKE;
     ctx.save();
     ctx.fillStyle='rgba(0,0,0,0.55)'; ctx.fillRect(0,0,w,h);
-    const farbe=goalTeam==='rot'?'#e74c3c':'#2980b9';
-    ctx.fillStyle=farbe;
+    ctx.fillStyle=team.light;
     ctx.font=`bold ${Math.min(w*0.18,90)}px system-ui`;
     ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.shadowColor=farbe; ctx.shadowBlur=40;
+    ctx.shadowColor=team.light; ctx.shadowBlur=40;
     ctx.fillText('TOR! ⚽', w/2, h*0.38);
     ctx.shadowBlur=0;
     ctx.fillStyle='#fff';
     ctx.font=`bold ${Math.min(w*0.06,26)}px system-ui`;
-    ctx.fillText(`Tor für ${goalTeam}!`, w/2, h*0.52);
+    ctx.fillText(`Tor für ${team.name}!`, w/2, h*0.52);
     const blink = Math.sin(Date.now()*0.004) > 0;
     if (blink) {
       ctx.fillStyle='#feca57';
@@ -966,11 +969,10 @@ function loop() {
   update();
 
   const ps=Math.min(w,h)*0.07;
-  const scoringTeam = gameState==='goal' ? goalTeam : '';
   for (const p of allPlayers) {
-    const color = p.team==='red' ? '#e74c3c' : '#2980b9';
-    const cel = (scoringTeam==='rot' && p.team==='red') || (scoringTeam==='blau' && p.team==='blue');
-    drawPlayer(p.x*w, p.y*h-ps*1.5, ps, color, p.num, cel);
+    const club = p.team==='red' ? KOELN : SCHALKE;
+    const cel = gameState==='goal' && goalTeam===p.team;
+    drawPlayer(p.x*w, p.y*h-ps*1.5, ps, club.color, p.num, cel);
   }
 
   const ballR=Math.min(w,h)*0.022;
