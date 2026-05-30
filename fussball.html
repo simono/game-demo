@@ -45,6 +45,97 @@ let resizeFrames = 0;
 const W = () => window.innerWidth;
 const H = () => window.innerHeight;
 
+function drawKoelnCrest(cx, cy, s) {
+  ctx.save();
+  ctx.translate(cx, cy);
+
+  function shield() {
+    ctx.beginPath();
+    ctx.moveTo(-s*0.48,-s*0.5); ctx.lineTo(s*0.48,-s*0.5);
+    ctx.quadraticCurveTo(s*0.52,-s*0.5, s*0.52,-s*0.33);
+    ctx.lineTo(s*0.52,s*0.12);
+    ctx.quadraticCurveTo(s*0.52,s*0.36, 0,s*0.55);
+    ctx.quadraticCurveTo(-s*0.52,s*0.36, -s*0.52,s*0.12);
+    ctx.lineTo(-s*0.52,-s*0.33);
+    ctx.quadraticCurveTo(-s*0.52,-s*0.5, -s*0.48,-s*0.5);
+    ctx.closePath();
+  }
+
+  // Weißer Hintergrund
+  shield();
+  ctx.shadowColor='rgba(0,0,0,0.4)'; ctx.shadowBlur=s*0.1;
+  ctx.fillStyle='#fff'; ctx.fill(); ctx.shadowBlur=0;
+
+  // Rote Streifen (3 rot, 2 weiß → 5 Streifen)
+  shield(); ctx.save(); ctx.clip();
+  ctx.fillStyle='#e3000f';
+  const sw=s*1.04/5;
+  ctx.fillRect(-s*0.52,        -s*0.52, sw, s*1.1);
+  ctx.fillRect(-s*0.52+sw*2,   -s*0.52, sw, s*1.1);
+  ctx.fillRect(-s*0.52+sw*4,   -s*0.52, sw, s*1.1);
+  ctx.restore();
+
+  // Geißbock (schwarze Silhouette)
+  ctx.fillStyle='#111';
+  ctx.beginPath(); ctx.ellipse(0,s*0.17,s*0.2,s*0.13,0,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(s*0.1,-s*0.04,s*0.12,s*0.1,0.15,0,Math.PI*2); ctx.fill();
+  // Hörner
+  ctx.strokeStyle='#111'; ctx.lineWidth=s*0.05; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(s*0.04,-s*0.12); ctx.quadraticCurveTo(-s*0.04,-s*0.3,s*0.04,-s*0.36); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(s*0.16,-s*0.11); ctx.quadraticCurveTo(s*0.26,-s*0.27,s*0.18,-s*0.34); ctx.stroke();
+  // Bart
+  ctx.beginPath(); ctx.moveTo(s*0.14,-s*0.0); ctx.quadraticCurveTo(s*0.2,s*0.08,s*0.14,s*0.12); ctx.lineWidth=s*0.04; ctx.stroke();
+  // Beine
+  ctx.lineWidth=s*0.05;
+  ctx.beginPath();
+  ctx.moveTo(-s*0.1,s*0.28); ctx.lineTo(-s*0.13,s*0.44);
+  ctx.moveTo(s*0.0,s*0.29);  ctx.lineTo(s*0.0, s*0.44);
+  ctx.moveTo(s*0.1,s*0.28);  ctx.lineTo(s*0.13,s*0.44);
+  ctx.moveTo(s*0.19,s*0.25); ctx.lineTo(s*0.22,s*0.42);
+  ctx.stroke();
+  // Schwanz
+  ctx.beginPath(); ctx.moveTo(-s*0.19,s*0.08); ctx.quadraticCurveTo(-s*0.3,s*0.0,-s*0.26,-s*0.1); ctx.stroke();
+
+  // Schildrand
+  shield(); ctx.strokeStyle='#111'; ctx.lineWidth=s*0.04; ctx.stroke();
+
+  // Text
+  ctx.fillStyle='#e3000f'; ctx.font=`bold ${s*0.15}px system-ui`;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('1.FC', 0, -s*0.38);
+
+  ctx.restore();
+}
+
+function drawSchalkeCrest(cx, cy, s) {
+  ctx.save();
+  ctx.translate(cx, cy);
+
+  // Weißer äußerer Ring
+  ctx.beginPath(); ctx.arc(0,0,s*0.54,0,Math.PI*2);
+  ctx.shadowColor='rgba(0,0,0,0.4)'; ctx.shadowBlur=s*0.1;
+  ctx.fillStyle='#fff'; ctx.fill(); ctx.shadowBlur=0;
+
+  // Blauе Fläche
+  ctx.beginPath(); ctx.arc(0,0,s*0.5,0,Math.PI*2);
+  ctx.fillStyle=SCHALKE.color; ctx.fill();
+
+  // Weißer Innenring
+  ctx.beginPath(); ctx.arc(0,0,s*0.41,0,Math.PI*2);
+  ctx.strokeStyle='#fff'; ctx.lineWidth=s*0.05; ctx.stroke();
+
+  // Texte
+  ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.font=`bold ${s*0.13}px system-ui`;
+  ctx.fillText('FC SCHALKE', 0, -s*0.22);
+  ctx.font=`bold ${s*0.38}px system-ui`;
+  ctx.fillText('04', 0, s*0.07);
+  ctx.font=`${s*0.1}px system-ui`;
+  ctx.fillText('GELSENKIRCHEN', 0, s*0.3);
+
+  ctx.restore();
+}
+
 function drawDFBCrest(cx, cy, s) {
   ctx.save();
   ctx.translate(cx, cy);
@@ -603,14 +694,15 @@ function hitBtn(tx,ty,b)  { const dx=tx-b.x,dy=ty-b.y; return dx*dx+dy*dy<b.r*b.
 
 function menuButtonHit(tx, ty) {
   const w=W(), h=H(), bw=w*0.55, bh=h*0.1, bx=w/2-bw/2;
-  if (tx>=bx && tx<=bx+bw) {
-    if (ty>=h*0.53 && ty<=h*0.53+bh) { playerTeam='red';  teamChosen=true; return true; }
-    if (ty>=h*0.65 && ty<=h*0.65+bh) { playerTeam='blue'; teamChosen=true; return true; }
-  }
+  const col=w*0.27, bw2=w*0.4, bh2=h*0.09;
+  // Köln
+  if (tx>=w/2-col-bw2/2 && tx<=w/2-col+bw2/2 && ty>=h*0.69 && ty<=h*0.69+bh2) { playerTeam='red';  teamChosen=true; return true; }
+  // Schalke
+  if (tx>=w/2+col-bw2/2 && tx<=w/2+col+bw2/2 && ty>=h*0.69 && ty<=h*0.69+bh2) { playerTeam='blue'; teamChosen=true; return true; }
   // Jetzt starten
-  if (teamChosen && ty>=h*0.78 && ty<=h*0.78+bh && tx>=bx && tx<=bx+bw) {
-    controlledIdx=0;
-    ballOwner = playerTeam==='red' ? redP : blueP;
+  const sbw=w*0.55;
+  if (teamChosen && ty>=h*0.81 && ty<=h*0.81+bh2 && tx>=w/2-sbw/2 && tx<=w/2+sbw/2) {
+    controlledIdx=0; ballOwner=playerTeam==='red'?redP:blueP;
     gameState='playing'; teamChosen=false; return true;
   }
   return false;
@@ -885,45 +977,42 @@ function drawUI() {
 
     ctx.font = `bold ${Math.min(w*0.05, 22)}px system-ui`;
     ctx.fillStyle = 'rgba(255,255,255,0.75)';
-    ctx.fillText('Wählt euer Team:', w/2, h*0.46);
+    ctx.fillText('Wählt euer Team:', w/2, h*0.43);
 
-    // Team-Buttons
-    const bw=w*0.55, bh=h*0.09, bx=w/2-bw/2;
-    const rby=h*0.53, bby=h*0.65;
+    // Zwei Spalten mit Wappen + Buttons
+    const col=w*0.27, crestS=Math.min(w,h)*0.13;
+    const bw=w*0.4, bh=h*0.09;
 
-    ctx.font=`bold ${Math.min(w*0.07,30)}px system-ui`;
+    drawKoelnCrest(  w/2-col, h*0.55, crestS);
+    drawSchalkeCrest(w/2+col, h*0.55, crestS);
 
-    // Köln
-    const redChosen = teamChosen && playerTeam==='red';
-    ctx.fillStyle = redChosen ? KOELN.light : KOELN.color;
-    ctx.shadowColor = redChosen ? KOELN.light : 'transparent';
-    ctx.shadowBlur = redChosen ? 20 : 0;
-    roundRect(bx, rby, bw, bh, bh*0.3); ctx.fill();
-    ctx.shadowBlur=0;
-    ctx.strokeStyle=redChosen?'#fff':'rgba(255,255,255,0.6)'; ctx.lineWidth=redChosen?4:2.5; ctx.stroke();
-    ctx.fillStyle='#fff';
-    ctx.fillText((redChosen?'✅  ':'🔴  ')+KOELN.name, w/2, rby+bh/2);
-
-    // Schalke
+    const redChosen  = teamChosen && playerTeam==='red';
     const blueChosen = teamChosen && playerTeam==='blue';
-    ctx.fillStyle = blueChosen ? SCHALKE.light : SCHALKE.color;
-    ctx.shadowColor = blueChosen ? SCHALKE.light : 'transparent';
-    ctx.shadowBlur = blueChosen ? 20 : 0;
-    roundRect(bx, bby, bw, bh, bh*0.3); ctx.fill();
-    ctx.shadowBlur=0;
-    ctx.strokeStyle=blueChosen?'#fff':'rgba(255,255,255,0.6)'; ctx.lineWidth=blueChosen?4:2.5; ctx.stroke();
+    ctx.font=`bold ${Math.min(w*0.052,21)}px system-ui`;
+
+    // Köln-Button
+    ctx.fillStyle=redChosen?KOELN.light:KOELN.color;
+    ctx.shadowColor=redChosen?KOELN.light:'transparent'; ctx.shadowBlur=redChosen?18:0;
+    roundRect(w/2-col-bw/2, h*0.69, bw, bh, bh*0.3); ctx.fill(); ctx.shadowBlur=0;
+    ctx.strokeStyle=redChosen?'#fff':'rgba(255,255,255,0.5)'; ctx.lineWidth=redChosen?3:2; ctx.stroke();
+    ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(redChosen?'✅ Köln':'1. FC Köln', w/2-col, h*0.69+bh/2);
+
+    // Schalke-Button
+    ctx.fillStyle=blueChosen?SCHALKE.light:SCHALKE.color;
+    ctx.shadowColor=blueChosen?SCHALKE.light:'transparent'; ctx.shadowBlur=blueChosen?18:0;
+    roundRect(w/2+col-bw/2, h*0.69, bw, bh, bh*0.3); ctx.fill(); ctx.shadowBlur=0;
+    ctx.strokeStyle=blueChosen?'#fff':'rgba(255,255,255,0.5)'; ctx.lineWidth=blueChosen?3:2; ctx.stroke();
     ctx.fillStyle='#fff';
-    ctx.fillText((blueChosen?'✅  ':'🔵  ')+SCHALKE.name, w/2, bby+bh/2);
+    ctx.fillText(blueChosen?'✅ S04':'Schalke 04', w/2+col, h*0.69+bh/2);
 
     // Jetzt starten
     if (teamChosen) {
-      const sby = h*0.78;
-      ctx.fillStyle = '#27ae60';
-      ctx.shadowColor='#27ae60'; ctx.shadowBlur=20;
-      roundRect(bx, sby, bw, bh, bh*0.3); ctx.fill();
-      ctx.shadowBlur=0;
+      const sbw=w*0.55, sby=h*0.81;
+      ctx.fillStyle='#27ae60'; ctx.shadowColor='#27ae60'; ctx.shadowBlur=20;
+      roundRect(w/2-sbw/2, sby, sbw, bh, bh*0.3); ctx.fill(); ctx.shadowBlur=0;
       ctx.strokeStyle='#fff'; ctx.lineWidth=3; ctx.stroke();
-      ctx.fillStyle='#fff';
+      ctx.fillStyle='#fff'; ctx.font=`bold ${Math.min(w*0.058,23)}px system-ui`;
       ctx.fillText('▶  Jetzt starten!', w/2, sby+bh/2);
     }
 
