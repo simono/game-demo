@@ -500,6 +500,7 @@ let score = { red: 0, blue: 0 };
 let goalTeam = '';
 let gameState = 'menu'; // 'menu' | 'playing' | 'goal'
 let playerTeam = 'red'; // welches Team der Spieler steuert
+let teamChosen = false; // true wenn Team gewählt aber noch nicht gestartet
 let controlledIdx = 0;  // Index im eigenen Team (0/1/2)
 
 function getCP() {
@@ -600,8 +601,14 @@ function hitBtn(tx,ty,b)  { const dx=tx-b.x,dy=ty-b.y; return dx*dx+dy*dy<b.r*b.
 function menuButtonHit(tx, ty) {
   const w=W(), h=H(), bw=w*0.55, bh=h*0.1, bx=w/2-bw/2;
   if (tx>=bx && tx<=bx+bw) {
-    if (ty>=h*0.53 && ty<=h*0.53+bh) { playerTeam='red';  controlledIdx=0; ballOwner=redP;  gameState='playing'; return true; }
-    if (ty>=h*0.65 && ty<=h*0.65+bh) { playerTeam='blue'; controlledIdx=0; ballOwner=blueP; gameState='playing'; return true; }
+    if (ty>=h*0.53 && ty<=h*0.53+bh) { playerTeam='red';  teamChosen=true; return true; }
+    if (ty>=h*0.65 && ty<=h*0.65+bh) { playerTeam='blue'; teamChosen=true; return true; }
+  }
+  // Jetzt starten
+  if (teamChosen && ty>=h*0.78 && ty<=h*0.78+bh && tx>=bx && tx<=bx+bw) {
+    controlledIdx=0;
+    ballOwner = playerTeam==='red' ? redP : blueP;
+    gameState='playing'; teamChosen=false; return true;
   }
   return false;
 }
@@ -653,8 +660,12 @@ const keys={};
 window.addEventListener('keydown', e=>{
   if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
   if (gameState === 'menu') {
-    if (e.key==='r'||e.key==='R') { playerTeam='red';  ballOwner=redP;  gameState='playing'; }
-    if (e.key==='b'||e.key==='B') { playerTeam='blue'; ballOwner=blueP; gameState='playing'; }
+    if (e.key==='r'||e.key==='R') { playerTeam='red';  teamChosen=true; }
+    if (e.key==='b'||e.key==='B') { playerTeam='blue'; teamChosen=true; }
+    if ((e.key==='Enter'||e.key===' ') && teamChosen) {
+      controlledIdx=0; ballOwner=playerTeam==='red'?redP:blueP;
+      gameState='playing'; teamChosen=false;
+    }
     return;
   }
   if (gameState === 'goal') { gameState = 'playing'; return; }
@@ -877,20 +888,41 @@ function drawUI() {
     const bw=w*0.55, bh=h*0.09, bx=w/2-bw/2;
     const rby=h*0.53, bby=h*0.65;
 
-    // Rot
-    ctx.fillStyle = '#c0392b';
-    roundRect(bx, rby, bw, bh, bh*0.3); ctx.fill();
-    ctx.strokeStyle='rgba(255,255,255,0.7)'; ctx.lineWidth=3; ctx.stroke();
-    ctx.fillStyle='#fff';
     ctx.font=`bold ${Math.min(w*0.07,30)}px system-ui`;
-    ctx.fillText('🔴  Team Rot', w/2, rby+bh/2);
+
+    // Rot
+    const redChosen = teamChosen && playerTeam==='red';
+    ctx.fillStyle = redChosen ? '#e74c3c' : '#c0392b';
+    ctx.shadowColor = redChosen ? '#e74c3c' : 'transparent';
+    ctx.shadowBlur = redChosen ? 18 : 0;
+    roundRect(bx, rby, bw, bh, bh*0.3); ctx.fill();
+    ctx.shadowBlur=0;
+    ctx.strokeStyle=redChosen?'#fff':'rgba(255,255,255,0.7)'; ctx.lineWidth=redChosen?4:3; ctx.stroke();
+    ctx.fillStyle='#fff';
+    ctx.fillText((redChosen?'✅ ':'🔴  ')+'Team Rot', w/2, rby+bh/2);
 
     // Blau
-    ctx.fillStyle = '#2471a3';
+    const blueChosen = teamChosen && playerTeam==='blue';
+    ctx.fillStyle = blueChosen ? '#2e86c1' : '#2471a3';
+    ctx.shadowColor = blueChosen ? '#2e86c1' : 'transparent';
+    ctx.shadowBlur = blueChosen ? 18 : 0;
     roundRect(bx, bby, bw, bh, bh*0.3); ctx.fill();
-    ctx.strokeStyle='rgba(255,255,255,0.7)'; ctx.lineWidth=3; ctx.stroke();
+    ctx.shadowBlur=0;
+    ctx.strokeStyle=blueChosen?'#fff':'rgba(255,255,255,0.7)'; ctx.lineWidth=blueChosen?4:3; ctx.stroke();
     ctx.fillStyle='#fff';
-    ctx.fillText('🔵  Team Blau', w/2, bby+bh/2);
+    ctx.fillText((blueChosen?'✅ ':'🔵  ')+'Team Blau', w/2, bby+bh/2);
+
+    // Jetzt starten
+    if (teamChosen) {
+      const sby = h*0.78;
+      ctx.fillStyle = '#27ae60';
+      ctx.shadowColor='#27ae60'; ctx.shadowBlur=20;
+      roundRect(bx, sby, bw, bh, bh*0.3); ctx.fill();
+      ctx.shadowBlur=0;
+      ctx.strokeStyle='#fff'; ctx.lineWidth=3; ctx.stroke();
+      ctx.fillStyle='#fff';
+      ctx.fillText('▶  Jetzt starten!', w/2, sby+bh/2);
+    }
 
     ctx.restore();
     return;
