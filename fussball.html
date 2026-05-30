@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Fußball</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: #1a5c1a;
+    touch-action: none;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = window.innerWidth * dpr;
+  canvas.height = window.innerHeight * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resize);
+window.addEventListener('load', resize);
+document.addEventListener('DOMContentLoaded', resize);
+resize();
+
+const W = () => window.innerWidth;
+const H = () => window.innerHeight;
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function drawField() {
+  const w = W(), h = H();
+
+  // Grüner Rasen mit Streifen (von oben nach unten)
+  const stripeH = h / 8;
+  for (let i = 0; i < 8; i++) {
+    ctx.fillStyle = i % 2 === 0 ? '#2e8b2e' : '#34a034';
+    ctx.fillRect(0, i * stripeH, w, stripeH);
+  }
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.lineWidth = 3;
+
+  // Außenlinien
+  const padX = w * 0.04;
+  const padY = h * 0.06;
+  ctx.strokeRect(padX, padY, w - padX * 2, h - padY * 2);
+
+  // Mittellinie (senkrecht)
+  ctx.beginPath();
+  ctx.moveTo(w / 2, padY);
+  ctx.lineTo(w / 2, h - padY);
+  ctx.stroke();
+
+  // Mittelkreis
+  ctx.beginPath();
+  ctx.arc(w / 2, h / 2, h * 0.12, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Mittelpunkt
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.beginPath();
+  ctx.arc(w / 2, h / 2, 5, 0, Math.PI * 2);
+  ctx.fill();
+
+  const goalH = h * 0.35;
+  const goalY = (h - goalH) / 2;
+
+  // Strafraum links
+  const penW = w * 0.18;
+  const penH = h * 0.6;
+  const penY = (h - penH) / 2;
+  ctx.strokeRect(padX, penY, penW, penH);
+
+  // Torraum links
+  ctx.strokeRect(padX, goalY, w * 0.08, goalH);
+
+  // Strafraum rechts
+  ctx.strokeRect(w - padX - penW, penY, penW, penH);
+
+  // Torraum rechts
+  ctx.strokeRect(w - padX - w * 0.08, goalY, w * 0.08, goalH);
+
+  // Elfmeterpunkt links
+  ctx.beginPath();
+  ctx.arc(padX + h * 0.12, h / 2, 5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Elfmeterpunkt rechts
+  ctx.beginPath();
+  ctx.arc(w - padX - h * 0.12, h / 2, 5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Tor-Hintergrund links + rechts
+  ctx.fillStyle = 'rgba(255,255,255,0.15)';
+  ctx.fillRect(0, goalY, padX, goalH);
+  ctx.fillRect(w - padX, goalY, padX, goalH);
+}
+
+// x, y = Ecke des Tornetzes; goalW = Tiefe ins Aus; goalH = Breite des Tors; facingRight = Tor öffnet nach rechts
+function drawGoal(x, y, goalW, goalH, facingRight) {
+  const postR = 5;
+
+  // Netz (Gitterlinien)
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.lineWidth = 1;
+  const cols = 4, rows = 8;
+  const cellW = goalW / cols;
+  const cellH = goalH / rows;
+  for (let i = 0; i <= cols; i++) {
+    ctx.beginPath();
+    ctx.moveTo(x + i * cellW, y);
+    ctx.lineTo(x + i * cellW, y + goalH);
+    ctx.stroke();
+  }
+  for (let j = 0; j <= rows; j++) {
+    ctx.beginPath();
+    ctx.moveTo(x, y + j * cellH);
+    ctx.lineTo(x + goalW, y + j * cellH);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // Pfosten (weiß, dick)
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = postR * 2;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  // Torpfosten oben
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + goalW, y);
+  ctx.stroke();
+
+  // Torpfosten unten
+  ctx.beginPath();
+  ctx.moveTo(x, y + goalH);
+  ctx.lineTo(x + goalW, y + goalH);
+  ctx.stroke();
+
+  // Querbalken (die Linie zur Spielfeldseite)
+  const qx = facingRight ? x : x + goalW;
+  ctx.beginPath();
+  ctx.moveTo(qx, y);
+  ctx.lineTo(qx, y + goalH);
+  ctx.stroke();
+
+  // Glow
+  ctx.shadowColor = 'rgba(255,255,255,0.6)';
+  ctx.shadowBlur = 8;
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x, y); ctx.lineTo(x + goalW, y);
+  ctx.moveTo(x, y + goalH); ctx.lineTo(x + goalW, y + goalH);
+  ctx.moveTo(qx, y); ctx.lineTo(qx, y + goalH);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+}
+
+function drawBall(x, y, r) {
+  // Schatten
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.beginPath();
+  ctx.ellipse(x + 3, y + 4, r * 0.9, r * 0.45, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Ball bunt
+  const grad = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.05, x, y, r);
+  grad.addColorStop(0, '#ff6b6b');
+  grad.addColorStop(0.4, '#feca57');
+  grad.addColorStop(0.75, '#48dbfb');
+  grad.addColorStop(1, '#a29bfe');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Bunte Flecken
+  const patches = [
+    [0, 0,       '#ff4757'],
+    [0.45, -0.35, '#2ed573'],
+    [-0.45, -0.35,'#ffa502'],
+    [0.5, 0.25,  '#1e90ff'],
+    [-0.5, 0.25, '#ff6b81'],
+  ];
+  for (const [dx, dy, color] of patches) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x + dx * r, y + dy * r, r * 0.22, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Glanzpunkt
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.beginPath();
+  ctx.ellipse(x - r * 0.28, y - r * 0.3, r * 0.22, r * 0.14, -0.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawPlayer(x, y, size, color, label) {
+  ctx.save();
+
+  // Schatten
+  ctx.fillStyle = 'rgba(0,0,0,0.2)';
+  ctx.beginPath();
+  ctx.ellipse(x + 2, y + size * 1.7 + 3, size * 0.6, size * 0.2, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Beine
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = size * 0.22;
+  ctx.lineCap = 'round';
+  // Linkes Bein
+  ctx.beginPath();
+  ctx.moveTo(x - size * 0.18, y + size * 0.9);
+  ctx.lineTo(x - size * 0.28, y + size * 1.7);
+  ctx.stroke();
+  // Rechtes Bein
+  ctx.beginPath();
+  ctx.moveTo(x + size * 0.18, y + size * 0.9);
+  ctx.lineTo(x + size * 0.28, y + size * 1.7);
+  ctx.stroke();
+
+  // Schuhe
+  ctx.fillStyle = '#222';
+  ctx.beginPath();
+  ctx.ellipse(x - size * 0.3, y + size * 1.75, size * 0.22, size * 0.12, -0.3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(x + size * 0.3, y + size * 1.75, size * 0.22, size * 0.12, 0.3, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Körper (Trikot)
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(x, y + size * 0.55, size * 0.42, size * 0.48, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Arme
+  ctx.strokeStyle = color;
+  ctx.lineWidth = size * 0.2;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x - size * 0.38, y + size * 0.3);
+  ctx.lineTo(x - size * 0.65, y + size * 0.85);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x + size * 0.38, y + size * 0.3);
+  ctx.lineTo(x + size * 0.65, y + size * 0.85);
+  ctx.stroke();
+
+  // Kopf
+  const headGrad = ctx.createRadialGradient(x - size * 0.1, y - size * 0.15, size * 0.05, x, y, size * 0.38);
+  headGrad.addColorStop(0, '#ffe0b2');
+  headGrad.addColorStop(1, '#d4956a');
+  ctx.fillStyle = headGrad;
+  ctx.beginPath();
+  ctx.arc(x, y, size * 0.38, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Haare
+  ctx.fillStyle = '#4a2800';
+  ctx.beginPath();
+  ctx.ellipse(x, y - size * 0.22, size * 0.35, size * 0.18, 0, Math.PI, Math.PI * 2);
+  ctx.fill();
+
+  // Augen
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.ellipse(x - size * 0.13, y - size * 0.04, size * 0.09, size * 0.1, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(x + size * 0.13, y - size * 0.04, size * 0.09, size * 0.1, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#1a1a1a';
+  ctx.beginPath();
+  ctx.arc(x - size * 0.11, y - size * 0.04, size * 0.055, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(x + size * 0.15, y - size * 0.04, size * 0.055, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Mund (lächeln)
+  ctx.strokeStyle = '#a0522d';
+  ctx.lineWidth = size * 0.06;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.arc(x, y + size * 0.1, size * 0.15, 0.2, Math.PI - 0.2);
+  ctx.stroke();
+
+  // Nummer / Label auf Trikot
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.font = `bold ${size * 0.35}px system-ui`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, x, y + size * 0.55);
+
+  ctx.restore();
+}
+
+// ── Spiellogik ──────────────────────────────────────────────────────
+const SPEED       = 0.004;
+const AI_SPEED    = 0.002;
+const BALL_FRIC   = 0.92;
+const KICK_SPD    = 0.022;
+const PASS_SPD    = 0.014;
+const TACKLE_DIST = 0.1;
+const PICKUP_DIST = 0.055;
+const FL = 0.04, FR = 0.96, FT = 0.06, FB = 0.94; // Spielfeld Grenzen
+const GOAL_T = 0.325, GOAL_B = 0.675;              // Tor oben/unten (normiert)
+
+let redP  = { x: 0.28, y: 0.5, vx: 0, vy: 0 };
+let blueP = { x: 0.72, y: 0.5, vx: 0, vy: 0 };
+let ball  = { x: 0.5,  y: 0.5, vx: 0, vy: 0 };
+let ballOwner = 'red'; // 'red' | 'blue' | null
+let score = { red: 0, blue: 0 };
+let goalAnim = 0;
+let goalTeam = '';
+let gameState = 'menu'; // 'menu' | 'playing' | 'goal'
+
+function resetPositions() {
+  redP.x = 0.28; redP.y = 0.5; redP.vx = 0; redP.vy = 0;
+  blueP.x = 0.72; blueP.y = 0.5; blueP.vx = 0; blueP.vy = 0;
+  ball.x = 0.5; ball.y = 0.5; ball.vx = 0; ball.vy = 0;
+  ballOwner = 'red';
+}
+
+// ── Aktionen ────────────────────────────────────────────────────────
+function doShoot() {
+  if (ballOwner !== 'red') return;
+  const dy = 0.5 - ball.y;
+  const dx = FR - ball.x;
+  const len = Math.sqrt(dx*dx + dy*dy) || 1;
+  ball.vx = (dx/len) * KICK_SPD;
+  ball.vy = (dy/len) * KICK_SPD + (Math.random()-0.5)*0.006;
+  ballOwner = null;
+}
+
+function doPass() {
+  if (ballOwner !== 'red') return;
+  let dx = redP.vx || PASS_SPD, dy = redP.vy || 0;
+  const len = Math.sqrt(dx*dx + dy*dy) || 1;
+  ball.vx = (dx/len) * PASS_SPD;
+  ball.vy = (dy/len) * PASS_SPD;
+  ballOwner = null;
+}
+
+function doTackle() {
+  if (ballOwner !== 'blue') return;
+  const dx = redP.x - blueP.x, dy = redP.y - blueP.y;
+  if (Math.sqrt(dx*dx+dy*dy) < TACKLE_DIST) {
+    ballOwner = 'red';
+    ball.vx = 0.004; ball.vy = (Math.random()-0.5)*0.008;
+  }
+}
+
+// ── Eingabe ─────────────────────────────────────────────────────────
+const dpad      = { up:false, down:false, left:false, right:false };
+const btnActive = { shoot:false, pass:false, tackle:false };
+const touched   = {}; // touch-id → 'up'|'down'|'left'|'right'|'shoot'|'pass'|'tackle'
+
+function getDpad() {
+  const w=W(), h=H(), s=Math.min(w,h)*0.14;
+  const cx=w*0.2, cy=h*0.8, g=s*0.12;
+  return {
+    up:    {x:cx,     y:cy-s-g, s},
+    down:  {x:cx,     y:cy+s+g, s},
+    left:  {x:cx-s-g, y:cy,     s},
+    right: {x:cx+s+g, y:cy,     s},
+  };
+}
+
+function getActionBtns() {
+  const w=W(), h=H(), r=Math.min(w,h)*0.09;
+  const cx=w*0.8, cy=h*0.8, g=r*0.25;
+  return {
+    shoot:  {x:cx+r+g, y:cy,       r},
+    pass:   {x:cx-r-g, y:cy,       r},
+    tackle: {x:cx,     y:cy-r*2.2, r},
+  };
+}
+
+function hitDpad(tx,ty,b) { return Math.abs(tx-b.x)<b.s*0.6 && Math.abs(ty-b.y)<b.s*0.6; }
+function hitBtn(tx,ty,b)  { const dx=tx-b.x,dy=ty-b.y; return dx*dx+dy*dy<b.r*b.r*1.8; }
+
+function onTouchStart(tx,ty,id) {
+  if (gameState === 'menu' || gameState === 'goal') { gameState = 'playing'; return; }
+  const ab=getActionBtns(), dp=getDpad();
+  if (hitBtn(tx,ty,ab.shoot))  { btnActive.shoot=true;  touched[id]='shoot';  doShoot();  return; }
+  if (hitBtn(tx,ty,ab.pass))   { btnActive.pass=true;   touched[id]='pass';   doPass();   return; }
+  if (hitBtn(tx,ty,ab.tackle)) { btnActive.tackle=true; touched[id]='tackle'; doTackle(); return; }
+  for (const dir of ['up','down','left','right']) {
+    if (hitDpad(tx,ty,dp[dir])) { dpad[dir]=true; touched[id]=dir; return; }
+  }
+}
+
+function onTouchEnd(id) {
+  const what=touched[id]; if(!what) return;
+  if (what==='shoot'||what==='pass'||what==='tackle') btnActive[what]=false;
+  else dpad[what]=false;
+  delete touched[id];
+}
+
+canvas.addEventListener('touchstart', e=>{
+  e.preventDefault();
+  for(const t of e.changedTouches) onTouchStart(t.clientX,t.clientY,t.identifier);
+},{passive:false});
+
+canvas.addEventListener('touchmove', e=>{
+  e.preventDefault();
+  const dp=getDpad();
+  for(const t of e.changedTouches){
+    const what=touched[t.identifier];
+    if(what==='up'||what==='down'||what==='left'||what==='right'){
+      dpad[what]=false;
+      for(const dir of ['up','down','left','right']){
+        if(hitDpad(t.clientX,t.clientY,dp[dir])){ dpad[dir]=true; touched[t.identifier]=dir; break; }
+      }
+    }
+  }
+},{passive:false});
+
+canvas.addEventListener('touchend',    e=>{e.preventDefault(); for(const t of e.changedTouches) onTouchEnd(t.identifier);},{passive:false});
+canvas.addEventListener('touchcancel', e=>{                    for(const t of e.changedTouches) onTouchEnd(t.identifier);},{passive:false});
+
+// Tastatur
+const keys={};
+window.addEventListener('keydown', e=>{
+  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
+  if (gameState === 'menu' || gameState === 'goal') { gameState = 'playing'; return; }
+  keys[e.key]=true;
+});
+window.addEventListener('keyup', e=>{ keys[e.key]=false; });
+
+// ── KI Gegner ───────────────────────────────────────────────────────
+let aiShootCooldown = 0;
+
+function updateAI() {
+  let tx, ty;
+  if (ballOwner==='blue') {
+    tx=FL+0.06; ty=0.5;
+    aiShootCooldown--;
+    if (blueP.x<0.38 && aiShootCooldown<=0) {
+      const dx=0-blueP.x, dy=0.5-blueP.y, len=Math.sqrt(dx*dx+dy*dy)||1;
+      ball.vx=(dx/len)*KICK_SPD; ball.vy=(dy/len)*KICK_SPD+(Math.random()-0.5)*0.007;
+      ballOwner=null; aiShootCooldown=60;
+    }
+  } else if (ballOwner==='red') {
+    tx=redP.x; ty=redP.y;
+    const dx=blueP.x-redP.x, dy=blueP.y-redP.y;
+    if (Math.sqrt(dx*dx+dy*dy)<TACKLE_DIST*0.85 && Math.random()<0.04) ballOwner='blue';
+  } else {
+    tx=ball.x; ty=ball.y;
+  }
+  const dx=tx-blueP.x, dy=ty-blueP.y, len=Math.sqrt(dx*dx+dy*dy)||1;
+  blueP.vx=dx/len*AI_SPEED; blueP.vy=dy/len*AI_SPEED;
+  blueP.x=Math.max(FL,Math.min(FR,blueP.x+blueP.vx));
+  blueP.y=Math.max(FT,Math.min(FB,blueP.y+blueP.vy));
+}
+
+// ── Update ──────────────────────────────────────────────────────────
+function update() {
+  if (gameState !== 'playing') return;
+
+  // Rot bewegen (D-Pad + Tastatur)
+  let mvx = 0, mvy = 0;
+  if (dpad.left  || keys['ArrowLeft']  || keys['a']) mvx -= 1;
+  if (dpad.right || keys['ArrowRight'] || keys['d']) mvx += 1;
+  if (dpad.up    || keys['ArrowUp']    || keys['w']) mvy -= 1;
+  if (dpad.down  || keys['ArrowDown']  || keys['s']) mvy += 1;
+  if (keys[' ']||keys['Enter']) { doShoot(); keys[' ']=false; keys['Enter']=false; }
+  if (keys['f']||keys['p'])     { doPass();  keys['f']=false; keys['p']=false; }
+  if (keys['t']||keys['g'])     { doTackle();keys['t']=false; keys['g']=false; }
+
+  const mlen=Math.sqrt(mvx*mvx+mvy*mvy)||1;
+  const spd=Math.min(Math.sqrt(mvx*mvx+mvy*mvy),1)*SPEED;
+  redP.vx=mvx/mlen*spd; redP.vy=mvy/mlen*spd;
+  redP.x=Math.max(FL,Math.min(FR,redP.x+redP.vx));
+  redP.y=Math.max(FT,Math.min(FB,redP.y+redP.vy));
+
+  updateAI();
+
+  // Ball
+  if (ballOwner==='red') {
+    ball.x=redP.x+0.045; ball.y=redP.y+0.055;
+  } else if (ballOwner==='blue') {
+    ball.x=blueP.x-0.045; ball.y=blueP.y+0.055;
+  } else {
+    ball.x+=ball.vx; ball.y+=ball.vy;
+    ball.vx*=BALL_FRIC; ball.vy*=BALL_FRIC;
+    if (ball.y<FT)  { ball.y=FT;  ball.vy*=-0.7; }
+    if (ball.y>FB)  { ball.y=FB;  ball.vy*=-0.7; }
+    if (ball.x<FL)  {
+      if (ball.y>GOAL_T && ball.y<GOAL_B) { score.blue++; goalTeam='blau'; gameState='goal'; resetPositions(); return; }
+      ball.x=FL; ball.vx*=-0.7;
+    }
+    if (ball.x>FR)  {
+      if (ball.y>GOAL_T && ball.y<GOAL_B) { score.red++;  goalTeam='rot';  gameState='goal'; resetPositions(); return; }
+      ball.x=FR; ball.vx*=-0.7;
+    }
+    // Ball aufnehmen
+    const rdx=redP.x-ball.x, rdy=redP.y-ball.y;
+    if (Math.sqrt(rdx*rdx+rdy*rdy)<PICKUP_DIST) ballOwner='red';
+    const bdx=blueP.x-ball.x, bdy=blueP.y-ball.y;
+    if (Math.sqrt(bdx*bdx+bdy*bdy)<PICKUP_DIST) ballOwner='blue';
+  }
+}
+
+// ── UI ──────────────────────────────────────────────────────────────
+function drawUI() {
+  const w=W(), h=H();
+
+  // Ergebnis oben
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,0,0.5)';
+  roundRect(w/2-72,6,144,38,19);
+  ctx.fill();
+  ctx.font='bold 24px system-ui';
+  ctx.textBaseline='middle';
+  ctx.fillStyle='#e74c3c'; ctx.textAlign='right';
+  ctx.fillText(score.red,  w/2-12, 26);
+  ctx.fillStyle='#fff';    ctx.textAlign='center';
+  ctx.fillText(':',        w/2,    26);
+  ctx.fillStyle='#2980b9'; ctx.textAlign='left';
+  ctx.fillText(score.blue, w/2+12, 26);
+  ctx.restore();
+
+  // D-Pad zeichnen
+  const dp=getDpad(), arrows={up:'▲',down:'▼',left:'◀',right:'▶'};
+  for(const dir of ['up','down','left','right']){
+    const b=dp[dir], pressed=dpad[dir];
+    ctx.save();
+    ctx.fillStyle=pressed?'rgba(255,255,255,0.9)':'rgba(0,0,0,0.5)';
+    roundRect(b.x-b.s/2, b.y-b.s/2, b.s, b.s, b.s*0.2);
+    ctx.fill();
+    ctx.strokeStyle=pressed?'#fff':'rgba(255,255,255,0.7)';
+    ctx.lineWidth=3; ctx.stroke();
+    ctx.fillStyle=pressed?'#222':'#fff';
+    ctx.font=`bold ${b.s*0.52}px system-ui`;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(arrows[dir], b.x, b.y);
+    ctx.restore();
+  }
+
+  // Aktions-Buttons
+  const bs=getActionBtns();
+  const infos={
+    shoot:  {emoji:'⚽',label:'Schuss',    color:'#c0392b'},
+    pass:   {emoji:'➡️', label:'Passen',  color:'#d35400'},
+    tackle: {emoji:'💪', label:'Zweikampf',color:'#27ae60'},
+  };
+  for (const [k,b] of Object.entries(bs)) {
+    if(!b) continue;
+    const inf=infos[k], pressed=btnActive[k];
+    ctx.save();
+    ctx.globalAlpha=pressed?0.97:0.78;
+    ctx.fillStyle=inf.color;
+    ctx.shadowColor=inf.color; ctx.shadowBlur=pressed?18:6;
+    ctx.beginPath(); ctx.arc(b.x,b.y,b.r*(pressed?1.08:1),0,Math.PI*2); ctx.fill();
+    ctx.shadowBlur=0;
+    ctx.strokeStyle='rgba(255,255,255,0.8)'; ctx.lineWidth=2.5;
+    ctx.stroke();
+    ctx.globalAlpha=1;
+    ctx.font=`${b.r*0.72}px system-ui`;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(inf.emoji, b.x, b.y-b.r*0.12);
+    ctx.font=`bold ${b.r*0.29}px system-ui`;
+    ctx.fillStyle='#fff';
+    ctx.fillText(inf.label, b.x, b.y+b.r*0.58);
+    ctx.restore();
+  }
+
+  // Startbildschirm
+  if (gameState === 'menu') {
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(0, 0, w, h);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${Math.min(w*0.13, 60)}px system-ui`;
+    ctx.shadowColor = '#27ae60'; ctx.shadowBlur = 30;
+    ctx.fillText('⚽ FUSSBALL', w/2, h*0.38);
+    ctx.shadowBlur = 0;
+    const blink = Math.sin(Date.now()*0.004) > 0;
+    if (blink) {
+      ctx.fillStyle = '#feca57';
+      ctx.font = `bold ${Math.min(w*0.06, 26)}px system-ui`;
+      ctx.fillText('Drückt eine Taste zum Starten', w/2, h*0.54);
+    }
+    ctx.restore();
+    return;
+  }
+
+  // Tor-Bildschirm
+  if (gameState === 'goal') {
+    ctx.save();
+    ctx.fillStyle='rgba(0,0,0,0.55)'; ctx.fillRect(0,0,w,h);
+    const farbe=goalTeam==='rot'?'#e74c3c':'#2980b9';
+    ctx.fillStyle=farbe;
+    ctx.font=`bold ${Math.min(w*0.18,90)}px system-ui`;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.shadowColor=farbe; ctx.shadowBlur=40;
+    ctx.fillText('TOR! ⚽', w/2, h*0.38);
+    ctx.shadowBlur=0;
+    ctx.fillStyle='#fff';
+    ctx.font=`bold ${Math.min(w*0.06,26)}px system-ui`;
+    ctx.fillText(`Tor für ${goalTeam}!`, w/2, h*0.52);
+    const blink = Math.sin(Date.now()*0.004) > 0;
+    if (blink) {
+      ctx.fillStyle='#feca57';
+      ctx.font=`bold ${Math.min(w*0.05,22)}px system-ui`;
+      ctx.fillText('Drückt eine Taste zum Weiterspielen', w/2, h*0.63);
+    }
+    ctx.restore();
+  }
+}
+
+// ── Schleife ────────────────────────────────────────────────────────
+function loop() {
+  const w=W(), h=H();
+  ctx.clearRect(0,0,w,h);
+  drawField();
+
+  const goalH=h*0.35, goalY=(h-goalH)/2, padX=w*0.04;
+  drawGoal(0,       goalY, padX, goalH, true);
+  drawGoal(w-padX,  goalY, padX, goalH, false);
+
+  update();
+
+  const ps=Math.min(w,h)*0.07;
+  const rx=redP.x*w,  ry=redP.y*h;
+  const bx=blueP.x*w, by=blueP.y*h;
+  drawPlayer(rx, ry-ps*1.5, ps, '#e74c3c', '7');
+  drawPlayer(bx, by-ps*1.5, ps, '#2980b9', '9');
+
+  const ballR=Math.min(w,h)*0.022;
+  drawBall(ball.x*w, ball.y*h, ballR);
+
+  drawUI();
+  requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>
