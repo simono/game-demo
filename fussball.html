@@ -45,6 +45,95 @@ let resizeFrames = 0;
 const W = () => window.innerWidth;
 const H = () => window.innerHeight;
 
+function drawDFBCrest(cx, cy, s) {
+  ctx.save();
+  ctx.translate(cx, cy);
+
+  // Schild
+  ctx.beginPath();
+  ctx.moveTo(-s*0.5, -s*0.55);
+  ctx.lineTo( s*0.5, -s*0.55);
+  ctx.quadraticCurveTo( s*0.55, -s*0.55,  s*0.55, -s*0.38);
+  ctx.lineTo( s*0.55,  s*0.12);
+  ctx.quadraticCurveTo( s*0.55,  s*0.38,  0,       s*0.6);
+  ctx.quadraticCurveTo(-s*0.55,  s*0.38, -s*0.55,  s*0.12);
+  ctx.lineTo(-s*0.55, -s*0.38);
+  ctx.quadraticCurveTo(-s*0.55, -s*0.55, -s*0.5, -s*0.55);
+  ctx.closePath();
+  ctx.shadowColor='rgba(0,0,0,0.5)'; ctx.shadowBlur=s*0.12;
+  ctx.fillStyle='#fff'; ctx.fill();
+  ctx.shadowBlur=0;
+  ctx.strokeStyle='#111'; ctx.lineWidth=s*0.04; ctx.stroke();
+
+  // Adler — schwarze Silhouette
+  ctx.fillStyle='#111';
+
+  // Linker Flügel
+  ctx.beginPath();
+  ctx.moveTo(-s*0.06, -s*0.08);
+  ctx.bezierCurveTo(-s*0.18, -s*0.32, -s*0.46, -s*0.26, -s*0.48, -s*0.04);
+  ctx.lineTo(-s*0.41,  s*0.04);
+  ctx.lineTo(-s*0.34, -s*0.02);
+  ctx.lineTo(-s*0.27,  s*0.05);
+  ctx.lineTo(-s*0.19,  0);
+  ctx.lineTo(-s*0.12,  s*0.07);
+  ctx.closePath();
+  ctx.fill();
+
+  // Rechter Flügel
+  ctx.beginPath();
+  ctx.moveTo( s*0.06, -s*0.08);
+  ctx.bezierCurveTo( s*0.18, -s*0.32,  s*0.46, -s*0.26,  s*0.48, -s*0.04);
+  ctx.lineTo( s*0.41,  s*0.04);
+  ctx.lineTo( s*0.34, -s*0.02);
+  ctx.lineTo( s*0.27,  s*0.05);
+  ctx.lineTo( s*0.19,  0);
+  ctx.lineTo( s*0.12,  s*0.07);
+  ctx.closePath();
+  ctx.fill();
+
+  // Körper
+  ctx.beginPath();
+  ctx.ellipse(0, s*0.1, s*0.11, s*0.2, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  // Schwanz
+  ctx.beginPath();
+  ctx.moveTo(-s*0.1, s*0.27);
+  ctx.lineTo( s*0.1, s*0.27);
+  ctx.lineTo( s*0.14, s*0.4);
+  ctx.lineTo(-s*0.14, s*0.4);
+  ctx.closePath();
+  ctx.fill();
+
+  // Kopf (schaut nach rechts)
+  ctx.beginPath();
+  ctx.arc(s*0.07, -s*0.22, s*0.12, 0, Math.PI*2);
+  ctx.fill();
+
+  // Schnabel
+  ctx.beginPath();
+  ctx.moveTo(s*0.17, -s*0.24);
+  ctx.lineTo(s*0.32, -s*0.2);
+  ctx.lineTo(s*0.17, -s*0.14);
+  ctx.closePath();
+  ctx.fill();
+
+  // Auge (weiß)
+  ctx.fillStyle='#fff';
+  ctx.beginPath();
+  ctx.arc(s*0.11, -s*0.25, s*0.035, 0, Math.PI*2);
+  ctx.fill();
+
+  // DFB Schriftzug
+  ctx.fillStyle='#111';
+  ctx.font=`bold ${s*0.2}px system-ui`;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('DFB', 0, s*0.5);
+
+  ctx.restore();
+}
+
 function roundRect(x, y, w, h, r) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
@@ -511,8 +600,8 @@ function hitBtn(tx,ty,b)  { const dx=tx-b.x,dy=ty-b.y; return dx*dx+dy*dy<b.r*b.
 function menuButtonHit(tx, ty) {
   const w=W(), h=H(), bw=w*0.55, bh=h*0.1, bx=w/2-bw/2;
   if (tx>=bx && tx<=bx+bw) {
-    if (ty>=h*0.44 && ty<=h*0.44+bh) { playerTeam='red';  ballOwner=redP;  gameState='playing'; return true; }
-    if (ty>=h*0.57 && ty<=h*0.57+bh) { playerTeam='blue'; ballOwner=blueP; gameState='playing'; return true; }
+    if (ty>=h*0.53 && ty<=h*0.53+bh) { playerTeam='red';  controlledIdx=0; ballOwner=redP;  gameState='playing'; return true; }
+    if (ty>=h*0.65 && ty<=h*0.65+bh) { playerTeam='blue'; controlledIdx=0; ballOwner=blueP; gameState='playing'; return true; }
   }
   return false;
 }
@@ -769,20 +858,24 @@ function drawUI() {
     ctx.fillRect(0, 0, w, h);
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
 
+    // DFB Wappen
+    const crestSize = Math.min(w, h) * 0.16;
+    drawDFBCrest(w/2, h*0.17, crestSize);
+
     // Titel
     ctx.fillStyle = '#fff';
-    ctx.font = `bold ${Math.min(w*0.13, 58)}px system-ui`;
-    ctx.shadowColor = '#27ae60'; ctx.shadowBlur = 30;
-    ctx.fillText('⚽ FUSSBALL', w/2, h*0.22);
+    ctx.font = `bold ${Math.min(w*0.11, 48)}px system-ui`;
+    ctx.shadowColor = '#27ae60'; ctx.shadowBlur = 25;
+    ctx.fillText('⚽ FUSSBALL', w/2, h*0.35);
     ctx.shadowBlur = 0;
 
-    ctx.font = `bold ${Math.min(w*0.055, 24)}px system-ui`;
+    ctx.font = `bold ${Math.min(w*0.05, 22)}px system-ui`;
     ctx.fillStyle = 'rgba(255,255,255,0.75)';
-    ctx.fillText('Wählt euer Team:', w/2, h*0.36);
+    ctx.fillText('Wählt euer Team:', w/2, h*0.46);
 
     // Team-Buttons
-    const bw=w*0.55, bh=h*0.1, bx=w/2-bw/2;
-    const rby=h*0.44, bby=h*0.57;
+    const bw=w*0.55, bh=h*0.09, bx=w/2-bw/2;
+    const rby=h*0.53, bby=h*0.65;
 
     // Rot
     ctx.fillStyle = '#c0392b';
