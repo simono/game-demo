@@ -713,6 +713,120 @@ const PICKUP_DIST = 0.055;
 const FL = 0.04, FR = 0.96, FT = 0.06, FB = 0.94; // Spielfeld Grenzen
 const GOAL_T = 0.325, GOAL_B = 0.675;              // Tor oben/unten (normiert)
 
+// ── Audio ──────────────────────────────────────────────────────────
+let AC = null;
+let noiseBuffer = null;
+let crowdSource = null, crowdGainNode = null, crowdLFO = null;
+let menuTimer = null, melodyIdx = 0;
+let lastAudioState = '';
+
+function getAC() {
+  if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
+  if (AC.state === 'suspended') AC.resume();
+  return AC;
+}
+
+function getNoiseBuf() {
+  if (noiseBuffer) return noiseBuffer;
+  const ac = getAC(), sr = ac.sampleRate;
+  noiseBuffer = ac.createBuffer(1, sr * 2, sr);
+  const d = noiseBuffer.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random()*2-1;
+  return noiseBuffer;
+}
+
+// Fangesänge — gefiltertes Rauschen mit Rhythmus-LFO
+function startCrowd() {
+  if (crowdSource) return;
+  const ac = getAC();
+  crowdSource = ac.createBufferSource();
+  crowdSource.buffer = getNoiseBuf(); crowdSource.loop = true;
+  const bp = ac.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=700; bp.Q.value=1.8;
+  const bp2 = ac.createBiquadFilter(); bp2.type='bandpass'; bp2.frequency.value=1400; bp2.Q.value=2;
+  crowdGainNode = ac.createGain(); crowdGainNode.gain.value=0.25;
+  // LFO für Gesangs-Rhythmus (~1.2Hz = Fansgesang-Takt)
+  crowdLFO = ac.createOscillator(); crowdLFO.type='sine'; crowdLFO.frequency.value=1.2;
+  const lfoGain = ac.createGain(); lfoGain.gain.value=0.15;
+  crowdLFO.connect(lfoGain); lfoGain.connect(crowdGainNode.gain);
+  crowdSource.connect(bp); bp.connect(bp2); bp2.connect(crowdGainNode); crowdGainNode.connect(ac.destination);
+  crowdSource.start(); crowdLFO.start();
+}
+
+function stopCrowd() {
+  if (!crowdSource) return;
+  try { crowdSource.stop(); crowdLFO.stop(); } catch(e){}
+  crowdSource = null; crowdGainNode = null; crowdLFO = null;
+}
+
+// Menü-Musik — einfache Fanfare-Melodie
+const MELODY = [
+  [392,0.18],[392,0.12],[440,0.22],[392,0.22],[349,0.12],[392,0.42],
+  [440,0.18],[440,0.12],[494,0.22],[440,0.22],[392,0.12],[523,0.55],
+  [392,0.12],[440,0.12],[392,0.12],[349,0.22],[330,0.12],[392,0.42],
+  [330,0.18],[349,0.18],[330,0.18],[294,0.18],[262,0.55],[0,0.3],
+];
+
+function playMenuNote() {
+  if (gameState !== 'menu') { menuTimer=null; return; }
+  const ac = getAC();
+  const [freq, dur] = MELODY[melodyIdx % MELODY.length];
+  melodyIdx++;
+  if (freq > 0) {
+    const osc = ac.createOscillator(), g = ac.createGain();
+    osc.type='triangle'; osc.frequency.value=freq;
+    g.gain.setValueAtTime(0.13, ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime+dur*0.85);
+    osc.connect(g); g.connect(ac.destination);
+    osc.start(); osc.stop(ac.currentTime+dur);
+    // Oktave tiefer leise dazu
+    const osc2 = ac.createOscillator(), g2 = ac.createGain();
+    osc2.type='sine'; osc2.frequency.value=freq/2;
+    g2.gain.setValueAtTime(0.04, ac.currentTime);
+    g2.gain.exponentialRampToValueAtTime(0.001, ac.currentTime+dur*0.85);
+    osc2.connect(g2); g2.connect(ac.destination);
+    osc2.start(); osc2.stop(ac.currentTime+dur);
+  }
+  menuTimer = setTimeout(playMenuNote, dur*1000);
+}
+
+function startMenuMusic() { if (!menuTimer) { melodyIdx=0; playMenuNote(); } }
+function stopMenuMusic()  { if (menuTimer) { clearTimeout(menuTimer); menuTimer=null; } }
+
+// Jubel-Sound bei Tor
+function playGoalSound() {
+  const ac = getAC();
+  // Rauschen-Jubel
+  const ns = ac.createBufferSource(); ns.buffer=getNoiseBuf(); ns.loop=true;
+  const f = ac.createBiquadFilter(); f.type='bandpass'; f.frequency.value=900; f.Q.value=0.7;
+  const g = ac.createGain();
+  g.gain.setValueAtTime(0, ac.currentTime);
+  g.gain.linearRampToValueAtTime(0.7, ac.currentTime+0.25);
+  g.gain.linearRampToValueAtTime(0.45, ac.currentTime+1.8);
+  g.gain.linearRampToValueAtTime(0, ac.currentTime+3.5);
+  ns.connect(f); f.connect(g); g.connect(ac.destination);
+  ns.start(); ns.stop(ac.currentTime+3.6);
+  // Jubel-Pfeife (aufsteigend)
+  const osc = ac.createOscillator(), og = ac.createGain();
+  osc.type='sine';
+  osc.frequency.setValueAtTime(500, ac.currentTime);
+  osc.frequency.linearRampToValueAtTime(1400, ac.currentTime+0.6);
+  osc.frequency.linearRampToValueAtTime(900, ac.currentTime+1.2);
+  og.gain.setValueAtTime(0, ac.currentTime);
+  og.gain.linearRampToValueAtTime(0.18, ac.currentTime+0.08);
+  og.gain.linearRampToValueAtTime(0, ac.currentTime+1.4);
+  osc.connect(og); og.connect(ac.destination);
+  osc.start(); osc.stop(ac.currentTime+1.5);
+}
+
+function updateAudio() {
+  if (gameState === lastAudioState) return;
+  const prev = lastAudioState;
+  lastAudioState = gameState;
+  if (gameState === 'menu')    { stopCrowd(); startMenuMusic(); }
+  if (gameState === 'playing') { stopMenuMusic(); startCrowd(); }
+  if (gameState === 'goal' && prev === 'playing') playGoalSound();
+}
+
 let redP  = { x:0.28, y:0.5,  vx:0, vy:0, team:'red',  num:'7',  name:'Lucas', skin:'#ffcc99', skinDark:'#e8a870', hair:'#3d1500', hairStyle:'short' };
 let redP2 = { x:0.18, y:0.32, vx:0, vy:0, team:'red',  num:'10', name:'Jonas', skin:'#ffe4c4', skinDark:'#f0c090', hair:'#c8a020', hairStyle:'short' };
 let redP3 = { x:0.18, y:0.68, vx:0, vy:0, team:'red',  num:'11', name:'Simon', skin:'#d4956a', skinDark:'#b07040', hair:'#111111', hairStyle:'curly' };
@@ -879,6 +993,7 @@ function menuButtonHit(tx, ty) {
 }
 
 function onPointerDown(tx, ty, id) {
+  getAC(); // AudioContext beim ersten Touch starten
   if (gameState === 'menu') { menuButtonHit(tx, ty); return; }
   if (gameState === 'goal') { gameState = 'playing'; return; }
   const ab=getActionBtns(), dp=getDpad();
@@ -1300,6 +1415,7 @@ function loop() {
   const ballR=Math.min(w,h)*0.022;
   drawBall(ball.x*w, ball.y*h, ballR);
 
+  updateAudio();
   drawUI();
   requestAnimationFrame(loop);
 }
