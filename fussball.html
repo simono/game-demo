@@ -1047,10 +1047,13 @@ function drawUI() {
       ctx.shadowColor = chosen ? club.light : 'transparent'; ctx.shadowBlur=chosen?16:0;
       roundRect(cx-bw/2, h*0.68, bw, bh, bh*0.3); ctx.fill(); ctx.shadowBlur=0;
       ctx.strokeStyle=chosen?'#fff':'rgba(255,255,255,0.45)'; ctx.lineWidth=chosen?3:1.5; ctx.stroke();
-      ctx.fillStyle= club===BVB ? '#111' : '#fff';
-      ctx.font=`bold ${Math.min(w*0.042,17)}px system-ui`;
+      ctx.fillStyle = club===BVB ? '#111' : '#fff';
+      ctx.font=`bold ${Math.min(w*0.038,15)}px system-ui`;
       ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.fillText(chosen?'✅ '+club.short:club.short, cx, h*0.68+bh/2);
+      ctx.fillText(chosen ? '✅' : club.short, cx, h*0.68+bh*0.35);
+      ctx.font=`${Math.min(w*0.032,13)}px system-ui`;
+      const shortName = club===KOELN?'Köln':club===BVB?'Dortmund':'Schalke';
+      ctx.fillText(shortName, cx, h*0.68+bh*0.72);
     }
 
     // Jetzt starten
