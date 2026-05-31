@@ -449,7 +449,7 @@ function drawBall(x, y, r) {
   ctx.restore();
 }
 
-function drawPlayer(x, y, size, color, label, celebrate=false, numColor='rgba(255,255,255,0.9)') {
+function drawPlayer(x, y, size, color, label, celebrate=false, numColor='rgba(255,255,255,0.9)', style={}) {
   ctx.save();
 
   // Jubel: hüpfen
@@ -505,6 +505,14 @@ function drawPlayer(x, y, size, color, label, celebrate=false, numColor='rgba(25
   ctx.ellipse(x, y + size * 0.55, size * 0.42, size * 0.48, 0, 0, Math.PI * 2);
   ctx.fill();
 
+  // Kurze Hose (optional)
+  if (style.shortsColor) {
+    ctx.fillStyle = style.shortsColor;
+    ctx.beginPath();
+    ctx.ellipse(x, y + size * 0.95, size * 0.3, size * 0.17, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   // Arme — beim Jubel hoch gestreckt in V-Form
   ctx.strokeStyle = color;
   ctx.lineWidth = size * 0.2;
@@ -518,6 +526,16 @@ function drawPlayer(x, y, size, color, label, celebrate=false, numColor='rgba(25
     ctx.beginPath();
     ctx.moveTo(x + size * 0.38, y + size * 0.3);
     ctx.lineTo(x + size * 0.75, y - size * 0.45 - wave);
+    ctx.stroke();
+  } else if (style.shortSleeves) {
+    // Kurze Ärmel
+    ctx.beginPath();
+    ctx.moveTo(x - size * 0.38, y + size * 0.3);
+    ctx.lineTo(x - size * 0.55, y + size * 0.52);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x + size * 0.38, y + size * 0.3);
+    ctx.lineTo(x + size * 0.55, y + size * 0.52);
     ctx.stroke();
   } else {
     ctx.beginPath();
@@ -621,7 +639,7 @@ let blueP3 = { x:0.82, y:0.68, vx:0, vy:0, team:'blue', num:'4'  };
 const redTeam   = [redP, redP2, redP3];
 const blueTeam  = [blueP, blueP2, blueP3];
 const allPlayers = [...redTeam, ...blueTeam];
-const KOELN   = { name: '1. FC Köln',        short: 'KÖL', color: '#e3000f', light: '#ff3a3a', numColor:'#fff', nums:['7','10','11'], names:['Lucas','Jonas','Simon'] };
+const KOELN   = { name: '1. FC Köln',        short: 'KÖL', color: '#e3000f', light: '#ff3a3a', numColor:'#fff', nums:['7','10','11'], names:['Lucas','Jonas','Simon'], style:{shortsColor:'#ffffff', shortSleeves:true} };
 const SCHALKE = { name: 'Schalke 04',        short: 'S04', color: '#004c9f', light: '#1a6cc8', numColor:'#fff', nums:['9','3','4']   };
 const BVB     = { name: 'Borussia Dortmund', short: 'BVB', color: '#ffe500', light: '#ffed4a', numColor:'#111', nums:['12','8','6']  };
 
@@ -1166,7 +1184,7 @@ function loop() {
     const num  = club.nums[team.indexOf(p)] ?? p.num;
     const cel  = gameState==='goal' && goalTeam===p.team;
     const px=p.x*w, py=p.y*h-ps*1.5;
-    drawPlayer(px, py, ps, club.color, num, cel, club.numColor);
+    drawPlayer(px, py, ps, club.color, num, cel, club.numColor, club.style||{});
     const playerName = club.names ? club.names[team.indexOf(p)] : null;
     if (playerName) {
       ctx.save();
