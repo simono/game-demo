@@ -345,8 +345,8 @@ function drawField() {
   ctx.lineWidth = 3;
 
   // Außenlinien
-  const padX = w * 0.04;
-  const padY = h * 0.06;
+  const padX = w * FPADX;
+  const padY = h * FPADY;
   ctx.strokeRect(padX, padY, w - padX * 2, h - padY * 2);
 
   // Mittellinie (senkrecht)
@@ -710,7 +710,9 @@ const KICK_SPD    = 0.022;
 const PASS_SPD    = 0.014;
 const TACKLE_DIST = 0.1;
 const PICKUP_DIST = 0.055;
-const FL = 0.04, FR = 0.96, FT = 0.06, FB = 0.94; // Spielfeld Grenzen
+// Spielfeld-Grenzen (normiert 0-1) — etwas innen damit Ball/Spieler nicht über die Linien ragen
+const FPADX = 0.06, FPADY = 0.07;
+const FL = FPADX, FR = 1-FPADX, FT = FPADY, FB = 1-FPADY;
 const GOAL_T = 0.325, GOAL_B = 0.675;              // Tor oben/unten (normiert)
 
 // ── Audio ──────────────────────────────────────────────────────────
@@ -1247,8 +1249,10 @@ function update() {
   } else {
     ball.x+=ball.vx; ball.y+=ball.vy;
     ball.vx*=BALL_FRIC; ball.vy*=BALL_FRIC;
-    if (ball.y<FT) { ball.y=FT; ball.vy*=-0.7; }
-    if (ball.y>FB) { ball.y=FB; ball.vy*=-0.7; }
+    const bR = Math.min(W(),H())*0.022 / H(); // Ball-Radius normiert (Höhe)
+    const bRx= Math.min(W(),H())*0.022 / W();
+    if (ball.y<FT+bR) { ball.y=FT+bR; ball.vy*=-0.7; }
+    if (ball.y>FB-bR) { ball.y=FB-bR; ball.vy*=-0.7; }
     if (ball.x<FL) {
       if (ball.y>GOAL_T && ball.y<GOAL_B) { score.blue++; goalTeam='blue'; gameState='goal'; resetPositions(); return; }
       ball.x=FL; ball.vx*=-0.7;
@@ -1539,7 +1543,7 @@ function loop() {
   ctx.clearRect(0,0,w,h);
   drawField();
 
-  const goalH=h*0.35, goalY=(h-goalH)/2, padX=w*0.04;
+  const goalH=h*0.35, goalY=(h-goalH)/2, padX=w*FPADX;
   drawGoal(0,       goalY, padX, goalH, true);
   drawGoal(w-padX,  goalY, padX, goalH, false);
 
