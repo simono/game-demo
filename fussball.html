@@ -797,39 +797,50 @@ function playGoalSound() {
   const ac = getAC();
   const t = ac.currentTime;
 
-  // === Stadion-Jubel: mehrere Frequenzbänder für vollen Klang ===
-  [[300,1.2,0.22],[700,2.0,0.28],[1400,1.8,0.18],[2800,1.5,0.1]].forEach(([freq,q,vol]) => {
-    const ns = ac.createBufferSource(); ns.buffer=getNoiseBuf(); ns.loop=true;
-    const f = ac.createBiquadFilter(); f.type='bandpass'; f.frequency.value=freq; f.Q.value=q;
-    const g = ac.createGain();
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(vol, t+0.06);   // blitzschnell aufbauen
-    g.gain.setValueAtTime(vol, t+1.5);
-    g.gain.linearRampToValueAtTime(vol*0.5, t+3.0);
-    g.gain.linearRampToValueAtTime(0, t+4.5);
-    ns.connect(f); f.connect(g); g.connect(ac.destination);
-    ns.start(); ns.stop(t+4.6);
+  // === Stadion-Lufthorn (3× kurz hintereinander) ===
+  [0, 0.55, 1.0].forEach(delay => {
+    // Lufthorn = mehrere verstimmte Sägezähne (Blechbläser-Effekt)
+    [233, 237, 350, 466, 700].forEach((freq, i) => {
+      const osc = ac.createOscillator(), g = ac.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.value = freq;
+      const vol = [0.18, 0.12, 0.1, 0.08, 0.05][i];
+      const dur = i===0 ? 0.35 : 0.32;
+      g.gain.setValueAtTime(0, t+delay);
+      g.gain.linearRampToValueAtTime(vol, t+delay+0.015);
+      g.gain.setValueAtTime(vol, t+delay+dur*0.7);
+      g.gain.exponentialRampToValueAtTime(0.001, t+delay+dur);
+      osc.connect(g); g.connect(ac.destination);
+      osc.start(t+delay); osc.stop(t+delay+dur+0.05);
+    });
   });
 
-  // === Tiefer Aufprall-Boom ===
-  const boom = ac.createOscillator(), bg = ac.createGain();
-  boom.type='sine'; boom.frequency.setValueAtTime(80,t); boom.frequency.exponentialRampToValueAtTime(30,t+0.4);
-  bg.gain.setValueAtTime(0.5,t); bg.gain.exponentialRampToValueAtTime(0.001,t+0.4);
-  boom.connect(bg); bg.connect(ac.destination); boom.start(t); boom.stop(t+0.45);
+  // === Jubelwelle: Menge bricht aus ===
+  const ns = ac.createBufferSource(); ns.buffer=getNoiseBuf(); ns.loop=true;
+  const lp = ac.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=3500;
+  const hp = ac.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=200;
+  const g = ac.createGain();
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(0.55, t+0.08);
+  g.gain.linearRampToValueAtTime(0.4,  t+2.0);
+  g.gain.linearRampToValueAtTime(0.55, t+2.4);  // zweite Welle
+  g.gain.linearRampToValueAtTime(0.2,  t+4.0);
+  g.gain.linearRampToValueAtTime(0,    t+5.5);
+  ns.connect(lp); lp.connect(hp); hp.connect(g); g.connect(ac.destination);
+  ns.start(); ns.stop(t+5.6);
 
-  // === Fanfare: C-Dur-Akkord (Sägezahn) ===
-  [523.25, 659.25, 783.99, 1046.5].forEach((freq, i) => {
-    const osc = ac.createOscillator(), g = ac.createGain();
-    osc.type = i<2 ? 'sawtooth' : 'triangle';
-    osc.frequency.value = freq;
-    const vol = [0.14, 0.12, 0.09, 0.06][i];
-    g.gain.setValueAtTime(0, t+0.04);
-    g.gain.linearRampToValueAtTime(vol, t+0.12);
-    g.gain.setValueAtTime(vol, t+0.7);
-    g.gain.linearRampToValueAtTime(0, t+1.4);
-    osc.connect(g); g.connect(ac.destination);
-    osc.start(t+0.04); osc.stop(t+1.5);
-  });
+  // === "Tor!"-Ansager-Sweep ===
+  const sweep = ac.createOscillator(), sg = ac.createGain();
+  sweep.type = 'sine';
+  sweep.frequency.setValueAtTime(280, t+1.6);
+  sweep.frequency.linearRampToValueAtTime(420, t+2.2);
+  sweep.frequency.linearRampToValueAtTime(350, t+2.6);
+  sg.gain.setValueAtTime(0, t+1.6);
+  sg.gain.linearRampToValueAtTime(0.22, t+1.68);
+  sg.gain.setValueAtTime(0.22, t+2.4);
+  sg.gain.linearRampToValueAtTime(0, t+2.8);
+  sweep.connect(sg); sg.connect(ac.destination);
+  sweep.start(t+1.6); sweep.stop(t+2.9);
 }
 
 function updateAudio() {
