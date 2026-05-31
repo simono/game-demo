@@ -795,27 +795,41 @@ function stopMenuMusic()  { if (menuTimer) { clearTimeout(menuTimer); menuTimer=
 // Jubel-Sound bei Tor
 function playGoalSound() {
   const ac = getAC();
-  // Rauschen-Jubel
-  const ns = ac.createBufferSource(); ns.buffer=getNoiseBuf(); ns.loop=true;
-  const f = ac.createBiquadFilter(); f.type='bandpass'; f.frequency.value=900; f.Q.value=0.7;
-  const g = ac.createGain();
-  g.gain.setValueAtTime(0, ac.currentTime);
-  g.gain.linearRampToValueAtTime(0.7, ac.currentTime+0.25);
-  g.gain.linearRampToValueAtTime(0.45, ac.currentTime+1.8);
-  g.gain.linearRampToValueAtTime(0, ac.currentTime+3.5);
-  ns.connect(f); f.connect(g); g.connect(ac.destination);
-  ns.start(); ns.stop(ac.currentTime+3.6);
-  // Jubel-Pfeife (aufsteigend)
-  const osc = ac.createOscillator(), og = ac.createGain();
-  osc.type='sine';
-  osc.frequency.setValueAtTime(500, ac.currentTime);
-  osc.frequency.linearRampToValueAtTime(1400, ac.currentTime+0.6);
-  osc.frequency.linearRampToValueAtTime(900, ac.currentTime+1.2);
-  og.gain.setValueAtTime(0, ac.currentTime);
-  og.gain.linearRampToValueAtTime(0.18, ac.currentTime+0.08);
-  og.gain.linearRampToValueAtTime(0, ac.currentTime+1.4);
-  osc.connect(og); og.connect(ac.destination);
-  osc.start(); osc.stop(ac.currentTime+1.5);
+  const t = ac.currentTime;
+
+  // === Stadion-Jubel: mehrere Frequenzbänder für vollen Klang ===
+  [[300,1.2,0.22],[700,2.0,0.28],[1400,1.8,0.18],[2800,1.5,0.1]].forEach(([freq,q,vol]) => {
+    const ns = ac.createBufferSource(); ns.buffer=getNoiseBuf(); ns.loop=true;
+    const f = ac.createBiquadFilter(); f.type='bandpass'; f.frequency.value=freq; f.Q.value=q;
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vol, t+0.06);   // blitzschnell aufbauen
+    g.gain.setValueAtTime(vol, t+1.5);
+    g.gain.linearRampToValueAtTime(vol*0.5, t+3.0);
+    g.gain.linearRampToValueAtTime(0, t+4.5);
+    ns.connect(f); f.connect(g); g.connect(ac.destination);
+    ns.start(); ns.stop(t+4.6);
+  });
+
+  // === Tiefer Aufprall-Boom ===
+  const boom = ac.createOscillator(), bg = ac.createGain();
+  boom.type='sine'; boom.frequency.setValueAtTime(80,t); boom.frequency.exponentialRampToValueAtTime(30,t+0.4);
+  bg.gain.setValueAtTime(0.5,t); bg.gain.exponentialRampToValueAtTime(0.001,t+0.4);
+  boom.connect(bg); bg.connect(ac.destination); boom.start(t); boom.stop(t+0.45);
+
+  // === Fanfare: C-Dur-Akkord (Sägezahn) ===
+  [523.25, 659.25, 783.99, 1046.5].forEach((freq, i) => {
+    const osc = ac.createOscillator(), g = ac.createGain();
+    osc.type = i<2 ? 'sawtooth' : 'triangle';
+    osc.frequency.value = freq;
+    const vol = [0.14, 0.12, 0.09, 0.06][i];
+    g.gain.setValueAtTime(0, t+0.04);
+    g.gain.linearRampToValueAtTime(vol, t+0.12);
+    g.gain.setValueAtTime(vol, t+0.7);
+    g.gain.linearRampToValueAtTime(0, t+1.4);
+    osc.connect(g); g.connect(ac.destination);
+    osc.start(t+0.04); osc.stop(t+1.5);
+  });
 }
 
 function updateAudio() {
