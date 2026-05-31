@@ -449,7 +449,11 @@ function drawBall(x, y, r) {
   ctx.restore();
 }
 
-function drawPlayer(x, y, size, color, label, celebrate=false, numColor='rgba(255,255,255,0.9)', style={}) {
+function drawPlayer(x, y, size, color, label, celebrate=false, numColor='rgba(255,255,255,0.9)', style={}, appearance={}) {
+  const skinCol  = appearance.skin     || '#d4956a';
+  const skinDark = appearance.skinDark || '#b07040';
+  const hairCol  = appearance.hair     || '#4a2800';
+  const hairStyle= appearance.hairStyle|| 'short';
   ctx.save();
 
   // Jubel: hüpfen
@@ -536,7 +540,7 @@ function drawPlayer(x, y, size, color, label, celebrate=false, numColor='rgba(25
     ctx.lineTo(x + size * 0.55, y + size * 0.52);
     ctx.stroke();
     // Unterarme (Hautfarbe)
-    ctx.strokeStyle = '#d4956a';
+    ctx.strokeStyle = skinDark;
     ctx.beginPath();
     ctx.moveTo(x - size * 0.55, y + size * 0.52);
     ctx.lineTo(x - size * 0.65, y + size * 0.82);
@@ -546,7 +550,7 @@ function drawPlayer(x, y, size, color, label, celebrate=false, numColor='rgba(25
     ctx.lineTo(x + size * 0.65, y + size * 0.82);
     ctx.stroke();
     // Hände
-    ctx.fillStyle = '#d4956a';
+    ctx.fillStyle = skinCol;
     ctx.beginPath(); ctx.arc(x - size*0.66, y + size*0.86, size*0.1, 0, Math.PI*2); ctx.fill();
     ctx.beginPath(); ctx.arc(x + size*0.66, y + size*0.86, size*0.1, 0, Math.PI*2); ctx.fill();
   } else {
@@ -561,19 +565,30 @@ function drawPlayer(x, y, size, color, label, celebrate=false, numColor='rgba(25
   }
 
   // Kopf
-  const headGrad = ctx.createRadialGradient(x - size * 0.1, y - size * 0.15, size * 0.05, x, y, size * 0.38);
-  headGrad.addColorStop(0, '#ffe0b2');
-  headGrad.addColorStop(1, '#d4956a');
+  const headGrad = ctx.createRadialGradient(x - size*0.1, y - size*0.15, size*0.05, x, y, size*0.38);
+  headGrad.addColorStop(0, skinCol);
+  headGrad.addColorStop(1, skinDark);
   ctx.fillStyle = headGrad;
   ctx.beginPath();
   ctx.arc(x, y, size * 0.38, 0, Math.PI * 2);
   ctx.fill();
 
   // Haare
-  ctx.fillStyle = '#4a2800';
-  ctx.beginPath();
-  ctx.ellipse(x, y - size * 0.22, size * 0.35, size * 0.18, 0, Math.PI, Math.PI * 2);
-  ctx.fill();
+  ctx.fillStyle = hairCol;
+  if (hairStyle === 'curly') {
+    // Lockige Haare — mehrere Bögen
+    for (let i = 0; i < 5; i++) {
+      const hx = x - size*0.28 + i * size*0.14;
+      ctx.beginPath();
+      ctx.arc(hx, y - size*0.28, size*0.13, Math.PI, Math.PI*2);
+      ctx.fill();
+    }
+  } else {
+    // Kurze Haare — flache Ellipse
+    ctx.beginPath();
+    ctx.ellipse(x, y - size*0.22, size*0.35, size*0.18, 0, Math.PI, Math.PI*2);
+    ctx.fill();
+  }
 
   // Augen — beim Jubel geschlossen (Bogen)
   if (celebrate) {
@@ -642,12 +657,12 @@ const PICKUP_DIST = 0.055;
 const FL = 0.04, FR = 0.96, FT = 0.06, FB = 0.94; // Spielfeld Grenzen
 const GOAL_T = 0.325, GOAL_B = 0.675;              // Tor oben/unten (normiert)
 
-let redP  = { x:0.28, y:0.5,  vx:0, vy:0, team:'red',  num:'7',  name:'Lucas' };
-let redP2 = { x:0.18, y:0.32, vx:0, vy:0, team:'red',  num:'10', name:'Jonas' };
-let redP3 = { x:0.18, y:0.68, vx:0, vy:0, team:'red',  num:'11', name:'Simon' };
-let blueP  = { x:0.72, y:0.5,  vx:0, vy:0, team:'blue', num:'9'  };
-let blueP2 = { x:0.82, y:0.32, vx:0, vy:0, team:'blue', num:'3'  };
-let blueP3 = { x:0.82, y:0.68, vx:0, vy:0, team:'blue', num:'4'  };
+let redP  = { x:0.28, y:0.5,  vx:0, vy:0, team:'red',  num:'7',  name:'Lucas', skin:'#ffcc99', skinDark:'#e8a870', hair:'#3d1500', hairStyle:'short' };
+let redP2 = { x:0.18, y:0.32, vx:0, vy:0, team:'red',  num:'10', name:'Jonas', skin:'#ffe4c4', skinDark:'#f0c090', hair:'#c8a020', hairStyle:'short' };
+let redP3 = { x:0.18, y:0.68, vx:0, vy:0, team:'red',  num:'11', name:'Simon', skin:'#d4956a', skinDark:'#b07040', hair:'#111111', hairStyle:'curly' };
+let blueP  = { x:0.72, y:0.5,  vx:0, vy:0, team:'blue', num:'9',  skin:'#7d4527', skinDark:'#5a2e10', hair:'#111111', hairStyle:'short' };
+let blueP2 = { x:0.82, y:0.32, vx:0, vy:0, team:'blue', num:'3',  skin:'#c8783c', skinDark:'#a05828', hair:'#4a2000', hairStyle:'curly' };
+let blueP3 = { x:0.82, y:0.68, vx:0, vy:0, team:'blue', num:'4',  skin:'#f5c090', skinDark:'#dfa070', hair:'#882200', hairStyle:'short' };
 const redTeam   = [redP, redP2, redP3];
 const blueTeam  = [blueP, blueP2, blueP3];
 const allPlayers = [...redTeam, ...blueTeam];
@@ -1196,7 +1211,7 @@ function loop() {
     const num  = club.nums[team.indexOf(p)] ?? p.num;
     const cel  = gameState==='goal' && goalTeam===p.team;
     const px=p.x*w, py=p.y*h-ps*1.5;
-    drawPlayer(px, py, ps, club.color, num, cel, club.numColor, club.style||{});
+    drawPlayer(px, py, ps, club.color, num, cel, club.numColor, club.style||{}, p);
     const playerName = club.names ? club.names[team.indexOf(p)] : null;
     if (playerName) {
       ctx.save();
