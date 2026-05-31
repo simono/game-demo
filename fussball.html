@@ -710,10 +710,13 @@ const KICK_SPD    = 0.022;
 const PASS_SPD    = 0.014;
 const TACKLE_DIST = 0.1;
 const PICKUP_DIST = 0.055;
-// Spielfeld-Grenzen (normiert 0-1) — etwas innen damit Ball/Spieler nicht über die Linien ragen
+// Feldlinien-Position (für Zeichnung und Tore)
 const FPADX = 0.06, FPADY = 0.07;
-const FL = FPADX, FR = 1-FPADX, FT = FPADY, FB = 1-FPADY;
-const GOAL_T = 0.325, GOAL_B = 0.675;              // Tor oben/unten (normiert)
+// Spieler-Grenzen — deutlich innen (Arme ~size*0.7 breit, size=0.07*min)
+const FL = 0.12, FR = 0.88, FT = 0.10, FB = 0.90;
+// Tor-Bereich (Ball darf rein)
+const GOAL_T = 0.325, GOAL_B = 0.675;
+// GOAL_T / GOAL_B already defined above
 
 // ── Audio ──────────────────────────────────────────────────────────
 let AC = null;
@@ -1249,17 +1252,20 @@ function update() {
   } else {
     ball.x+=ball.vx; ball.y+=ball.vy;
     ball.vx*=BALL_FRIC; ball.vy*=BALL_FRIC;
-    const bR = Math.min(W(),H())*0.022 / H(); // Ball-Radius normiert (Höhe)
-    const bRx= Math.min(W(),H())*0.022 / W();
-    if (ball.y<FT+bR) { ball.y=FT+bR; ball.vy*=-0.7; }
-    if (ball.y>FB-bR) { ball.y=FB-bR; ball.vy*=-0.7; }
-    if (ball.x<FL) {
+    // Ball-Radius in normierte Koordinaten
+    const bRy = Math.min(W(),H())*0.022 / H();
+    const bRx = Math.min(W(),H())*0.022 / W();
+    // Oben/Unten: an Außenlinien abprallen
+    if (ball.y < FPADY+bRy)   { ball.y=FPADY+bRy;   ball.vy*=-0.7; }
+    if (ball.y > 1-FPADY-bRy) { ball.y=1-FPADY-bRy; ball.vy*=-0.7; }
+    // Links/Rechts: Tor oder Abprall
+    if (ball.x < FPADX+bRx) {
       if (ball.y>GOAL_T && ball.y<GOAL_B) { score.blue++; goalTeam='blue'; gameState='goal'; resetPositions(); return; }
-      ball.x=FL; ball.vx*=-0.7;
+      ball.x=FPADX+bRx; ball.vx*=-0.7;
     }
-    if (ball.x>FR) {
+    if (ball.x > 1-FPADX-bRx) {
       if (ball.y>GOAL_T && ball.y<GOAL_B) { score.red++; goalTeam='red'; gameState='goal'; resetPositions(); return; }
-      ball.x=FR; ball.vx*=-0.7;
+      ball.x=1-FPADX-bRx; ball.vx*=-0.7;
     }
     for (const p of allPlayers) {
       if (Math.hypot(p.x-ball.x, p.y-ball.y)<PICKUP_DIST) { ballOwner=p; break; }
