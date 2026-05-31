@@ -463,31 +463,37 @@ function drawPlayer(x, y, size, color, label, celebrate=false, numColor='rgba(25
   ctx.ellipse(x + 2, y + size * 1.7 + bounce + 3, size * 0.6 * shadowScale, size * 0.15 * shadowScale, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Beine
-  ctx.strokeStyle = '#333';
+  // Beine: Hose (oben) + Stulpen (unten)
+  const shortsCol = style.shortsColor || '#333';
+  const socksCol  = style.socksColor  || '#333';
   ctx.lineWidth = size * 0.22;
   ctx.lineCap = 'round';
+
   if (celebrate) {
-    // Beine angewinkelt beim Jubel
-    ctx.beginPath();
-    ctx.moveTo(x - size * 0.18, y + size * 0.9);
-    ctx.lineTo(x - size * 0.35, y + size * 1.4);
-    ctx.lineTo(x - size * 0.15, y + size * 1.7);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(x + size * 0.18, y + size * 0.9);
-    ctx.lineTo(x + size * 0.35, y + size * 1.4);
-    ctx.lineTo(x + size * 0.15, y + size * 1.7);
-    ctx.stroke();
+    // Hose (Oberschenkel)
+    ctx.strokeStyle = shortsCol;
+    ctx.beginPath(); ctx.moveTo(x - size*0.18, y + size*0.9); ctx.lineTo(x - size*0.28, y + size*1.2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x + size*0.18, y + size*0.9); ctx.lineTo(x + size*0.28, y + size*1.2); ctx.stroke();
+    // Stulpen (Unterschenkel, angewinkelt)
+    ctx.strokeStyle = socksCol;
+    ctx.beginPath(); ctx.moveTo(x - size*0.28, y + size*1.2); ctx.lineTo(x - size*0.35, y + size*1.4); ctx.lineTo(x - size*0.15, y + size*1.7); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x + size*0.28, y + size*1.2); ctx.lineTo(x + size*0.35, y + size*1.4); ctx.lineTo(x + size*0.15, y + size*1.7); ctx.stroke();
   } else {
-    ctx.beginPath();
-    ctx.moveTo(x - size * 0.18, y + size * 0.9);
-    ctx.lineTo(x - size * 0.28, y + size * 1.7);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(x + size * 0.18, y + size * 0.9);
-    ctx.lineTo(x + size * 0.28, y + size * 1.7);
-    ctx.stroke();
+    // Hose (Oberschenkel)
+    ctx.strokeStyle = shortsCol;
+    ctx.beginPath(); ctx.moveTo(x - size*0.18, y + size*0.9); ctx.lineTo(x - size*0.23, y + size*1.2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x + size*0.18, y + size*0.9); ctx.lineTo(x + size*0.23, y + size*1.2); ctx.stroke();
+    // Stulpen (Unterschenkel)
+    ctx.strokeStyle = socksCol;
+    ctx.beginPath(); ctx.moveTo(x - size*0.23, y + size*1.2); ctx.lineTo(x - size*0.28, y + size*1.68); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x + size*0.23, y + size*1.2); ctx.lineTo(x + size*0.28, y + size*1.68); ctx.stroke();
+    // Stulpen-Streifen oben
+    if (style.socksStripe) {
+      ctx.strokeStyle = style.socksStripe;
+      ctx.lineWidth = size * 0.09;
+      ctx.beginPath(); ctx.moveTo(x - size*0.31, y + size*1.25); ctx.lineTo(x - size*0.14, y + size*1.25); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x + size*0.14, y + size*1.25); ctx.lineTo(x + size*0.31, y + size*1.25); ctx.stroke();
+    }
   }
 
   // Schuhe
@@ -504,14 +510,6 @@ function drawPlayer(x, y, size, color, label, celebrate=false, numColor='rgba(25
   ctx.beginPath();
   ctx.ellipse(x, y + size * 0.55, size * 0.42, size * 0.48, 0, 0, Math.PI * 2);
   ctx.fill();
-
-  // Kurze Hose (optional)
-  if (style.shortsColor) {
-    ctx.fillStyle = style.shortsColor;
-    ctx.beginPath();
-    ctx.ellipse(x, y + size * 0.95, size * 0.3, size * 0.17, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
 
   // Arme — beim Jubel hoch gestreckt in V-Form
   ctx.strokeStyle = color;
@@ -639,7 +637,7 @@ let blueP3 = { x:0.82, y:0.68, vx:0, vy:0, team:'blue', num:'4'  };
 const redTeam   = [redP, redP2, redP3];
 const blueTeam  = [blueP, blueP2, blueP3];
 const allPlayers = [...redTeam, ...blueTeam];
-const KOELN   = { name: '1. FC Köln',        short: 'KÖL', color: '#e3000f', light: '#ff3a3a', numColor:'#fff', nums:['7','10','11'], names:['Lucas','Jonas','Simon'], style:{shortsColor:'#ffffff', shortSleeves:true} };
+const KOELN   = { name: '1. FC Köln',        short: 'KÖL', color: '#e3000f', light: '#ff3a3a', numColor:'#fff', nums:['7','10','11'], names:['Lucas','Jonas','Simon'], style:{shortsColor:'#ffffff', shortSleeves:true, socksColor:'#ffffff', socksStripe:'#e3000f'} };
 const SCHALKE = { name: 'Schalke 04',        short: 'S04', color: '#004c9f', light: '#1a6cc8', numColor:'#fff', nums:['9','3','4']   };
 const BVB     = { name: 'Borussia Dortmund', short: 'BVB', color: '#ffe500', light: '#ffed4a', numColor:'#111', nums:['12','8','6']  };
 
