@@ -526,7 +526,7 @@ function drawPlayer(x, y, size, color, label, celebrate=false, numColor='rgba(25
     ctx.lineTo(x + size * 0.75, y - size * 0.45 - wave);
     ctx.stroke();
   } else if (style.shortSleeves) {
-    // Kurze Ärmel
+    // Kurze Ärmel (Trikotfarbe)
     ctx.beginPath();
     ctx.moveTo(x - size * 0.38, y + size * 0.3);
     ctx.lineTo(x - size * 0.55, y + size * 0.52);
@@ -535,6 +535,20 @@ function drawPlayer(x, y, size, color, label, celebrate=false, numColor='rgba(25
     ctx.moveTo(x + size * 0.38, y + size * 0.3);
     ctx.lineTo(x + size * 0.55, y + size * 0.52);
     ctx.stroke();
+    // Unterarme (Hautfarbe)
+    ctx.strokeStyle = '#d4956a';
+    ctx.beginPath();
+    ctx.moveTo(x - size * 0.55, y + size * 0.52);
+    ctx.lineTo(x - size * 0.65, y + size * 0.82);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x + size * 0.55, y + size * 0.52);
+    ctx.lineTo(x + size * 0.65, y + size * 0.82);
+    ctx.stroke();
+    // Hände
+    ctx.fillStyle = '#d4956a';
+    ctx.beginPath(); ctx.arc(x - size*0.66, y + size*0.86, size*0.1, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x + size*0.66, y + size*0.86, size*0.1, 0, Math.PI*2); ctx.fill();
   } else {
     ctx.beginPath();
     ctx.moveTo(x - size * 0.38, y + size * 0.3);
