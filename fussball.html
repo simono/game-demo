@@ -1325,11 +1325,11 @@ function update() {
     if (ball.y > 1-FPADY-bRy) { ball.y=1-FPADY-bRy; ball.vy*=-0.7; }
     // Links/Rechts: Tor oder Abprall
     if (ball.x < FPADX+bRx) {
-      if (ball.y>GOAL_T && ball.y<GOAL_B) { score.blue++; goalTeam='blue'; gameState='goal'; resetPositions(); return; }
+      if (ball.y>GOAL_T && ball.y<GOAL_B) { score.blue++; goalTeam='blue'; halfTimeLeft+=10; gameState='goal'; resetPositions(); return; }
       ball.x=FPADX+bRx; ball.vx*=-0.7;
     }
     if (ball.x > 1-FPADX-bRx) {
-      if (ball.y>GOAL_T && ball.y<GOAL_B) { score.red++; goalTeam='red'; gameState='goal'; resetPositions(); return; }
+      if (ball.y>GOAL_T && ball.y<GOAL_B) { score.red++; goalTeam='red'; halfTimeLeft+=10; gameState='goal'; resetPositions(); return; }
       ball.x=1-FPADX-bRx; ball.vx*=-0.7;
     }
     for (const p of allPlayers) {
