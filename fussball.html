@@ -941,14 +941,19 @@ function resetPositions() {
   ball.x=0.5; ball.y=0.5; ball.vx=0; ball.vy=0;
   controlledIdx=0;
   lastFrameMs=0;
-  // Nach einem Tor bekommt das Team das kassiert hat den Ball (Anstoß)
+
+  // Anstoß: das kassierende Team stellt einen Spieler in die Mitte
+  let anstoß;
   if (goalTeam === playerTeam) {
-    // Spieler hat getroffen → Gegner bekommt den Ball
-    ballOwner = playerTeam === 'red' ? blueP : redP;
+    // Spieler hat geschossen → Gegner macht Anstoß
+    anstoß = playerTeam === 'red' ? blueP : redP;
   } else {
-    // Gegner hat getroffen ODER Spielstart/Halbzeit → Spieler bekommt den Ball
-    ballOwner = getCP();
+    // Gegner hat geschossen ODER Spielstart/Halbzeit → Spieler macht Anstoß
+    anstoß = getCP();
   }
+  anstoß.x = 0.5;
+  anstoß.y = 0.5;
+  ballOwner = anstoß;
 }
 
 // ── Aktionen ────────────────────────────────────────────────────────
