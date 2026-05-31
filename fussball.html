@@ -665,7 +665,6 @@ function resetPositions() {
   blueP3.x=0.82;blueP3.y=0.68;blueP3.vx=0;blueP3.vy=0;
   ball.x=0.5; ball.y=0.5; ball.vx=0; ball.vy=0;
   controlledIdx=0;
-  opponentChosen=false;
   ballOwner=getCP();
 }
 
@@ -735,34 +734,33 @@ function hitDpad(tx,ty,b) { return Math.abs(tx-b.x)<b.s*0.6 && Math.abs(ty-b.y)<
 function hitBtn(tx,ty,b)  { const dx=tx-b.x,dy=ty-b.y; return dx*dx+dy*dy<b.r*b.r*1.8; }
 
 function menuButtonHit(tx, ty) {
-  const w=W(), h=H(), bw=w*0.55, bh=h*0.1, bx=w/2-bw/2;
-  const allClubs2=[KOELN,BVB,SCHALKE];
-  const allPTeams2=['red','red','blue'];
-  const bw2=w*0.28, bh2=h*0.085;
+  const w=W(), h=H();
+  const ALL_CLUBS  = [KOELN, BVB, SCHALKE];
+  const ALL_PTEAMS = ['red', 'red', 'blue'];
+  const BW=w*0.27, BH=h*0.08;
 
   if (!teamChosen) {
-    // Schritt 1: Team
-    const cols3=[w*0.17,w*0.5,w*0.83];
-    for(let i=0;i<3;i++){
-      const cx=cols3[i];
-      if(tx>=cx-bw2/2 && tx<=cx+bw2/2 && ty>=h*0.68 && ty<=h*0.68+bh2){
-        playerTeam=allPTeams2[i]; playerClub=allClubs2[i];
-        teamChosen=true; opponentChosen=false; return true;
+    // Schritt 1: Team wählen — 3 Buttons in einer Reihe
+    const CX=[w*0.18, w*0.5, w*0.82];
+    for (let i=0; i<3; i++) {
+      if (tx>=CX[i]-BW/2 && tx<=CX[i]+BW/2 && ty>=h*0.66 && ty<=h*0.66+BH) {
+        playerTeam=ALL_PTEAMS[i]; playerClub=ALL_CLUBS[i];
+        teamChosen=true; return true;
       }
     }
   } else if (!opponentChosen) {
-    // Schritt 2: Gegner
-    const others=allClubs2.filter(c=>c!==playerClub);
-    const ox=[w*0.28,w*0.72];
-    for(let i=0;i<2;i++){
-      if(tx>=ox[i]-bw2/2 && tx<=ox[i]+bw2/2 && ty>=h*0.72 && ty<=h*0.72+bh2){
+    // Schritt 2: Gegner wählen — 2 Buttons
+    const others=ALL_CLUBS.filter(c=>c!==playerClub);
+    const CX=[w*0.28, w*0.72];
+    for (let i=0; i<2; i++) {
+      if (tx>=CX[i]-BW/2 && tx<=CX[i]+BW/2 && ty>=h*0.66 && ty<=h*0.66+BH) {
         opponentClub=others[i]; opponentChosen=true; return true;
       }
     }
   } else {
     // Schritt 3: Starten
-    const sbw=w*0.6, sbh=h*0.09;
-    if(ty>=h*0.65 && ty<=h*0.65+sbh && tx>=w/2-sbw/2 && tx<=w/2+sbw/2){
+    const SW=w*0.6, SH=h*0.09;
+    if (tx>=w/2-SW/2 && tx<=w/2+SW/2 && ty>=h*0.74 && ty<=h*0.74+SH) {
       controlledIdx=0; ballOwner=playerTeam==='red'?redP:blueP;
       gameState='playing'; teamChosen=false; opponentChosen=false; return true;
     }
@@ -1029,98 +1027,83 @@ function drawUI() {
     ctx.restore();
   }
 
-  // Hauptmenü mit Teamauswahl
+  // Hauptmenü
   if (gameState === 'menu') {
     ctx.save();
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.fillRect(0, 0, w, h);
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle='rgba(0,0,0,0.65)'; ctx.fillRect(0,0,w,h);
+    ctx.textAlign='center'; ctx.textBaseline='middle';
 
-    // DFB Wappen
-    const crestSize = Math.min(w, h) * 0.16;
-    drawDFBCrest(w/2, h*0.17, crestSize);
+    const ALL_CLUBS  = [KOELN, BVB, SCHALKE];
+    const ALL_CRESTS = [drawKoelnCrest, drawBVBCrest, drawSchalkeCrest];
+    const ALL_NAMES  = ['Köln','Dortmund','Schalke'];
+    const CS = Math.min(w,h)*0.1;   // Wappen-Größe
+    const BW = w*0.27, BH = h*0.08; // Button-Größe
 
-    // Titel
-    ctx.fillStyle = '#fff';
-    ctx.font = `bold ${Math.min(w*0.11, 48)}px system-ui`;
-    ctx.shadowColor = '#27ae60'; ctx.shadowBlur = 25;
-    ctx.fillText('⚽ FUSSBALL', w/2, h*0.35);
-    ctx.shadowBlur = 0;
+    function drawClubBtn(cx, by, club, crestFn, label) {
+      crestFn(cx, by - CS*0.9, CS);
+      ctx.fillStyle=club.color;
+      roundRect(cx-BW/2, by, BW, BH, BH*0.3); ctx.fill();
+      ctx.strokeStyle='rgba(255,255,255,0.6)'; ctx.lineWidth=2; ctx.stroke();
+      ctx.fillStyle=club===BVB?'#111':'#fff';
+      ctx.font=`bold ${Math.min(w*0.04,16)}px system-ui`;
+      ctx.fillText(label, cx, by+BH/2);
+    }
 
-    ctx.font = `bold ${Math.min(w*0.05, 22)}px system-ui`;
-    ctx.fillStyle = 'rgba(255,255,255,0.75)';
-    ctx.fillText('Wählt euer Team:', w/2, h*0.43);
-
-    const allClubs   = [KOELN, BVB, SCHALKE];
-    const allCrests  = [drawKoelnCrest, drawBVBCrest, drawSchalkeCrest];
-    const allNames   = ['Köln','Dortmund','Schalke'];
-    const allPTeams  = ['red','red','blue'];
-    const crestS=Math.min(w,h)*0.11, bw=w*0.28, bh=h*0.085;
+    // DFB-Wappen klein oben
+    drawDFBCrest(w/2, h*0.1, CS*0.85);
 
     if (!teamChosen) {
-      // ── Schritt 1: Team wählen ──
-      ctx.fillStyle='rgba(255,255,255,0.75)';
-      ctx.font=`bold ${Math.min(w*0.05,21)}px system-ui`;
-      ctx.fillText('Wählt euer Team:', w/2, h*0.43);
-
-      const cols3=[w*0.17,w*0.5,w*0.83];
-      for (let i=0; i<3; i++) {
-        const cx=cols3[i], club=allClubs[i];
-        allCrests[i](cx, h*0.54, crestS);
-        ctx.fillStyle=club.color;
-        roundRect(cx-bw/2, h*0.68, bw, bh, bh*0.3); ctx.fill();
-        ctx.strokeStyle='rgba(255,255,255,0.5)'; ctx.lineWidth=1.5; ctx.stroke();
-        ctx.fillStyle=club===BVB?'#111':'#fff';
-        ctx.font=`bold ${Math.min(w*0.038,15)}px system-ui`;
-        ctx.textAlign='center'; ctx.textBaseline='middle';
-        ctx.fillText(club.short, cx, h*0.68+bh*0.38);
-        ctx.font=`${Math.min(w*0.032,13)}px system-ui`;
-        ctx.fillText(allNames[i], cx, h*0.68+bh*0.72);
-      }
-
-    } else if (!opponentChosen) {
-      // ── Schritt 2: Gegner wählen ──
-      // Gewähltes Team anzeigen
-      const myIdx = allClubs.indexOf(playerClub);
-      allCrests[myIdx](w/2, h*0.46, crestS*0.9);
+      ctx.fillStyle='#fff';
+      ctx.font=`bold ${Math.min(w*0.09,38)}px system-ui`;
+      ctx.shadowColor='#27ae60'; ctx.shadowBlur=20;
+      ctx.fillText('⚽ FUSSBALL', w/2, h*0.25);
+      ctx.shadowBlur=0;
       ctx.fillStyle='rgba(255,255,255,0.8)';
       ctx.font=`bold ${Math.min(w*0.048,20)}px system-ui`;
-      ctx.fillText('Gegen wen spielst du?', w/2, h*0.37);
+      ctx.fillText('Wählt euer Team:', w/2, h*0.37);
 
-      // Die zwei anderen Teams als Gegner
-      const others = allClubs.map((c,i)=>({club:c,crest:allCrests[i],name:allNames[i],pteam:allPTeams[i]}))
-                              .filter(o=>o.club!==playerClub);
-      const ox=[w*0.28, w*0.72];
-      for (let i=0; i<2; i++) {
-        const {club,crest,name}=others[i], cx=ox[i];
-        crest(cx, h*0.59, crestS);
-        ctx.fillStyle=club.color;
-        roundRect(cx-bw/2, h*0.72, bw, bh, bh*0.3); ctx.fill();
-        ctx.strokeStyle='rgba(255,255,255,0.5)'; ctx.lineWidth=1.5; ctx.stroke();
-        ctx.fillStyle=club===BVB?'#111':'#fff';
-        ctx.font=`bold ${Math.min(w*0.038,15)}px system-ui`;
-        ctx.textAlign='center'; ctx.textBaseline='middle';
-        ctx.fillText(club.short, cx, h*0.72+bh*0.38);
-        ctx.font=`${Math.min(w*0.032,13)}px system-ui`;
-        ctx.fillText(name, cx, h*0.72+bh*0.72);
-      }
+      const CX=[w*0.18, w*0.5, w*0.82];
+      for (let i=0; i<3; i++)
+        drawClubBtn(CX[i], h*0.66, ALL_CLUBS[i], ALL_CRESTS[i], ALL_NAMES[i]);
+
+    } else if (!opponentChosen) {
+      ctx.fillStyle='rgba(255,255,255,0.8)';
+      ctx.font=`bold ${Math.min(w*0.048,20)}px system-ui`;
+      ctx.fillText('Gegen wen spielst du?', w/2, h*0.25);
+
+      const myIdx=ALL_CLUBS.indexOf(playerClub);
+      ALL_CRESTS[myIdx](w/2, h*0.37, CS*0.85);
+      ctx.fillStyle='rgba(255,255,255,0.5)';
+      ctx.font=`${Math.min(w*0.038,15)}px system-ui`;
+      ctx.fillText('vs.', w/2, h*0.48);
+
+      const others=ALL_CLUBS.map((c,i)=>({c,fn:ALL_CRESTS[i],n:ALL_NAMES[i]})).filter(o=>o.c!==playerClub);
+      const CX=[w*0.28, w*0.72];
+      for (let i=0; i<2; i++)
+        drawClubBtn(CX[i], h*0.66, others[i].c, others[i].fn, others[i].n);
 
     } else {
-      // ── Schritt 3: Jetzt starten ──
-      const myIdx  = allClubs.indexOf(playerClub);
-      const oppIdx = allClubs.indexOf(opponentClub);
-      allCrests[myIdx] (w/2-w*0.2, h*0.5, crestS*0.85);
-      allCrests[oppIdx](w/2+w*0.2, h*0.5, crestS*0.85);
-      ctx.fillStyle='rgba(255,255,255,0.6)';
-      ctx.font=`bold ${Math.min(w*0.06,26)}px system-ui`;
-      ctx.fillText('VS', w/2, h*0.5);
+      ctx.fillStyle='rgba(255,255,255,0.8)';
+      ctx.font=`bold ${Math.min(w*0.048,20)}px system-ui`;
+      ctx.fillText('Bereit!', w/2, h*0.25);
 
-      const sbw=w*0.6, sby=h*0.65, sbh=h*0.09;
+      const myIdx  = ALL_CLUBS.indexOf(playerClub);
+      const oppIdx = ALL_CLUBS.indexOf(opponentClub);
+      ALL_CRESTS[myIdx] (w/2-w*0.22, h*0.43, CS);
+      ALL_CRESTS[oppIdx](w/2+w*0.22, h*0.43, CS);
+      ctx.fillStyle='rgba(255,255,255,0.7)';
+      ctx.font=`bold ${Math.min(w*0.07,28)}px system-ui`;
+      ctx.fillText('VS', w/2, h*0.43);
+      ctx.font=`${Math.min(w*0.04,16)}px system-ui`;
+      ctx.fillStyle='rgba(255,255,255,0.55)';
+      ctx.fillText(`${ALL_NAMES[myIdx]} gegen ${ALL_NAMES[oppIdx]}`, w/2, h*0.57);
+
+      const SW=w*0.6, SH=h*0.09;
       ctx.fillStyle='#27ae60'; ctx.shadowColor='#27ae60'; ctx.shadowBlur=20;
-      roundRect(w/2-sbw/2, sby, sbw, sbh, sbh*0.3); ctx.fill(); ctx.shadowBlur=0;
+      roundRect(w/2-SW/2, h*0.74, SW, SH, SH*0.3); ctx.fill(); ctx.shadowBlur=0;
       ctx.strokeStyle='#fff'; ctx.lineWidth=3; ctx.stroke();
-      ctx.fillStyle='#fff'; ctx.font=`bold ${Math.min(w*0.058,23)}px system-ui`;
-      ctx.fillText('▶  Jetzt starten!', w/2, sby+sbh/2);
+      ctx.fillStyle='#fff'; ctx.font=`bold ${Math.min(w*0.055,22)}px system-ui`;
+      ctx.fillText('▶  Jetzt starten!', w/2, h*0.74+SH/2);
     }
 
     ctx.restore();
