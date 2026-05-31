@@ -941,7 +941,14 @@ function resetPositions() {
   ball.x=0.5; ball.y=0.5; ball.vx=0; ball.vy=0;
   controlledIdx=0;
   lastFrameMs=0;
-  ballOwner=getCP();
+  // Nach einem Tor bekommt das Team das kassiert hat den Ball (Anstoß)
+  if (goalTeam === playerTeam) {
+    // Spieler hat getroffen → Gegner bekommt den Ball
+    ballOwner = playerTeam === 'red' ? blueP : redP;
+  } else {
+    // Gegner hat getroffen ODER Spielstart/Halbzeit → Spieler bekommt den Ball
+    ballOwner = getCP();
+  }
 }
 
 // ── Aktionen ────────────────────────────────────────────────────────
