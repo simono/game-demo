@@ -768,47 +768,50 @@ function menuButtonHit(tx, ty) {
   return false;
 }
 
-function onTouchStart(tx,ty,id) {
-  if (gameState === 'menu') { if (!menuButtonHit(tx,ty)) menuButtonHit(tx,ty); return; }
+function onPointerDown(tx, ty, id) {
+  if (gameState === 'menu') { menuButtonHit(tx, ty); return; }
   if (gameState === 'goal') { gameState = 'playing'; return; }
   const ab=getActionBtns(), dp=getDpad();
-  if (hitBtn(tx,ty,ab.shoot))  { btnActive.shoot=true;  touched[id]='shoot';  doShoot();       return; }
-  if (hitBtn(tx,ty,ab.pass))   { btnActive.pass=true;   touched[id]='pass';   doPass();        return; }
-  if (hitBtn(tx,ty,ab.tackle)) { btnActive.tackle=true; touched[id]='tackle'; doTackle();      return; }
-  if (hitBtn(tx,ty,ab.switch)) { btnActive.switch=true; touched[id]='switch'; switchPlayer();  return; }
+  if (hitBtn(tx,ty,ab.shoot))  { btnActive.shoot=true;  touched[id]='shoot';  doShoot();      return; }
+  if (hitBtn(tx,ty,ab.pass))   { btnActive.pass=true;   touched[id]='pass';   doPass();       return; }
+  if (hitBtn(tx,ty,ab.tackle)) { btnActive.tackle=true; touched[id]='tackle'; doTackle();     return; }
+  if (hitBtn(tx,ty,ab.switch)) { btnActive.switch=true; touched[id]='switch'; switchPlayer(); return; }
   for (const dir of ['up','down','left','right']) {
     if (hitDpad(tx,ty,dp[dir])) { dpad[dir]=true; touched[id]=dir; return; }
   }
 }
 
-function onTouchEnd(id) {
-  const what=touched[id]; if(!what) return;
+function onPointerUp(id) {
+  const what=touched[id]; if (!what) return;
   if (['shoot','pass','tackle','switch'].includes(what)) btnActive[what]=false;
   else dpad[what]=false;
   delete touched[id];
 }
 
-canvas.addEventListener('touchstart', e=>{
-  e.preventDefault();
-  for(const t of e.changedTouches) onTouchStart(t.clientX,t.clientY,t.identifier);
-},{passive:false});
-
-canvas.addEventListener('touchmove', e=>{
-  e.preventDefault();
-  const dp=getDpad();
-  for(const t of e.changedTouches){
-    const what=touched[t.identifier];
-    if(what==='up'||what==='down'||what==='left'||what==='right'){
-      dpad[what]=false;
-      for(const dir of ['up','down','left','right']){
-        if(hitDpad(t.clientX,t.clientY,dp[dir])){ dpad[dir]=true; touched[t.identifier]=dir; break; }
-      }
+function onPointerMove(tx, ty, id) {
+  const what=touched[id];
+  if (what==='up'||what==='down'||what==='left'||what==='right') {
+    const dp=getDpad();
+    dpad[what]=false;
+    for (const dir of ['up','down','left','right']) {
+      if (hitDpad(tx,ty,dp[dir])) { dpad[dir]=true; touched[id]=dir; break; }
     }
   }
+}
+
+canvas.addEventListener('pointerdown', e=>{
+  e.preventDefault();
+  canvas.setPointerCapture(e.pointerId);
+  onPointerDown(e.clientX, e.clientY, e.pointerId);
 },{passive:false});
 
-canvas.addEventListener('touchend',    e=>{e.preventDefault(); for(const t of e.changedTouches) onTouchEnd(t.identifier);},{passive:false});
-canvas.addEventListener('touchcancel', e=>{                    for(const t of e.changedTouches) onTouchEnd(t.identifier);},{passive:false});
+canvas.addEventListener('pointermove', e=>{
+  e.preventDefault();
+  onPointerMove(e.clientX, e.clientY, e.pointerId);
+},{passive:false});
+
+canvas.addEventListener('pointerup',     e=>{ onPointerUp(e.pointerId); },{passive:false});
+canvas.addEventListener('pointercancel', e=>{ onPointerUp(e.pointerId); },{passive:false});
 
 // Tastatur
 const keys={};
