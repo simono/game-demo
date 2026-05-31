@@ -621,7 +621,7 @@ let blueP3 = { x:0.82, y:0.68, vx:0, vy:0, team:'blue', num:'4'  };
 const redTeam   = [redP, redP2, redP3];
 const blueTeam  = [blueP, blueP2, blueP3];
 const allPlayers = [...redTeam, ...blueTeam];
-const KOELN   = { name: '1. FC Köln',        short: 'KÖL', color: '#e3000f', light: '#ff3a3a', numColor:'#fff', nums:['7','10','11'] };
+const KOELN   = { name: '1. FC Köln',        short: 'KÖL', color: '#e3000f', light: '#ff3a3a', numColor:'#fff', nums:['7','10','11'], names:['Lucas','Jonas','Simon'] };
 const SCHALKE = { name: 'Schalke 04',        short: 'S04', color: '#004c9f', light: '#1a6cc8', numColor:'#fff', nums:['9','3','4']   };
 const BVB     = { name: 'Borussia Dortmund', short: 'BVB', color: '#ffe500', light: '#ffed4a', numColor:'#111', nums:['12','8','6']  };
 
@@ -1131,7 +1131,7 @@ function drawUI() {
       const sTeam = goalScorer.team==='red' ? redTeam : blueTeam;
       const sClub = goalScorer.team===playerTeam ? playerClub : opponentClub;
       const sNum  = sClub.nums[sTeam.indexOf(goalScorer)] ?? goalScorer.num;
-      const sName = (sClub===playerClub && goalScorer.name) ? ' ' + goalScorer.name : '';
+      const sName = sClub.names ? ' ' + sClub.names[sTeam.indexOf(goalScorer)] : '';
       ctx.font=`${Math.min(w*0.048,20)}px system-ui`;
       ctx.fillStyle='rgba(255,255,255,0.85)';
       ctx.fillText(`Torschütze: Nr. ${sNum}${sName}`, w/2, h*0.59);
@@ -1167,17 +1167,17 @@ function loop() {
     const cel  = gameState==='goal' && goalTeam===p.team;
     const px=p.x*w, py=p.y*h-ps*1.5;
     drawPlayer(px, py, ps, club.color, num, cel, club.numColor);
-    if (p.name && club === KOELN) {
+    const playerName = club.names ? club.names[team.indexOf(p)] : null;
+    if (playerName) {
       ctx.save();
-      ctx.fillStyle='rgba(0,0,0,0.55)';
-      const nameW=ctx.measureText(p.name).width+8;
-      roundRect(px-nameW/2, py+ps*2.0, nameW, ps*0.42, ps*0.1);
       ctx.font=`bold ${ps*0.3}px system-ui`;
-      ctx.measureText(p.name); // ensure font set before measure
+      const nameW=ctx.measureText(playerName).width+8;
+      ctx.fillStyle='rgba(0,0,0,0.55)';
+      roundRect(px-nameW/2, py+ps*2.0, nameW, ps*0.42, ps*0.1);
       ctx.fill();
       ctx.fillStyle='#fff';
       ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.fillText(p.name, px, py+ps*2.21);
+      ctx.fillText(playerName, px, py+ps*2.21);
       ctx.restore();
     }
   }
