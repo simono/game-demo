@@ -1167,7 +1167,7 @@ function loop() {
     const cel  = gameState==='goal' && goalTeam===p.team;
     const px=p.x*w, py=p.y*h-ps*1.5;
     drawPlayer(px, py, ps, club.color, num, cel, club.numColor);
-    if (p.name) {
+    if (p.name && club === KOELN) {
       ctx.save();
       ctx.fillStyle='rgba(0,0,0,0.55)';
       const nameW=ctx.measureText(p.name).width+8;
