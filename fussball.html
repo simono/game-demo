@@ -843,13 +843,27 @@ function playGoalSound() {
   sweep.start(t+1.6); sweep.stop(t+2.9);
 }
 
+// Schlusspfiff
+function playWhistle() {
+  const ac = getAC(), t = ac.currentTime;
+  [0, 0.45, 0.9].forEach(d => {
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type='sine'; o.frequency.value = 2200;
+    g.gain.setValueAtTime(0,t+d); g.gain.linearRampToValueAtTime(0.25,t+d+0.02);
+    g.gain.setValueAtTime(0.25,t+d+0.18); g.gain.linearRampToValueAtTime(0,t+d+0.22);
+    o.connect(g); g.connect(ac.destination); o.start(t+d); o.stop(t+d+0.25);
+  });
+}
+
 function updateAudio() {
   if (gameState === lastAudioState) return;
   const prev = lastAudioState;
   lastAudioState = gameState;
-  if (gameState === 'menu')    { stopCrowd(); startMenuMusic(); }
-  if (gameState === 'playing') { stopMenuMusic(); startCrowd(); }
-  if (gameState === 'goal' && prev === 'playing') playGoalSound();
+  if (gameState === 'menu')     { stopCrowd(); startMenuMusic(); }
+  if (gameState === 'playing')  { stopMenuMusic(); startCrowd(); }
+  if (gameState === 'goal' && (prev==='playing')) playGoalSound();
+  if (gameState === 'halftime') { playWhistle(); }
+  if (gameState === 'fulltime') { playWhistle(); stopCrowd(); }
 }
 
 let redP  = { x:0.28, y:0.5,  vx:0, vy:0, team:'red',  num:'7',  name:'Lucas', skin:'#ffcc99', skinDark:'#e8a870', hair:'#3d1500', hairStyle:'short' };
@@ -884,7 +898,14 @@ let playerClub = KOELN;
 let opponentClub = SCHALKE;
 let teamChosen = false;
 let opponentChosen = false;
-let controlledIdx = 0;  // Index im eigenen Team (0/1/2)
+let controlledIdx = 0;
+// ── Zeit ────────────────────────────────────────────────────────────
+const HALF_SECS  = 60;   // 1 Minute pro Halbzeit
+const BREAK_SECS = 30;   // 30 Sekunden Halbzeitpause
+let currentHalf   = 1;
+let halfTimeLeft  = HALF_SECS;
+let breakTimeLeft = BREAK_SECS;
+let lastFrameMs   = 0;
 
 function getCP() {
   const t = playerTeam === 'red' ? redTeam : blueTeam;
@@ -913,6 +934,7 @@ function resetPositions() {
   blueP3.x=0.82;blueP3.y=0.68;blueP3.vx=0;blueP3.vy=0;
   ball.x=0.5; ball.y=0.5; ball.vx=0; ball.vy=0;
   controlledIdx=0;
+  lastFrameMs=0;
   ballOwner=getCP();
 }
 
@@ -1011,6 +1033,8 @@ function menuButtonHit(tx, ty) {
     const SW=w*0.6, SH=h*0.09;
     if (tx>=w/2-SW/2 && tx<=w/2+SW/2 && ty>=h*0.74 && ty<=h*0.74+SH) {
       controlledIdx=0; ballOwner=playerTeam==='red'?redP:blueP;
+      currentHalf=1; halfTimeLeft=HALF_SECS; breakTimeLeft=BREAK_SECS; lastFrameMs=0;
+      score.red=0; score.blue=0;
       gameState='playing'; teamChosen=false; opponentChosen=false; return true;
     }
   }
@@ -1020,7 +1044,8 @@ function menuButtonHit(tx, ty) {
 function onPointerDown(tx, ty, id) {
   getAC(); // AudioContext beim ersten Touch starten
   if (gameState === 'menu') { menuButtonHit(tx, ty); return; }
-  if (gameState === 'goal') { gameState = 'playing'; return; }
+  if (gameState === 'goal')     { gameState='playing'; lastFrameMs=0; return; }
+  if (gameState === 'fulltime') { gameState='menu'; teamChosen=false; opponentChosen=false; stopCrowd(); startMenuMusic(); return; }
   const ab=getActionBtns(), dp=getDpad();
   if (hitBtn(tx,ty,ab.shoot))  { btnActive.shoot=true;  touched[id]='shoot';  doShoot();      return; }
   if (hitBtn(tx,ty,ab.pass))   { btnActive.pass=true;   touched[id]='pass';   doPass();       return; }
@@ -1084,7 +1109,8 @@ window.addEventListener('keydown', e=>{
     }
     return;
   }
-  if (gameState === 'goal') { gameState = 'playing'; return; }
+  if (gameState === 'goal')     { gameState='playing'; lastFrameMs=0; return; }
+  if (gameState === 'fulltime') { gameState='menu'; teamChosen=false; opponentChosen=false; stopCrowd(); startMenuMusic(); return; }
   keys[e.key]=true;
 });
 window.addEventListener('keyup', e=>{ keys[e.key]=false; });
@@ -1158,7 +1184,34 @@ function updateAI() {
 
 // ── Update ──────────────────────────────────────────────────────────
 function update() {
+  const now = Date.now();
+  const delta = (lastFrameMs && gameState==='playing') ? Math.min((now-lastFrameMs)/1000, 0.1) : 0;
+  if (gameState==='playing') lastFrameMs = now;
+
+  // Halbzeitpause-Countdown
+  if (gameState === 'halftime') {
+    if (!lastFrameMs) lastFrameMs = now;
+    breakTimeLeft -= (now - lastFrameMs) / 1000;
+    lastFrameMs = now;
+    if (breakTimeLeft <= 0) {
+      currentHalf = 2; halfTimeLeft = HALF_SECS; breakTimeLeft = BREAK_SECS;
+      gameState = 'playing'; lastFrameMs = 0; resetPositions();
+    }
+    return;
+  }
+
   if (gameState !== 'playing') return;
+
+  // Timer zählt runter
+  halfTimeLeft = Math.max(0, halfTimeLeft - delta);
+  if (halfTimeLeft <= 0) {
+    if (currentHalf === 1) {
+      gameState = 'halftime'; lastFrameMs = 0;
+    } else {
+      gameState = 'fulltime';
+    }
+    return;
+  }
 
   // Spieler bewegen
   const cp = getCP();
@@ -1207,6 +1260,64 @@ function update() {
 function drawUI() {
   const w=W(), h=H();
 
+  // Halbzeit-Bildschirm
+  if (gameState === 'halftime') {
+    ctx.save();
+    ctx.fillStyle='rgba(0,0,0,0.7)'; ctx.fillRect(0,0,w,h);
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillStyle='#feca57';
+    ctx.font=`bold ${Math.min(w*0.12,52)}px system-ui`;
+    ctx.fillText('Halbzeit! ⏱️', w/2, h*0.3);
+    ctx.fillStyle='#fff';
+    ctx.font=`bold ${Math.min(w*0.08,34)}px system-ui`;
+    const lC=playerTeam==='red'?playerClub:opponentClub, rC=playerTeam==='red'?opponentClub:playerClub;
+    const lS=playerTeam==='red'?score.red:score.blue, rS=playerTeam==='red'?score.blue:score.red;
+    ctx.fillStyle=lC.light; ctx.textAlign='right';  ctx.fillText(lS, w/2-18, h*0.45);
+    ctx.fillStyle='#fff';   ctx.textAlign='center'; ctx.fillText(':', w/2, h*0.45);
+    ctx.fillStyle=rC.light; ctx.textAlign='left';   ctx.fillText(rS, w/2+18, h*0.45);
+    ctx.fillStyle='rgba(255,255,255,0.7)';
+    ctx.font=`${Math.min(w*0.05,22)}px system-ui`;
+    ctx.textAlign='center';
+    ctx.fillText(`2. Halbzeit in ${Math.ceil(Math.max(0,breakTimeLeft))}s...`, w/2, h*0.6);
+    ctx.restore();
+    return;
+  }
+
+  // Spielende-Bildschirm
+  if (gameState === 'fulltime') {
+    ctx.save();
+    ctx.fillStyle='rgba(0,0,0,0.75)'; ctx.fillRect(0,0,w,h);
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillStyle='#fff';
+    ctx.font=`bold ${Math.min(w*0.1,44)}px system-ui`;
+    ctx.fillText('Spielende! 🏁', w/2, h*0.22);
+    const lC=playerTeam==='red'?playerClub:opponentClub, rC=playerTeam==='red'?opponentClub:playerClub;
+    const lS=playerTeam==='red'?score.red:score.blue, rS=playerTeam==='red'?score.blue:score.red;
+    // Vereinsnamen
+    ctx.font=`bold ${Math.min(w*0.05,21)}px system-ui`;
+    ctx.fillStyle=lC.light; ctx.textAlign='right';  ctx.fillText(lC.short, w/2-30, h*0.36);
+    ctx.fillStyle=rC.light; ctx.textAlign='left';   ctx.fillText(rC.short, w/2+30, h*0.36);
+    // Ergebnis groß
+    ctx.font=`bold ${Math.min(w*0.15,64)}px system-ui`;
+    ctx.fillStyle=lC.light; ctx.textAlign='right';  ctx.fillText(lS, w/2-18, h*0.48);
+    ctx.fillStyle='#fff';   ctx.textAlign='center'; ctx.fillText(':', w/2,    h*0.48);
+    ctx.fillStyle=rC.light; ctx.textAlign='left';   ctx.fillText(rS, w/2+18, h*0.48);
+    // Gewinner
+    ctx.textAlign='center';
+    ctx.font=`bold ${Math.min(w*0.06,26)}px system-ui`;
+    if (lS > rS)      { ctx.fillStyle=lC.light; ctx.fillText(`${lC.name} gewinnt! 🏆`, w/2, h*0.63); }
+    else if (rS > lS) { ctx.fillStyle=rC.light; ctx.fillText(`${rC.name} gewinnt! 🏆`, w/2, h*0.63); }
+    else              { ctx.fillStyle='#feca57'; ctx.fillText('Unentschieden! 🤝', w/2, h*0.63); }
+    const blink = Math.sin(Date.now()*0.004) > 0;
+    if (blink) {
+      ctx.fillStyle='rgba(255,255,255,0.6)';
+      ctx.font=`${Math.min(w*0.045,19)}px system-ui`;
+      ctx.fillText('Drückt eine Taste zum Hauptmenü', w/2, h*0.77);
+    }
+    ctx.restore();
+    return;
+  }
+
   // Ergebnis oben
   ctx.save();
   ctx.fillStyle='rgba(0,0,0,0.55)';
@@ -1218,6 +1329,11 @@ function drawUI() {
   const rClub = playerTeam==='red' ? opponentClub : playerClub;
   const lScore = playerTeam==='red' ? score.red : score.blue;
   const rScore = playerTeam==='red' ? score.blue : score.red;
+  const secs = Math.ceil(halfTimeLeft);
+  const timerStr = `${Math.floor(secs/60)}:${String(secs%60).padStart(2,'0')}`;
+  ctx.fillStyle='rgba(255,255,255,0.7)'; ctx.textAlign='center';
+  ctx.font=`${Math.min(w*0.03,13)}px system-ui`;
+  ctx.fillText(`${currentHalf}. HZ  ${timerStr}`, w/2, 14);
   ctx.fillStyle=lClub.light;  ctx.textAlign='right'; ctx.fillText(lClub.short, w/2-38, 18);
   ctx.fillStyle=rClub.light;  ctx.textAlign='left';  ctx.fillText(rClub.short, w/2+38, 18);
   ctx.font='bold 26px system-ui';
