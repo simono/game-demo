@@ -883,7 +883,7 @@ const blueTeam  = [blueP, blueP2, blueP3];
 let redKeeper  = { x:0.07, y:0.5, vx:0, vy:0, team:'red',  num:'1', skin:'#ffe4c4', skinDark:'#d4a870', hair:'#555', hairStyle:'short', isKeeper:true };
 let blueKeeper = { x:0.93, y:0.5, vx:0, vy:0, team:'blue', num:'1', skin:'#c07840', skinDark:'#905020', hair:'#222', hairStyle:'short', isKeeper:true };
 const allPlayers = [...redTeam, ...blueTeam, redKeeper, blueKeeper];
-const KOELN   = { name: '1. FC Köln',              short: 'KÖL', color: '#e3000f', light: '#ff3a3a', numColor:'#fff', nums:['7','10','11'],  names:['Lucas','Jonas','Simon'], style:{shortsColor:'#ffffff', shortSleeves:true, socksColor:'#ffffff', socksStripe:'#e3000f'} };
+const KOELN   = { name: '1. FC Köln',              short: 'KÖL', color: '#e3000f', light: '#ff3a3a', numColor:'#fff', nums:['7','10','11'],  names:['Lucas','Jonas','Simon'], keeperName:'Henrik', style:{shortsColor:'#ffffff', shortSleeves:true, socksColor:'#ffffff', socksStripe:'#e3000f'} };
 const SCHALKE = { name: 'Schalke 04',              short: 'S04', color: '#004c9f', light: '#1a6cc8', numColor:'#fff', nums:['9','3','4'],     style:{shortsColor:'#ffffff', shortSleeves:true, socksColor:'#004c9f', socksStripe:'#ffffff'} };
 const BVB     = { name: 'Borussia Dortmund',       short: 'BVB', color: '#ffe500', light: '#ffed4a', numColor:'#111', nums:['12','8','6'],    style:{shortsColor:'#111111', shortSleeves:true, socksColor:'#ffe500', socksStripe:'#111111'} };
 const BMG     = { name: 'Borussia M\'gladbach',    short: 'BMG', color: '#111111', light: '#555555', numColor:'#fff', nums:['5','14','23'],
@@ -1608,9 +1608,20 @@ function loop() {
     const cel = gameState==='goal' && goalTeam===p.team;
     const px=p.x*w, py=p.y*h-ps*1.5;
     if (p.isKeeper) {
-      // Torwart: grünes Trikot, eigenes Aussehen
       const keeperStyle = {shortsColor:'#1a6b1a', shortSleeves:false, socksColor:'#1a6b1a', socksStripe:'#fff'};
       drawPlayer(px, py, ps, '#27ae60', p.num, cel, '#fff', keeperStyle, p);
+      const kClub = p.team===playerTeam ? playerClub : opponentClub;
+      const kName = kClub.keeperName;
+      if (kName) {
+        ctx.save();
+        ctx.font=`bold ${ps*0.3}px system-ui`;
+        const nw=ctx.measureText(kName).width+8;
+        ctx.fillStyle='rgba(0,0,0,0.55)';
+        roundRect(px-nw/2, py+ps*2.0, nw, ps*0.42, ps*0.1); ctx.fill();
+        ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText(kName, px, py+ps*2.21);
+        ctx.restore();
+      }
     } else {
       const club = p.team===playerTeam ? playerClub : opponentClub;
       const team = p.team==='red' ? redTeam : blueTeam;
