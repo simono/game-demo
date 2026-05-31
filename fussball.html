@@ -902,10 +902,11 @@ let controlledIdx = 0;
 // ── Zeit ────────────────────────────────────────────────────────────
 const HALF_SECS  = 60;   // 1 Minute pro Halbzeit
 const BREAK_SECS = 30;   // 30 Sekunden Halbzeitpause
-let currentHalf   = 1;
-let halfTimeLeft  = HALF_SECS;
-let breakTimeLeft = BREAK_SECS;
-let lastFrameMs   = 0;
+let currentHalf    = 1;
+let halfTimeLeft   = HALF_SECS;
+let breakTimeLeft  = BREAK_SECS;
+let lastFrameMs    = 0;
+let fulltimeShowMs = 0; // Zeitstempel wenn Spielende-Screen erscheint
 
 function getCP() {
   const t = playerTeam === 'red' ? redTeam : blueTeam;
@@ -1045,7 +1046,10 @@ function onPointerDown(tx, ty, id) {
   getAC(); // AudioContext beim ersten Touch starten
   if (gameState === 'menu') { menuButtonHit(tx, ty); return; }
   if (gameState === 'goal')     { gameState='playing'; lastFrameMs=0; return; }
-  if (gameState === 'fulltime') { gameState='menu'; teamChosen=false; opponentChosen=false; stopCrowd(); startMenuMusic(); return; }
+  if (gameState === 'fulltime' && Date.now()-fulltimeShowMs > 4000) {
+    gameState='menu'; teamChosen=false; opponentChosen=false; stopCrowd(); startMenuMusic(); return;
+  }
+  if (gameState === 'fulltime') return; // noch nicht weitertippen
   const ab=getActionBtns(), dp=getDpad();
   if (hitBtn(tx,ty,ab.shoot))  { btnActive.shoot=true;  touched[id]='shoot';  doShoot();      return; }
   if (hitBtn(tx,ty,ab.pass))   { btnActive.pass=true;   touched[id]='pass';   doPass();       return; }
@@ -1110,7 +1114,10 @@ window.addEventListener('keydown', e=>{
     return;
   }
   if (gameState === 'goal')     { gameState='playing'; lastFrameMs=0; return; }
-  if (gameState === 'fulltime') { gameState='menu'; teamChosen=false; opponentChosen=false; stopCrowd(); startMenuMusic(); return; }
+  if (gameState === 'fulltime' && Date.now()-fulltimeShowMs > 4000) {
+    gameState='menu'; teamChosen=false; opponentChosen=false; stopCrowd(); startMenuMusic(); return;
+  }
+  if (gameState === 'fulltime') return;
   keys[e.key]=true;
 });
 window.addEventListener('keyup', e=>{ keys[e.key]=false; });
@@ -1208,7 +1215,7 @@ function update() {
     if (currentHalf === 1) {
       gameState = 'halftime'; lastFrameMs = 0;
     } else {
-      gameState = 'fulltime';
+      gameState = 'fulltime'; fulltimeShowMs = Date.now();
     }
     return;
   }
@@ -1308,11 +1315,20 @@ function drawUI() {
     if (lS > rS)      { ctx.fillStyle=lC.light; ctx.fillText(`${lC.name} gewinnt! 🏆`, w/2, h*0.63); }
     else if (rS > lS) { ctx.fillStyle=rC.light; ctx.fillText(`${rC.name} gewinnt! 🏆`, w/2, h*0.63); }
     else              { ctx.fillStyle='#feca57'; ctx.fillText('Unentschieden! 🤝', w/2, h*0.63); }
-    const blink = Math.sin(Date.now()*0.004) > 0;
-    if (blink) {
-      ctx.fillStyle='rgba(255,255,255,0.6)';
-      ctx.font=`${Math.min(w*0.045,19)}px system-ui`;
-      ctx.fillText('Drückt eine Taste zum Hauptmenü', w/2, h*0.77);
+    const elapsed = Date.now() - fulltimeShowMs;
+    if (elapsed > 4000) {
+      const blink = Math.sin(Date.now()*0.005) > 0;
+      if (blink) {
+        ctx.fillStyle='rgba(255,255,255,0.7)';
+        ctx.font=`${Math.min(w*0.045,19)}px system-ui`;
+        ctx.fillText('Drückt eine Taste zum Hauptmenü', w/2, h*0.77);
+      }
+    } else {
+      // Countdown bis man weiterkann
+      const remaining = Math.ceil((4000 - elapsed) / 1000);
+      ctx.fillStyle='rgba(255,255,255,0.4)';
+      ctx.font=`${Math.min(w*0.04,17)}px system-ui`;
+      ctx.fillText(`Weiter in ${remaining}...`, w/2, h*0.77);
     }
     ctx.restore();
     return;
