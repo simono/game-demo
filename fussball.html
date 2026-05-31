@@ -576,7 +576,7 @@ const PICKUP_DIST = 0.055;
 const FL = 0.04, FR = 0.96, FT = 0.06, FB = 0.94; // Spielfeld Grenzen
 const GOAL_T = 0.325, GOAL_B = 0.675;              // Tor oben/unten (normiert)
 
-let redP  = { x:0.28, y:0.5,  vx:0, vy:0, team:'red',  num:'7'  };
+let redP  = { x:0.28, y:0.5,  vx:0, vy:0, team:'red',  num:'7',  name:'Lucas' };
 let redP2 = { x:0.18, y:0.32, vx:0, vy:0, team:'red',  num:'10' };
 let redP3 = { x:0.18, y:0.68, vx:0, vy:0, team:'red',  num:'11' };
 let blueP  = { x:0.72, y:0.5,  vx:0, vy:0, team:'blue', num:'9'  };
@@ -1061,7 +1061,21 @@ function loop() {
   for (const p of allPlayers) {
     const club = p.team==='red' ? KOELN : SCHALKE;
     const cel = gameState==='goal' && goalTeam===p.team;
-    drawPlayer(p.x*w, p.y*h-ps*1.5, ps, club.color, p.num, cel);
+    const px=p.x*w, py=p.y*h-ps*1.5;
+    drawPlayer(px, py, ps, club.color, p.num, cel);
+    if (p.name) {
+      ctx.save();
+      ctx.fillStyle='rgba(0,0,0,0.55)';
+      const nameW=ctx.measureText(p.name).width+8;
+      roundRect(px-nameW/2, py+ps*2.0, nameW, ps*0.42, ps*0.1);
+      ctx.font=`bold ${ps*0.3}px system-ui`;
+      ctx.measureText(p.name); // ensure font set before measure
+      ctx.fill();
+      ctx.fillStyle='#fff';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(p.name, px, py+ps*2.21);
+      ctx.restore();
+    }
   }
 
   const ballR=Math.min(w,h)*0.022;
