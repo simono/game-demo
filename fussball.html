@@ -621,9 +621,9 @@ let blueP3 = { x:0.82, y:0.68, vx:0, vy:0, team:'blue', num:'4'  };
 const redTeam   = [redP, redP2, redP3];
 const blueTeam  = [blueP, blueP2, blueP3];
 const allPlayers = [...redTeam, ...blueTeam];
-const KOELN   = { name: '1. FC Köln',        short: 'KÖL', color: '#e3000f', light: '#ff3a3a', numColor:'#fff' };
-const SCHALKE = { name: 'Schalke 04',        short: 'S04', color: '#004c9f', light: '#1a6cc8', numColor:'#fff' };
-const BVB     = { name: 'Borussia Dortmund', short: 'BVB', color: '#ffe500', light: '#ffed4a', numColor:'#111' };
+const KOELN   = { name: '1. FC Köln',        short: 'KÖL', color: '#e3000f', light: '#ff3a3a', numColor:'#fff', nums:['7','10','11'] };
+const SCHALKE = { name: 'Schalke 04',        short: 'S04', color: '#004c9f', light: '#1a6cc8', numColor:'#fff', nums:['9','3','4']   };
+const BVB     = { name: 'Borussia Dortmund', short: 'BVB', color: '#ffe500', light: '#ffed4a', numColor:'#111', nums:['12','8','6']  };
 
 let ball  = { x: 0.5, y: 0.5, vx: 0, vy: 0 };
 let ballOwner = redP;
@@ -1128,10 +1128,13 @@ function drawUI() {
     ctx.font=`bold ${Math.min(w*0.06,26)}px system-ui`;
     ctx.fillText(`Tor für ${team.name}!`, w/2, h*0.5);
     if (goalScorer) {
-      const scorerName = goalScorer.name ? goalScorer.name : `Nr. ${goalScorer.num}`;
+      const sTeam = goalScorer.team==='red' ? redTeam : blueTeam;
+      const sClub = goalScorer.team===playerTeam ? playerClub : opponentClub;
+      const sNum  = sClub.nums[sTeam.indexOf(goalScorer)] ?? goalScorer.num;
+      const sName = (sClub===playerClub && goalScorer.name) ? ' ' + goalScorer.name : '';
       ctx.font=`${Math.min(w*0.048,20)}px system-ui`;
       ctx.fillStyle='rgba(255,255,255,0.85)';
-      ctx.fillText(`Torschütze: Nr. ${goalScorer.num}${goalScorer.name ? ' ' + goalScorer.name : ''}`, w/2, h*0.59);
+      ctx.fillText(`Torschütze: Nr. ${sNum}${sName}`, w/2, h*0.59);
     }
     const blink = Math.sin(Date.now()*0.004) > 0;
     if (blink) {
@@ -1159,9 +1162,11 @@ function loop() {
   const ps=Math.min(w,h)*0.07;
   for (const p of allPlayers) {
     const club = p.team===playerTeam ? playerClub : opponentClub;
-    const cel = gameState==='goal' && goalTeam===p.team;
+    const team = p.team==='red' ? redTeam : blueTeam;
+    const num  = club.nums[team.indexOf(p)] ?? p.num;
+    const cel  = gameState==='goal' && goalTeam===p.team;
     const px=p.x*w, py=p.y*h-ps*1.5;
-    drawPlayer(px, py, ps, club.color, p.num, cel, club.numColor);
+    drawPlayer(px, py, ps, club.color, num, cel, club.numColor);
     if (p.name) {
       ctx.save();
       ctx.fillStyle='rgba(0,0,0,0.55)';
