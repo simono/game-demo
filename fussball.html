@@ -913,8 +913,10 @@ const BREAK_SECS = 30;   // 30 Sekunden Halbzeitpause
 let currentHalf    = 1;
 let halfTimeLeft   = HALF_SECS;
 let breakTimeLeft  = BREAK_SECS;
+let extraTimeLeft  = 30;
+let inExtra        = false;
 let lastFrameMs    = 0;
-let fulltimeShowMs = 0; // Zeitstempel wenn Spielende-Screen erscheint
+let fulltimeShowMs = 0;
 
 function getCP() {
   const t = playerTeam === 'red' ? redTeam : blueTeam;
@@ -1057,7 +1059,7 @@ function menuButtonHit(tx, ty) {
     if (tx>=w/2-SW/2 && tx<=w/2+SW/2 && ty>=h*0.74 && ty<=h*0.74+SH) {
       controlledIdx=0; ballOwner=playerTeam==='red'?redP:blueP;
       currentHalf=1; halfTimeLeft=HALF_SECS; breakTimeLeft=BREAK_SECS; lastFrameMs=0;
-      score.red=0; score.blue=0;
+      inExtra=false; score.red=0; score.blue=0;
       gameState='playing'; teamChosen=false; opponentChosen=false; return true;
     }
   }
@@ -1275,6 +1277,12 @@ function update() {
   if (halfTimeLeft <= 0) {
     if (currentHalf === 1) {
       gameState = 'halftime'; lastFrameMs = 0;
+    } else if (inExtra) {
+      // Verlängerung vorbei
+      inExtra = false; gameState = 'fulltime'; fulltimeShowMs = Date.now();
+    } else if (score.red === score.blue) {
+      // Unentschieden → 30 Sek Verlängerung!
+      inExtra = true; halfTimeLeft = 30; lastFrameMs = 0; resetPositions();
     } else {
       gameState = 'fulltime'; fulltimeShowMs = Date.now();
     }
@@ -1414,9 +1422,15 @@ function drawUI() {
   const rScore = playerTeam==='red' ? score.blue : score.red;
   const secs = Math.ceil(halfTimeLeft);
   const timerStr = `${Math.floor(secs/60)}:${String(secs%60).padStart(2,'0')}`;
-  ctx.fillStyle='rgba(255,255,255,0.7)'; ctx.textAlign='center';
+  ctx.textAlign='center';
   ctx.font=`${Math.min(w*0.03,13)}px system-ui`;
-  ctx.fillText(`${currentHalf}. HZ  ${timerStr}`, w/2, 14);
+  if (inExtra) {
+    ctx.fillStyle='#feca57';
+    ctx.fillText(`Verlängerung  ${timerStr}`, w/2, 14);
+  } else {
+    ctx.fillStyle='rgba(255,255,255,0.7)';
+    ctx.fillText(`${currentHalf}. HZ  ${timerStr}`, w/2, 14);
+  }
   ctx.fillStyle=lClub.light;  ctx.textAlign='right'; ctx.fillText(lClub.short, w/2-38, 18);
   ctx.fillStyle=rClub.light;  ctx.textAlign='left';  ctx.fillText(rClub.short, w/2+38, 18);
   ctx.font='bold 26px system-ui';
