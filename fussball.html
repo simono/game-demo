@@ -1213,27 +1213,36 @@ function updateAI() {
 
 // ── Torwart-KI ──────────────────────────────────────────────────────
 function updateKeepers() {
-  const KSPEED = 0.007;
+  const KSPEED = 0.0032; // langsamer → leichter zu überwinden
   [
-    { k: redKeeper,  homeX: 0.07,       isLeft: true  },
-    { k: blueKeeper, homeX: 0.93,       isLeft: false },
+    { k: redKeeper,  homeX: 0.07, isLeft: true  },
+    { k: blueKeeper, homeX: 0.93, isLeft: false },
   ].forEach(({ k, homeX, isLeft }) => {
-    k.x = homeX; // bleibt immer an seiner x-Position
+    k.x = homeX;
 
     if (ballOwner === k) {
-      // Ball rausschlagen
       const dir = isLeft ? 1 : -1;
-      ball.vx = dir * KICK_SPD * 0.9;
-      ball.vy = (Math.random()-0.5) * KICK_SPD * 0.6;
+      ball.vx = dir * KICK_SPD * 0.85;
+      ball.vy = (Math.random()-0.5) * KICK_SPD * 0.5;
       ballOwner = null;
       return;
     }
 
-    // Ball kommt auf sein Tor zu → schneller reagieren
-    const ballComing = isLeft ? (ball.vx < -0.003) : (ball.vx > 0.003);
-    const near = Math.abs(ball.x - homeX) < 0.35;
-    const targetY = (ballComing || near) ? ball.y : 0.5;
-    const clamped = Math.max(GOAL_T+0.03, Math.min(GOAL_B-0.03, targetY));
+    // Reagiert erst wenn Ball nah ist (nicht perfekt)
+    const ballComing = isLeft ? (ball.vx < -0.005) : (ball.vx > 0.005);
+    const near = Math.abs(ball.x - homeX) < 0.22; // erst bei Nähe reagieren
+    if (!ballComing && !near) {
+      // Langsam zurück zur Mitte
+      const mid = 0.5;
+      if      (k.y < mid - 0.005) k.y += KSPEED * 0.5;
+      else if (k.y > mid + 0.005) k.y -= KSPEED * 0.5;
+      return;
+    }
+
+    // Ziel: Ball-y + kleiner Fehler (nicht perfekt)
+    const error = (Math.random()-0.5) * 0.04;
+    const targetY = ball.y + error;
+    const clamped = Math.max(GOAL_T+0.04, Math.min(GOAL_B-0.04, targetY));
 
     if      (k.y < clamped - 0.005) k.y = Math.min(k.y + KSPEED, clamped);
     else if (k.y > clamped + 0.005) k.y = Math.max(k.y - KSPEED, clamped);
