@@ -366,8 +366,8 @@ function drawField() {
   ctx.arc(w / 2, h / 2, 5, 0, Math.PI * 2);
   ctx.fill();
 
-  const goalH = h * 0.35;
-  const goalY = (h - goalH) / 2;
+  const goalH = h * (GOAL_B - GOAL_T);
+  const goalY = h * GOAL_T;
 
   // Strafraum links
   const penW = w * 0.18;
@@ -715,7 +715,7 @@ const FPADX = 0.06, FPADY = 0.07;
 // Spieler-Grenzen — deutlich innen (Arme ~size*0.7 breit, size=0.07*min)
 const FL = 0.12, FR = 0.88, FT = 0.10, FB = 0.90;
 // Tor-Bereich (Ball darf rein)
-const GOAL_T = 0.325, GOAL_B = 0.675;
+const GOAL_T = 0.40, GOAL_B = 0.60;
 // GOAL_T / GOAL_B already defined above
 
 // ── Audio ──────────────────────────────────────────────────────────
@@ -1549,7 +1549,7 @@ function loop() {
   ctx.clearRect(0,0,w,h);
   drawField();
 
-  const goalH=h*0.35, goalY=(h-goalH)/2, padX=w*FPADX;
+  const goalH=h*(GOAL_B-GOAL_T), goalY=h*GOAL_T, padX=w*FPADX;
   drawGoal(0,       goalY, padX, goalH, true);
   drawGoal(w-padX,  goalY, padX, goalH, false);
 
