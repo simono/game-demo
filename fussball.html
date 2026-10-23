@@ -946,7 +946,7 @@ const MELODY = [
 ];
 
 function playMenuNote() {
-  if (gameState !== 'menu') { menuTimer=null; return; }
+  if (gameState !== 'menu' && gameState !== 'title') { menuTimer=null; return; }
   const ac = getAC();
   const [freq, dur] = MELODY[melodyIdx % MELODY.length];
   melodyIdx++;
@@ -1038,7 +1038,7 @@ function updateAudio() {
   if (gameState === lastAudioState) return;
   const prev = lastAudioState;
   lastAudioState = gameState;
-  if (gameState === 'menu')     { stopCrowd(); startMenuMusic(); }
+  if (gameState === 'menu' || gameState === 'title') { stopCrowd(); startMenuMusic(); }
   if (gameState === 'playing')  { stopMenuMusic(); startCrowd(); }
   if (gameState === 'goal' && (prev==='playing')) playGoalSound();
   if (gameState === 'halftime') { playWhistle(); }
@@ -1074,7 +1074,9 @@ let ballOwner = redP;
 let score = { red: 0, blue: 0 };
 let goalTeam = '';
 let goalScorer = null; // Spieler-Objekt das das Tor geschossen hat
-let gameState = 'menu';
+let gameState = 'title';
+let titleSel = 0;          // markierter Knopf im Hauptmenü
+let showControls = false;  // Steuerung-Seite im Hauptmenü
 let playerTeam = 'red';
 let playerClub = KOELN;
 let opponentClub = SCHALKE;
@@ -1082,10 +1084,11 @@ let teamChosen = false;
 let opponentChosen = false;
 let controlledIdx = 0;
 // ── Zeit ────────────────────────────────────────────────────────────
-const HALF_SECS  = 60;   // 1 Minute pro Halbzeit
+const HALF_OPTIONS = [60, 120, 180]; // im Hauptmenü wählbar
+let halfSecs = HALF_OPTIONS[0];
 const BREAK_SECS = 30;   // 30 Sekunden Halbzeitpause
 let currentHalf    = 1;
-let halfTimeLeft   = HALF_SECS;
+let halfTimeLeft   = halfSecs;
 let breakTimeLeft  = BREAK_SECS;
 let extraTimeLeft  = 30;
 let inExtra        = false;
@@ -1202,6 +1205,38 @@ function getActionBtns() {
 function hitDpad(tx,ty,b) { return Math.abs(tx-b.x)<b.s*0.6 && Math.abs(ty-b.y)<b.s*0.6; }
 function hitBtn(tx,ty,b)  { const dx=tx-b.x,dy=ty-b.y; return dx*dx+dy*dy<b.r*b.r*1.8; }
 
+function startMatch() {
+  controlledIdx=0; ballOwner=playerTeam==='red'?redP:blueP;
+  currentHalf=1; halfTimeLeft=halfSecs; breakTimeLeft=BREAK_SECS; lastFrameMs=0;
+  inExtra=false; score.red=0; score.blue=0;
+  gameState='playing'; teamChosen=false; opponentChosen=false;
+}
+
+// Knöpfe im Hauptmenü: gleiche Rechtecke fürs Zeichnen und Antippen
+function getTitleButtons() {
+  const w=W(), h=H();
+  const bw=Math.min(w*0.42, 320), bh=Math.min(h*0.1, 56), x=w/2-bw/2;
+  if (showControls) return [{ id:'back', label:'← Zurück', x, y:h*0.84, w:bw, h:bh }];
+  return [
+    { id:'play',     label:'▶  Spielen',                              x, y:h*0.52, w:bw, h:bh },
+    { id:'duration', label:`⏱  Halbzeit: ${halfSecs/60} Min`,         x, y:h*0.52+bh*1.3, w:bw, h:bh },
+    { id:'controls', label:'🎮  Steuerung',                           x, y:h*0.52+bh*2.6, w:bw, h:bh },
+  ];
+}
+
+function titleAction(id) {
+  if (id==='play')     { gameState='menu'; teamChosen=false; opponentChosen=false; }
+  if (id==='duration') { halfSecs=HALF_OPTIONS[(HALF_OPTIONS.indexOf(halfSecs)+1)%HALF_OPTIONS.length]; }
+  if (id==='controls') { showControls=true; titleSel=0; }
+  if (id==='back')     { showControls=false; titleSel=2; }
+}
+
+function titleButtonHit(tx, ty) {
+  for (const b of getTitleButtons()) {
+    if (tx>=b.x && tx<=b.x+b.w && ty>=b.y && ty<=b.y+b.h) { titleAction(b.id); return; }
+  }
+}
+
 function menuButtonHit(tx, ty) {
   const w=W(), h=H();
   const ALL_CLUBS  = [KOELN, BVB, SCHALKE, BMG];
@@ -1231,10 +1266,7 @@ function menuButtonHit(tx, ty) {
     // Schritt 3: Starten
     const SW=w*0.6, SH=h*0.09;
     if (tx>=w/2-SW/2 && tx<=w/2+SW/2 && ty>=h*0.74 && ty<=h*0.74+SH) {
-      controlledIdx=0; ballOwner=playerTeam==='red'?redP:blueP;
-      currentHalf=1; halfTimeLeft=HALF_SECS; breakTimeLeft=BREAK_SECS; lastFrameMs=0;
-      inExtra=false; score.red=0; score.blue=0;
-      gameState='playing'; teamChosen=false; opponentChosen=false; return true;
+      startMatch(); return true;
     }
   }
   return false;
@@ -1242,10 +1274,11 @@ function menuButtonHit(tx, ty) {
 
 function onPointerDown(tx, ty, id) {
   getAC(); // AudioContext beim ersten Touch starten
+  if (gameState === 'title') { titleButtonHit(tx, ty); return; }
   if (gameState === 'menu') { menuButtonHit(tx, ty); return; }
   if (gameState === 'goal')     { gameState='playing'; lastFrameMs=0; return; }
   if (gameState === 'fulltime' && Date.now()-fulltimeShowMs > 4000) {
-    gameState='menu'; teamChosen=false; opponentChosen=false; stopCrowd(); startMenuMusic(); return;
+    gameState='title'; showControls=false; titleSel=0; stopCrowd(); startMenuMusic(); return;
   }
   if (gameState === 'fulltime') return; // noch nicht weitertippen
   const ab=getActionBtns(), dp=getDpad();
@@ -1294,7 +1327,17 @@ canvas.addEventListener('pointercancel', e=>{ onPointerUp(e.pointerId); },{passi
 const keys={};
 window.addEventListener('keydown', e=>{
   if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
+  if (gameState === 'title') {
+    getAC();
+    const btns=getTitleButtons();
+    if (e.key==='ArrowUp')   titleSel=(titleSel+btns.length-1)%btns.length;
+    if (e.key==='ArrowDown') titleSel=(titleSel+1)%btns.length;
+    if (e.key==='Enter'||e.key===' ') titleAction(btns[Math.min(titleSel,btns.length-1)].id);
+    if (e.key==='Escape' && showControls) titleAction('back');
+    return;
+  }
   if (gameState === 'menu') {
+    if (e.key==='Escape') { gameState='title'; teamChosen=false; opponentChosen=false; return; }
     if (!teamChosen) {
       if (e.key==='1') { playerTeam='red';  playerClub=KOELN;   teamChosen=true; }
       if (e.key==='2') { playerTeam='red';  playerClub=BVB;     teamChosen=true; }
@@ -1306,14 +1349,13 @@ window.addEventListener('keydown', e=>{
       if (e.key==='2') { opponentClub=others[1]; opponentChosen=true; }
       if (e.key==='3') { opponentClub=others[2]; opponentChosen=true; }
     } else if (e.key==='Enter'||e.key===' ') {
-      controlledIdx=0; ballOwner=playerTeam==='red'?redP:blueP;
-      gameState='playing'; teamChosen=false; opponentChosen=false;
+      startMatch();
     }
     return;
   }
   if (gameState === 'goal')     { gameState='playing'; lastFrameMs=0; return; }
   if (gameState === 'fulltime' && Date.now()-fulltimeShowMs > 4000) {
-    gameState='menu'; teamChosen=false; opponentChosen=false; stopCrowd(); startMenuMusic(); return;
+    gameState='title'; showControls=false; titleSel=0; stopCrowd(); startMenuMusic(); return;
   }
   if (gameState === 'fulltime') return;
   keys[e.key]=true;
@@ -1438,7 +1480,7 @@ function update() {
     breakTimeLeft -= (now - lastFrameMs) / 1000;
     lastFrameMs = now;
     if (breakTimeLeft <= 0) {
-      currentHalf = 2; halfTimeLeft = HALF_SECS; breakTimeLeft = BREAK_SECS;
+      currentHalf = 2; halfTimeLeft = halfSecs; breakTimeLeft = BREAK_SECS;
       gameState = 'playing'; lastFrameMs = 0; resetPositions();
     }
     return;
@@ -1513,8 +1555,99 @@ function update() {
 }
 
 // ── UI ──────────────────────────────────────────────────────────────
+function drawTitle() {
+  const w=W(), h=H(), t=Date.now()/1000;
+  ctx.save();
+  const bg=ctx.createLinearGradient(0,0,0,h);
+  bg.addColorStop(0,'rgba(5,20,10,0.85)');
+  bg.addColorStop(1,'rgba(0,0,0,0.6)');
+  ctx.fillStyle=bg; ctx.fillRect(0,0,w,h);
+
+  // Flutlicht-Kegel von oben
+  for (const lx of [w*0.15, w*0.85]) {
+    const g=ctx.createRadialGradient(lx,0,0,lx,0,h*0.9);
+    g.addColorStop(0,`rgba(255,255,220,${0.18+Math.sin(t*2+lx)*0.03})`);
+    g.addColorStop(1,'rgba(255,255,220,0)');
+    ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
+  }
+
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+
+  if (showControls) {
+    ctx.fillStyle='#fff';
+    ctx.font=`bold ${Math.min(w*0.07,40)}px system-ui`;
+    ctx.fillText('Steuerung', w/2, h*0.12);
+    const rows=[
+      ['Laufen',           'Pfeiltasten oder W A S D', 'Steuerkreuz links'],
+      ['Schießen',         'Leertaste oder Enter',     'Knopf „Schuss“'],
+      ['Passen',           'F oder P',                 'Knopf „Passen“'],
+      ['Zweikampf',        'T oder G',                 'Knopf „Zweikampf“'],
+      ['Spieler wechseln', 'X oder Tab',               'Knopf „Wechsel“'],
+    ];
+    const fs=Math.min(w*0.032,18), rowH=Math.min(h*0.1,52), top=h*0.27;
+    ctx.font=`bold ${fs}px system-ui`;
+    ctx.fillStyle='#feca57';
+    ctx.fillText('Tastatur', w*0.5, top-rowH*0.8);
+    ctx.fillText('Handy',    w*0.8, top-rowH*0.8);
+    rows.forEach(([what,key,touch],i)=>{
+      const y=top+i*rowH;
+      ctx.fillStyle=i%2?'rgba(255,255,255,0.04)':'rgba(255,255,255,0.09)';
+      roundRect(w*0.06, y-rowH*0.45, w*0.88, rowH*0.9, 8); ctx.fill();
+      ctx.font=`bold ${fs}px system-ui`;
+      ctx.fillStyle='#fff';             ctx.textAlign='left';   ctx.fillText(what,  w*0.09, y);
+      ctx.font=`${fs}px system-ui`;
+      ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.textAlign='center'; ctx.fillText(key, w*0.5, y);
+      ctx.fillText(touch, w*0.8, y);
+    });
+    ctx.textAlign='center';
+  } else {
+    // Wappen im Halbkreis über dem Titel
+    const CS=Math.min(w,h)*0.085;
+    const crests=[drawKoelnCrest, drawBVBCrest, drawSchalkeCrest, drawBMGCrest];
+    crests.forEach((fn,i)=>{
+      const cx=w/2+(i-1.5)*CS*1.5;
+      fn(cx, h*0.1+Math.sin(t*2+i)*4, CS);
+    });
+
+    const ts=Math.min(w*0.13,84);
+    ctx.font=`900 ${ts}px system-ui`;
+    ctx.shadowColor='#27ae60'; ctx.shadowBlur=25+Math.sin(t*3)*10;
+    const tg=ctx.createLinearGradient(0,h*0.27-ts/2,0,h*0.27+ts/2);
+    tg.addColorStop(0,'#ffffff'); tg.addColorStop(1,'#c8f5c8');
+    ctx.fillStyle=tg;
+    ctx.fillText('FUSSBALL', w/2, h*0.27);
+    ctx.shadowBlur=0;
+    ctx.font=`bold ${Math.min(w*0.035,20)}px system-ui`;
+    ctx.fillStyle='#feca57';
+    ctx.fillText('B U N D E S L I G A - D U E L L', w/2, h*0.27+ts*0.7);
+
+    // Ball hüpft neben dem Titel
+    const bx=w/2+Math.min(w*0.36,330), by=h*0.27-Math.abs(Math.sin(t*3))*h*0.08;
+    drawBall(bx, by, Math.min(w,h)*0.035);
+  }
+
+  getTitleButtons().forEach((b,i)=>{
+    const sel=i===titleSel;
+    const primary=b.id==='play';
+    ctx.fillStyle=primary?'#27ae60':(sel?'rgba(255,255,255,0.22)':'rgba(255,255,255,0.1)');
+    if (primary) { ctx.shadowColor='#27ae60'; ctx.shadowBlur=sel?25:12; }
+    roundRect(b.x, b.y, b.w, b.h, b.h*0.3); ctx.fill();
+    ctx.shadowBlur=0;
+    ctx.strokeStyle=sel?'#fff':'rgba(255,255,255,0.35)'; ctx.lineWidth=sel?3:1.5; ctx.stroke();
+    ctx.fillStyle='#fff';
+    ctx.font=`bold ${Math.min(b.h*0.42,24)}px system-ui`;
+    ctx.fillText(b.label, b.x+b.w/2, b.y+b.h/2);
+  });
+
+  ctx.font=`${Math.min(w*0.025,13)}px system-ui`;
+  ctx.fillStyle='rgba(255,255,255,0.4)';
+  ctx.fillText(showControls?'Esc = zurück':'↑ ↓ auswählen · Enter bestätigen · oder antippen', w/2, h*0.965);
+  ctx.restore();
+}
+
 function drawUI() {
   const w=W(), h=H();
+  if (gameState === 'title') { drawTitle(); return; }
 
   // Halbzeit-Bildschirm
   if (gameState === 'halftime') {
