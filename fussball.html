@@ -331,98 +331,191 @@ function roundRect(x, y, w, h, r) {
   ctx.closePath();
 }
 
+// Rasen wird einmal in ein eigenes Canvas gemalt und dann nur noch kopiert
+let fieldCache = null, fieldCacheKey = '';
+
 function drawField() {
-  const w = W(), h = H();
-
-  // Grüner Rasen mit Streifen (von oben nach unten)
-  const stripeH = h / 8;
-  for (let i = 0; i < 8; i++) {
-    ctx.fillStyle = i % 2 === 0 ? '#2e8b2e' : '#34a034';
-    ctx.fillRect(0, i * stripeH, w, stripeH);
+  const w = W(), h = H(), dpr = window.devicePixelRatio || 1;
+  const key = `${w}x${h}@${dpr}`;
+  if (key !== fieldCacheKey) {
+    fieldCache = document.createElement('canvas');
+    fieldCache.width = w * dpr;
+    fieldCache.height = h * dpr;
+    const f = fieldCache.getContext('2d');
+    f.setTransform(dpr, 0, 0, dpr, 0, 0);
+    paintField(f, w, h);
+    fieldCacheKey = key;
   }
+  ctx.drawImage(fieldCache, 0, 0, w, h);
+}
 
-  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-  ctx.lineWidth = 3;
-
-  // Außenlinien
+function paintField(f, w, h) {
   const padX = w * FPADX;
   const padY = h * FPADY;
-  ctx.strokeRect(padX, padY, w - padX * 2, h - padY * 2);
 
-  // Mittellinie (senkrecht)
-  ctx.beginPath();
-  ctx.moveTo(w / 2, padY);
-  ctx.lineTo(w / 2, h - padY);
-  ctx.stroke();
+  // Gemähte Streifen quer zum Spielfeld, wie im Stadion
+  const stripes = 16;
+  const stripeW = w / stripes;
+  for (let i = 0; i < stripes; i++) {
+    f.fillStyle = i % 2 === 0 ? '#2f8f2f' : '#3aa53a';
+    f.fillRect(i * stripeW, 0, stripeW + 1, h);
+  }
+  // Leichtes Karomuster darüber
+  const rowH = h / 8;
+  f.fillStyle = 'rgba(255,255,255,0.035)';
+  for (let j = 0; j < 8; j += 2) f.fillRect(0, j * rowH, w, rowH);
 
-  // Mittelkreis
-  ctx.beginPath();
-  ctx.arc(w / 2, h / 2, h * 0.12, 0, Math.PI * 2);
-  ctx.stroke();
+  // Grashalme
+  let seed = 7;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const blades = Math.floor(w * h / 60);
+  f.lineWidth = 1;
+  for (let i = 0; i < blades; i++) {
+    const x = rnd() * w, y = rnd() * h;
+    const len = 2 + rnd() * 3;
+    f.strokeStyle = rnd() < 0.5 ? 'rgba(0,40,0,0.18)' : 'rgba(180,255,150,0.12)';
+    f.beginPath();
+    f.moveTo(x, y);
+    f.lineTo(x + (rnd() - 0.5) * 2, y - len);
+    f.stroke();
+  }
 
-  // Mittelpunkt
-  ctx.fillStyle = 'rgba(255,255,255,0.85)';
-  ctx.beginPath();
-  ctx.arc(w / 2, h / 2, 5, 0, Math.PI * 2);
-  ctx.fill();
+  // Außerhalb der Linien etwas dunkler
+  f.fillStyle = 'rgba(0,30,0,0.22)';
+  f.fillRect(0, 0, w, padY);
+  f.fillRect(0, h - padY, w, padY);
+  f.fillRect(0, padY, padX, h - padY * 2);
+  f.fillRect(w - padX, padY, padX, h - padY * 2);
+
+  // Flutlicht aus den vier Ecken
+  for (const [lx, ly] of [[0, 0], [w, 0], [0, h], [w, h]]) {
+    const g = f.createRadialGradient(lx, ly, 0, lx, ly, Math.max(w, h) * 0.55);
+    g.addColorStop(0, 'rgba(255,255,220,0.10)');
+    g.addColorStop(1, 'rgba(255,255,220,0)');
+    f.fillStyle = g;
+    f.fillRect(0, 0, w, h);
+  }
+
+  // Ränder abdunkeln
+  const vig = f.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.max(w, h) * 0.75);
+  vig.addColorStop(0, 'rgba(0,0,0,0)');
+  vig.addColorStop(1, 'rgba(0,0,0,0.35)');
+  f.fillStyle = vig;
+  f.fillRect(0, 0, w, h);
 
   const goalH = h * (GOAL_B - GOAL_T);
   const goalY = h * GOAL_T;
-
-  // Strafraum links
   const penW = w * 0.18;
   const penH = h * 0.6;
   const penY = (h - penH) / 2;
-  ctx.strokeRect(padX, penY, penW, penH);
+  const circR = h * 0.12;
+  const spotL = padX + circR, spotR = w - padX - circR;
+  // Strafraumbogen: Teil des Kreises um den Elfmeterpunkt außerhalb des Strafraums
+  const dEdge = penW - circR;
+  const dR = dEdge + h * 0.07;
+  const dA = Math.acos(dEdge / dR);
+  const cornerR = h * 0.03;
 
-  // Torraum links
-  ctx.strokeRect(padX, goalY, w * 0.08, goalH);
+  function lines() {
+    f.strokeRect(padX, padY, w - padX * 2, h - padY * 2);
+    f.beginPath();
+    f.moveTo(w / 2, padY);
+    f.lineTo(w / 2, h - padY);
+    f.stroke();
+    f.beginPath();
+    f.arc(w / 2, h / 2, circR, 0, Math.PI * 2);
+    f.stroke();
+    f.strokeRect(padX, penY, penW, penH);
+    f.strokeRect(padX, goalY, w * 0.08, goalH);
+    f.strokeRect(w - padX - penW, penY, penW, penH);
+    f.strokeRect(w - padX - w * 0.08, goalY, w * 0.08, goalH);
+    f.beginPath();
+    f.arc(spotL, h / 2, dR, -dA, dA);
+    f.stroke();
+    f.beginPath();
+    f.arc(spotR, h / 2, dR, Math.PI - dA, Math.PI + dA);
+    f.stroke();
+    // Eckfahnen-Viertelkreise
+    const corners = [[padX, padY, 0], [w - padX, padY, 0.5], [w - padX, h - padY, 1], [padX, h - padY, 1.5]];
+    for (const [cx, cy, a] of corners) {
+      f.beginPath();
+      f.arc(cx, cy, cornerR, a * Math.PI, (a + 0.5) * Math.PI);
+      f.stroke();
+    }
+    for (const [x, y] of [[w / 2, h / 2], [spotL, h / 2], [spotR, h / 2]]) {
+      f.beginPath();
+      f.arc(x, y, 4, 0, Math.PI * 2);
+      f.fill();
+    }
+  }
 
-  // Strafraum rechts
-  ctx.strokeRect(w - padX - penW, penY, penW, penH);
+  f.lineWidth = 3;
+  f.lineJoin = 'miter';
+  // Schatten unter den Linien, dann die Kreidelinien
+  f.save();
+  f.translate(1, 1.5);
+  f.strokeStyle = f.fillStyle = 'rgba(0,0,0,0.18)';
+  lines();
+  f.restore();
+  f.strokeStyle = f.fillStyle = 'rgba(255,255,255,0.9)';
+  lines();
 
-  // Torraum rechts
-  ctx.strokeRect(w - padX - w * 0.08, goalY, w * 0.08, goalH);
-
-  // Elfmeterpunkt links
-  ctx.beginPath();
-  ctx.arc(padX + h * 0.12, h / 2, 5, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Elfmeterpunkt rechts
-  ctx.beginPath();
-  ctx.arc(w - padX - h * 0.12, h / 2, 5, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Tor-Hintergrund links + rechts
-  ctx.fillStyle = 'rgba(255,255,255,0.15)';
-  ctx.fillRect(0, goalY, padX, goalH);
-  ctx.fillRect(w - padX, goalY, padX, goalH);
+  // Eckfahnen
+  for (const [cx, cy] of [[padX, padY], [w - padX, padY], [w - padX, h - padY], [padX, h - padY]]) {
+    f.strokeStyle = '#eee';
+    f.lineWidth = 2;
+    f.beginPath();
+    f.moveTo(cx, cy);
+    f.lineTo(cx, cy - h * 0.045);
+    f.stroke();
+    f.fillStyle = '#feca57';
+    f.beginPath();
+    f.moveTo(cx, cy - h * 0.045);
+    f.lineTo(cx + (cx < w / 2 ? 1 : -1) * h * 0.025, cy - h * 0.037);
+    f.lineTo(cx, cy - h * 0.029);
+    f.closePath();
+    f.fill();
+  }
 }
 
 // x, y = Ecke des Tornetzes; goalW = Tiefe ins Aus; goalH = Breite des Tors; facingRight = Tor öffnet nach rechts
 function drawGoal(x, y, goalW, goalH, facingRight) {
   const postR = 5;
 
-  // Netz (Gitterlinien)
+  // Netz: dunkler Hintergrund, nach hinten tiefer, mit Rautenmaschen
   ctx.save();
-  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.beginPath();
+  ctx.rect(x, y, goalW, goalH);
+  ctx.clip();
+  const back = facingRight ? x : x + goalW;
+  const g = ctx.createLinearGradient(back, 0, facingRight ? x + goalW : x, 0);
+  g.addColorStop(0, 'rgba(0,0,0,0.45)');
+  g.addColorStop(1, 'rgba(0,0,0,0.15)');
+  ctx.fillStyle = g;
+  ctx.fillRect(x, y, goalW, goalH);
+  ctx.strokeStyle = 'rgba(255,255,255,0.4)';
   ctx.lineWidth = 1;
-  const cols = 4, rows = 8;
-  const cellW = goalW / cols;
-  const cellH = goalH / rows;
-  for (let i = 0; i <= cols; i++) {
-    ctx.beginPath();
-    ctx.moveTo(x + i * cellW, y);
-    ctx.lineTo(x + i * cellW, y + goalH);
-    ctx.stroke();
+  const mesh = Math.max(6, goalH / 14);
+  ctx.beginPath();
+  for (let d = -goalH; d < goalW + goalH; d += mesh) {
+    ctx.moveTo(x + d, y);
+    ctx.lineTo(x + d + goalH, y + goalH);
+    ctx.moveTo(x + d, y + goalH);
+    ctx.lineTo(x + d + goalH, y);
   }
-  for (let j = 0; j <= rows; j++) {
-    ctx.beginPath();
-    ctx.moveTo(x, y + j * cellH);
-    ctx.lineTo(x + goalW, y + j * cellH);
-    ctx.stroke();
-  }
+  ctx.stroke();
+  ctx.restore();
+
+  // Schatten der Pfosten auf dem Rasen
+  ctx.save();
+  ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+  ctx.lineWidth = postR * 2;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  const sx = facingRight ? x + goalW : x;
+  ctx.moveTo(sx + 3, y + 5);
+  ctx.lineTo(sx + 3, y + goalH + 5);
+  ctx.stroke();
   ctx.restore();
 
   // Pfosten (weiß, dick)
@@ -463,41 +556,80 @@ function drawGoal(x, y, goalW, goalH, facingRight) {
   ctx.shadowBlur = 0;
 }
 
+let ballRoll = 0;
+
 function drawBall(x, y, r) {
-  // Schatten
+  const speed = Math.hypot(ball.vx * W(), ball.vy * H());
+  ballRoll += speed / r;
+
   ctx.save();
-  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  // Bewegungsspur bei schnellen Schüssen
+  if (speed > r * 0.6) {
+    const steps = 5;
+    for (let i = steps; i > 0; i--) {
+      ctx.fillStyle = `rgba(255,255,255,${0.12 * (1 - i / (steps + 1))})`;
+      ctx.beginPath();
+      ctx.arc(x - ball.vx * W() * i * 1.5, y - ball.vy * H() * i * 1.5, r * (1 - i * 0.1), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Schatten
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
   ctx.beginPath();
   ctx.ellipse(x + 3, y + 4, r * 0.9, r * 0.45, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Ball bunt
-  const grad = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.05, x, y, r);
-  grad.addColorStop(0, '#ff6b6b');
-  grad.addColorStop(0.4, '#feca57');
-  grad.addColorStop(0.75, '#48dbfb');
-  grad.addColorStop(1, '#a29bfe');
+  // Weißer Spielball mit Schattierung
+  const grad = ctx.createRadialGradient(x - r * 0.35, y - r * 0.35, r * 0.1, x, y, r);
+  grad.addColorStop(0, '#ffffff');
+  grad.addColorStop(0.7, '#e8e8e8');
+  grad.addColorStop(1, '#a8a8a8');
   ctx.fillStyle = grad;
   ctx.beginPath();
   ctx.arc(x, y, r, 0, Math.PI * 2);
   ctx.fill();
 
-  // Bunte Flecken
-  const patches = [
-    [0, 0,       '#ff4757'],
-    [0.45, -0.35, '#2ed573'],
-    [-0.45, -0.35,'#ffa502'],
-    [0.5, 0.25,  '#1e90ff'],
-    [-0.5, 0.25, '#ff6b81'],
-  ];
-  for (const [dx, dy, color] of patches) {
-    ctx.fillStyle = color;
+  // Schwarze Fünfecke drehen sich, wenn der Ball rollt
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.translate(x, y);
+  ctx.rotate(ballRoll);
+  const pentagon = (px, py, size, rot) => {
     ctx.beginPath();
-    ctx.arc(x + dx * r, y + dy * r, r * 0.22, 0, Math.PI * 2);
+    for (let i = 0; i < 5; i++) {
+      const a = rot + i * Math.PI * 2 / 5;
+      ctx.lineTo(px + Math.cos(a) * size, py + Math.sin(a) * size);
+    }
+    ctx.closePath();
     ctx.fill();
+  };
+  ctx.fillStyle = '#1a1a1a';
+  pentagon(0, 0, r * 0.32, -Math.PI / 2);
+  // Nähte vom Mittel-Fünfeck zu den äußeren
+  ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+  ctx.lineWidth = Math.max(0.6, r * 0.06);
+  ctx.beginPath();
+  for (let i = 0; i < 5; i++) {
+    const a = -Math.PI / 2 + i * Math.PI * 2 / 5;
+    ctx.moveTo(Math.cos(a) * r * 0.32, Math.sin(a) * r * 0.32);
+    ctx.lineTo(Math.cos(a) * r * 0.62, Math.sin(a) * r * 0.62);
   }
+  ctx.stroke();
+  for (let i = 0; i < 5; i++) {
+    const a = -Math.PI / 2 + Math.PI / 5 + i * Math.PI * 2 / 5;
+    pentagon(Math.cos(a) * r * 0.95, Math.sin(a) * r * 0.95, r * 0.3, a + Math.PI);
+  }
+  ctx.restore();
 
-  // Glanzpunkt
+  // Rand und Glanzpunkt
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.stroke();
   ctx.fillStyle = 'rgba(255,255,255,0.55)';
   ctx.beginPath();
   ctx.ellipse(x - r * 0.28, y - r * 0.3, r * 0.22, r * 0.14, -0.5, 0, Math.PI * 2);
