@@ -1017,20 +1017,104 @@ function stopCrowd() {
 
 // Fangesänge der Vereine: die Stimme kommt aus der Sprachausgabe des Browsers,
 // dazu schwillt die Menge an und alle klatschen im Takt
+// Chor: Silben als "Vokal Länge:Halbton", "-" ist eine Pause
 const CHANTS = {
-  'KÖL': { songs:[['Come on, F C!', 'en-GB'], ['Eff Zeh! Eff Zeh! Eff Zeh!', 'de-DE'], ['Hennes! Hennes!', 'de-DE']],
-           goal:['Tooor! Come on, F C!', 'en-GB'] },
-  'BVB': { songs:[['Borussia! Borussia!', 'de-DE'], ['Echte Liebe!', 'de-DE'], ['Schwarz! Gelb!', 'de-DE']],
-           goal:['Tooor! Borussia!', 'de-DE'] },
-  'S04': { songs:[['Schalke! Schalke!', 'de-DE'], ['Glück auf! Glück auf!', 'de-DE'], ['Königsblau!', 'de-DE']],
-           goal:['Tooor! Schalke null vier!', 'de-DE'] },
-  'BMG': { songs:[['Die Fohlen! Die Fohlen!', 'de-DE'], ['Borussia! Borussia!', 'de-DE'], ['Gladbach! Gladbach!', 'de-DE']],
-           goal:['Tooor! Die Fohlen!', 'de-DE'] },
+  'KÖL': { songs:[
+      ['Come on, F C!', 'en-GB', 'a1:0 o1:2 e1:4 i2:0 -1 a1:0 o1:2 e1:4 i2:0'],
+      ['Eff Zeh! Eff Zeh! Eff Zeh!', 'de-DE', 'e1:4 e2:0 -1 e1:4 e2:0 -1 e1:4 e2:0'],
+      ['Hennes! Hennes!', 'de-DE', 'e1:4 e2:0 -1 e1:4 e2:0']],
+    goal:['Tooor! Come on, F C!', 'en-GB', 'o4:7 -1 a1:0 o1:2 e1:4 i2:0'] },
+  'BVB': { songs:[
+      ['Borussia! Borussia!', 'de-DE', 'o1:0 u1:2 i1:4 a2:0 -1 o1:0 u1:2 i1:4 a2:0'],
+      ['Echte Liebe!', 'de-DE', 'e1:4 e1:2 i1:2 e2:0 -1 e1:4 e1:2 i1:2 e2:0'],
+      ['Schwarz! Gelb!', 'de-DE', 'a2:4 -1 e2:0 -1 a2:4 -1 e2:0']],
+    goal:['Tooor! Borussia!', 'de-DE', 'o4:7 -1 o1:0 u1:2 i1:4 a2:0'] },
+  'S04': { songs:[
+      ['Schalke! Schalke!', 'de-DE', 'a1:4 e2:0 -1 a1:4 e2:0'],
+      ['Glück auf! Glück auf!', 'de-DE', 'u1:4 a2:0 -1 u1:4 a2:0'],
+      ['Königsblau!', 'de-DE', 'o1:4 i1:2 a2:0 -1 o1:4 i1:2 a2:0']],
+    goal:['Tooor! Schalke null vier!', 'de-DE', 'o4:7 -1 a1:4 e1:0 u1:2 i2:0'] },
+  'BMG': { songs:[
+      ['Die Fohlen! Die Fohlen!', 'de-DE', 'i1:0 o1:4 e2:2 -1 i1:0 o1:4 e2:2'],
+      ['Borussia! Borussia!', 'de-DE', 'o1:0 u1:2 i1:4 a2:0 -1 o1:0 u1:2 i1:4 a2:0'],
+      ['Gladbach! Gladbach!', 'de-DE', 'a1:4 a2:0 -1 a1:4 a2:0']],
+    goal:['Tooor! Die Fohlen!', 'de-DE', 'o4:7 -1 i1:0 o1:4 e2:2'] },
 };
 let nextChantAt = 0;
 
-function crowdClaps(times, gap) {
-  const ac = getAC(), t0 = ac.currentTime + 0.05;
+// Formanten (Hz) der Vokale einer tiefen Männerstimme
+const VOWELS = {
+  a:[730,1090,2440], e:[530,1840,2480], i:[270,2290,3010], o:[570,840,2410], u:[300,870,2240],
+};
+const CHOIR_BEAT = 0.32;
+let choirOut = null;
+
+function getChoirOut() {
+  if (choirOut) return choirOut;
+  const ac = getAC();
+  choirOut = ac.createGain();
+  choirOut.gain.value = 0.5;
+  // Stadion-Echo: kurzes Delay mit Rückkopplung
+  const delay = ac.createDelay(1), fb = ac.createGain(), lp = ac.createBiquadFilter();
+  delay.delayTime.value = 0.13; fb.gain.value = 0.35;
+  lp.type = 'lowpass'; lp.frequency.value = 2500;
+  choirOut.connect(ac.destination);
+  choirOut.connect(delay); delay.connect(lp); lp.connect(fb); fb.connect(delay);
+  lp.connect(ac.destination);
+  return choirOut;
+}
+
+// Viele leicht verstimmte, leicht versetzte Stimmen durch Vokal-Filter = grölende Menge
+function singSyllable(vowel, freq, t, dur) {
+  const ac = getAC(), out = getChoirOut();
+  const sum = ac.createGain();
+  sum.gain.value = 1;
+  for (const f of VOWELS[vowel]) {
+    const bp = ac.createBiquadFilter();
+    bp.type = 'bandpass'; bp.frequency.value = f; bp.Q.value = 7;
+    sum.connect(bp); bp.connect(out);
+  }
+  const voices = 14;
+  for (let v = 0; v < voices; v++) {
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = 'sawtooth';
+    const octave = v < 3 ? 2 : 1;          // ein paar höhere Stimmen
+    o.frequency.value = freq * octave * (1 + (Math.random() - 0.5) * 0.035);
+    const st = t + Math.random() * 0.06, en = t + dur * (0.85 + Math.random() * 0.2);
+    g.gain.setValueAtTime(0.0001, st);
+    g.gain.exponentialRampToValueAtTime(0.05, st + 0.05);
+    g.gain.setValueAtTime(0.05, en - 0.08);
+    g.gain.exponentialRampToValueAtTime(0.0001, en);
+    o.connect(g); g.connect(sum);
+    o.start(st); o.stop(en + 0.02);
+  }
+  // Rauschen für das Raue in den Stimmen
+  const n = ac.createBufferSource(), ng = ac.createGain();
+  n.buffer = getNoiseBuf();
+  ng.gain.setValueAtTime(0.25, t);
+  ng.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  n.connect(ng); ng.connect(sum);
+  n.start(t, Math.random()); n.stop(t + dur);
+}
+
+// Spielt das Silbenmuster, liefert die Dauer in Sekunden
+function singChoir(pattern) {
+  const ac = getAC();
+  let t = ac.currentTime + 0.05;
+  const base = 196; // G3
+  for (const tok of pattern.split(' ')) {
+    if (tok[0] === '-') { t += parseFloat(tok.slice(1)) * CHOIR_BEAT; continue; }
+    const vowel = tok[0];
+    const [beats, semi] = tok.slice(1).split(':').map(Number);
+    const dur = beats * CHOIR_BEAT;
+    singSyllable(vowel, base * Math.pow(2, semi / 12), t, dur);
+    t += dur;
+  }
+  return t - ac.currentTime;
+}
+
+function crowdClaps(times, gap, delay=0) {
+  const ac = getAC(), t0 = ac.currentTime + 0.05 + delay;
   for (let i = 0; i < times; i++) {
     // Viele Hände, leicht versetzt
     for (let h = 0; h < 6; h++) {
@@ -1051,26 +1135,34 @@ function crowdSwell(on) {
   crowdGainNode.gain.setTargetAtTime(on ? 0.45 : 0.25, getAC().currentTime, 0.3);
 }
 
+let chantTimer = null;
 function chant(club, isGoal) {
-  if (!window.speechSynthesis) return;
   const set = CHANTS[club.short];
   if (!set) return;
-  const [text, lang] = isGoal ? set.goal : set.songs[Math.floor(Math.random() * set.songs.length)];
+  const [text, lang, pattern] = isGoal ? set.goal : set.songs[Math.floor(Math.random() * set.songs.length)];
+  stopChants();
+  crowdSwell(true);
+  const dur = singChoir(pattern);
+  crowdClaps(3, 0.28, dur + 0.1);
+  chantTimer = setTimeout(() => crowdSwell(false), (dur + 1.2) * 1000);
+  nextChantBusyUntil = Date.now() + (dur + 1.2) * 1000;
+
+  // Leise Vorlesestimme, damit man die Worte versteht
+  if (!window.speechSynthesis) return;
   const u = new SpeechSynthesisUtterance(text);
   u.lang = lang;
   const voice = speechSynthesis.getVoices().find(v => v.lang.replace('_', '-').startsWith(lang));
   if (voice) u.voice = voice;
-  u.rate = isGoal ? 1.0 : 0.85;
+  u.rate = 0.85;
   u.pitch = 0.6;
-  u.volume = 1;
-  u.onstart = () => crowdSwell(true);
-  u.onend = () => { crowdClaps(3, 0.28); setTimeout(() => crowdSwell(false), 1000); };
-  speechSynthesis.cancel();
+  u.volume = 0.35;
   speechSynthesis.speak(u);
 }
+let nextChantBusyUntil = 0;
 
 function stopChants() {
   if (window.speechSynthesis) speechSynthesis.cancel();
+  if (chantTimer) { clearTimeout(chantTimer); chantTimer = null; }
   crowdSwell(false);
 }
 
@@ -1079,7 +1171,7 @@ function updateChants() {
   if (gameState !== 'playing') return;
   const now = Date.now();
   if (!nextChantAt) { nextChantAt = now + 4000; return; }
-  if (now < nextChantAt || (window.speechSynthesis && speechSynthesis.speaking)) return;
+  if (now < nextChantAt || now < nextChantBusyUntil) return;
   chant(Math.random() < 0.7 ? playerClub : opponentClub, false);
   nextChantAt = now + 12000 + Math.random() * 8000;
 }
