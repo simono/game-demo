@@ -1555,21 +1555,124 @@ function update() {
 }
 
 // ── UI ──────────────────────────────────────────────────────────────
+// Nachtstadion: Himmel, Tribünen mit Fans, Flutlichtmasten
+function drawStadiumBackdrop(w, h, t) {
+  const sky=ctx.createLinearGradient(0,0,0,h);
+  sky.addColorStop(0,'#050b1e');
+  sky.addColorStop(0.55,'#0d2240');
+  sky.addColorStop(1,'#08140c');
+  ctx.fillStyle=sky; ctx.fillRect(0,0,w,h);
+
+  // Tribüne als Bogen, Fans als bunte Punkte (immer gleich verteilt)
+  const standTop=h*0.42, standBot=h*0.78;
+  ctx.fillStyle='#14182a';
+  ctx.beginPath();
+  ctx.moveTo(0,standBot); ctx.lineTo(0,standTop+h*0.08);
+  ctx.quadraticCurveTo(w/2,standTop-h*0.08,w,standTop+h*0.08);
+  ctx.lineTo(w,standBot); ctx.closePath(); ctx.fill();
+  const fanCols=['#e3000f','#ffe500','#004c9f','#ffffff','#2ecc71','#111111'];
+  let seed=3;
+  const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;
+  const fans=Math.floor(w*h/180);
+  for (let i=0;i<fans;i++) {
+    const fx=rnd()*w;
+    const curve=standTop+h*0.08-Math.sin(fx/w*Math.PI)*h*0.08;
+    const fy=curve+rnd()*(standBot-curve);
+    const col=fanCols[Math.floor(rnd()*fanCols.length)];
+    const jump=Math.max(0,Math.sin(t*6+i))*2;
+    ctx.fillStyle=col;
+    ctx.globalAlpha=0.35+rnd()*0.35;
+    ctx.fillRect(fx,fy-jump,2.5,2.5);
+  }
+  ctx.globalAlpha=1;
+
+  // Rasenstück vorne
+  const grass=ctx.createLinearGradient(0,standBot,0,h);
+  grass.addColorStop(0,'#2f8f2f'); grass.addColorStop(1,'#1b5c1b');
+  ctx.fillStyle=grass; ctx.fillRect(0,standBot,w,h-standBot);
+  ctx.fillStyle='rgba(255,255,255,0.05)';
+  for (let i=0;i<12;i+=2) ctx.fillRect(i*w/12,standBot,w/12,h-standBot);
+
+  // Flutlichtmasten mit Lichtkegeln
+  for (const [mx,dir] of [[w*0.06,1],[w*0.94,-1]]) {
+    const topY=h*0.08;
+    ctx.strokeStyle='#2a2f3a'; ctx.lineWidth=6;
+    ctx.beginPath(); ctx.moveTo(mx,standTop+h*0.1); ctx.lineTo(mx,topY); ctx.stroke();
+    const beam=ctx.createLinearGradient(mx,topY,w/2,h*0.8);
+    beam.addColorStop(0,`rgba(255,255,220,${0.22+Math.sin(t*2+mx)*0.03})`);
+    beam.addColorStop(1,'rgba(255,255,220,0)');
+    ctx.fillStyle=beam;
+    ctx.beginPath();
+    ctx.moveTo(mx,topY);
+    ctx.lineTo(w/2+dir*w*0.05,h);
+    ctx.lineTo(w/2+dir*w*0.45,h);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle='#fffbe0'; ctx.shadowColor='#fffbe0'; ctx.shadowBlur=20;
+    for (let r=0;r<2;r++) for (let c=0;c<3;c++) ctx.fillRect(mx-14+c*10,topY-12+r*9,8,7);
+    ctx.shadowBlur=0;
+  }
+
+  // Leicht abdunkeln, damit Schrift und Knöpfe gut lesbar sind
+  ctx.fillStyle='rgba(0,0,0,0.3)'; ctx.fillRect(0,0,w,h);
+}
+
+// Eigenes Spiel-Logo: Wappenschild mit Ball, Sternen und Lorbeer
+function drawGameLogo(cx, cy, size, t) {
+  ctx.save();
+  ctx.globalAlpha=0.32;
+  const sw=size*0.8, sh=size;
+  function shield() {
+    ctx.beginPath();
+    ctx.moveTo(cx-sw/2, cy-sh*0.45);
+    ctx.quadraticCurveTo(cx, cy-sh*0.55, cx+sw/2, cy-sh*0.45);
+    ctx.lineTo(cx+sw/2, cy+sh*0.05);
+    ctx.quadraticCurveTo(cx+sw/2, cy+sh*0.35, cx, cy+sh*0.52);
+    ctx.quadraticCurveTo(cx-sw/2, cy+sh*0.35, cx-sw/2, cy+sh*0.05);
+    ctx.closePath();
+  }
+  const g=ctx.createLinearGradient(cx-sw/2,0,cx+sw/2,0);
+  g.addColorStop(0,'#1e8449'); g.addColorStop(0.5,'#27ae60'); g.addColorStop(1,'#145a32');
+  shield(); ctx.fillStyle=g; ctx.fill();
+  ctx.lineWidth=size*0.04; ctx.strokeStyle='#fff'; ctx.stroke();
+  // Rasenstreifen im Schild
+  ctx.save(); shield(); ctx.clip();
+  ctx.fillStyle='rgba(255,255,255,0.08)';
+  for (let i=0;i<8;i+=2) ctx.fillRect(cx-sw/2+i*sw/8, cy-sh/2, sw/8, sh);
+  ctx.restore();
+  // Lorbeerzweige
+  ctx.strokeStyle='#feca57'; ctx.fillStyle='#feca57'; ctx.lineWidth=size*0.015;
+  for (const side of [-1,1]) {
+    ctx.beginPath();
+    ctx.arc(cx, cy+sh*0.05, sw*0.33, Math.PI/2+side*0.3, Math.PI/2+side*1.9, side<0);
+    ctx.stroke();
+    for (let i=0;i<7;i++) {
+      const a=Math.PI/2+side*(0.45+i*0.22);
+      const lx=cx+Math.cos(a)*sw*0.33, ly=cy+sh*0.05+Math.sin(a)*sw*0.33;
+      ctx.beginPath();
+      ctx.ellipse(lx, ly, size*0.04, size*0.016, a+side*0.8, 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+  // Drei Sterne oben
+  for (let i=-1;i<=1;i++) {
+    const sx=cx+i*sw*0.18, sy=cy-sh*0.33+Math.abs(i)*sh*0.02, r=size*0.045;
+    ctx.beginPath();
+    for (let k=0;k<10;k++) {
+      const a=-Math.PI/2+k*Math.PI/5, rr=k%2?r*0.45:r;
+      ctx.lineTo(sx+Math.cos(a)*rr, sy+Math.sin(a)*rr);
+    }
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.globalAlpha=0.45;
+  drawBall(cx, cy+sh*0.05, size*0.2);
+  ctx.restore();
+}
+
 function drawTitle() {
   const w=W(), h=H(), t=Date.now()/1000;
   ctx.save();
-  const bg=ctx.createLinearGradient(0,0,0,h);
-  bg.addColorStop(0,'rgba(5,20,10,0.85)');
-  bg.addColorStop(1,'rgba(0,0,0,0.6)');
-  ctx.fillStyle=bg; ctx.fillRect(0,0,w,h);
-
-  // Flutlicht-Kegel von oben
-  for (const lx of [w*0.15, w*0.85]) {
-    const g=ctx.createRadialGradient(lx,0,0,lx,0,h*0.9);
-    g.addColorStop(0,`rgba(255,255,220,${0.18+Math.sin(t*2+lx)*0.03})`);
-    g.addColorStop(1,'rgba(255,255,220,0)');
-    ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
-  }
+  drawStadiumBackdrop(w, h, t);
+  if (!showControls) drawGameLogo(w/2, h*0.36, Math.min(w, h)*0.42, t);
 
   ctx.textAlign='center'; ctx.textBaseline='middle';
 
