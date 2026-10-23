@@ -1568,6 +1568,7 @@ let fulltimeShowMs = 0;
 
 function getCP() {
   const t = playerTeam === 'red' ? redTeam : blueTeam;
+  if (t[controlledIdx].sentOff) controlledIdx = t.findIndex(p => !p.sentOff);
   return t[controlledIdx];
 }
 
@@ -1577,7 +1578,7 @@ function switchPlayer() {
   let best = (controlledIdx + 1) % t.length;
   let bestDist = Infinity;
   for (let i = 0; i < t.length; i++) {
-    if (i === controlledIdx) continue;
+    if (i === controlledIdx || t[i].sentOff) continue;
     const d = Math.hypot(t[i].x - ball.x, t[i].y - ball.y);
     if (d < bestDist) { bestDist = d; best = i; }
   }
@@ -1601,7 +1602,7 @@ function resetPositions() {
   let anstoß;
   if (goalTeam === playerTeam) {
     // Spieler hat geschossen → Gegner macht Anstoß
-    anstoß = playerTeam === 'red' ? blueP : redP;
+    anstoß = activeOf(playerTeam === 'red' ? blueTeam : redTeam)[0];
   } else {
     // Gegner hat geschossen ODER Spielstart/Halbzeit → Spieler macht Anstoß
     anstoß = getCP();
@@ -1609,10 +1610,140 @@ function resetPositions() {
   anstoß.x = 0.5;
   anstoß.y = 0.5;
   ballOwner = anstoß;
+  for (const p of allPlayers) if (p.sentOff) { p.x = -1; p.y = -1; }
+}
+
+// ── Fouls, Karten, Freistoß, Elfmeter ───────────────────────────────
+let protectUntil = 0;   // kurz nach einem Freistoß darf niemand den Ball abnehmen
+let setPiece = null;    // { type:'free'|'penalty', victim, fouler, card, until }
+let penalty = null;     // { taker, attackRight, t0, aimY }
+const PENALTY_BOX_X = 0.18, PENALTY_BOX_T = 0.2, PENALTY_BOX_B = 0.8;
+// Wahrscheinlichkeit, dass der gegnerische Torwart beim Elfmeter die richtige Ecke ahnt
+const KEEPER_GUESS = { Leicht:0.25, Mittel:0.4, Schwer:0.55 };
+
+const activeOf = team => team.filter(p => !p.sentOff);
+
+function clubOf(p) { return p.team === playerTeam ? playerClub : opponentClub; }
+function playerName(p) {
+  const team = p.team === 'red' ? redTeam : blueTeam;
+  const club = clubOf(p);
+  if (p.isKeeper) return club.keeperName || 'Torwart';
+  return (club.names && club.names[team.indexOf(p)]) || `Nr. ${p.num}`;
+}
+
+function commitFoul(fouler, victim) {
+  if (gameState !== 'playing') return;
+  playWhistle();
+  let card = null;
+  const r = Math.random();
+  // Rot nur, wenn danach noch mindestens ein Feldspieler übrig ist
+  const foulerTeam = fouler.team === 'red' ? redTeam : blueTeam;
+  const canSendOff = activeOf(foulerTeam).length > 1;
+  if (r < 0.07 && canSendOff) card = 'red';
+  else if (r < 0.35) card = fouler.yellow && canSendOff ? 'yellowred' : 'yellow';
+  if (card === 'yellow') fouler.yellow = 1;
+  if (card === 'red' || card === 'yellowred') fouler.sentOff = true;
+
+  const attackRight = victim.team === 'red';
+  const inBox = victim.y > PENALTY_BOX_T && victim.y < PENALTY_BOX_B &&
+    (attackRight ? victim.x > 1 - FPADX - PENALTY_BOX_X : victim.x < FPADX + PENALTY_BOX_X);
+  setPiece = { type: inBox ? 'penalty' : 'free', victim, fouler, card, until: Date.now() + 2600,
+               spotX: victim.x, spotY: victim.y };
+  ballOwner = null; ball.vx = 0; ball.vy = 0;
+  gameState = 'foul';
+}
+
+function takeControlOf(p) {
+  const team = p.team === 'red' ? redTeam : blueTeam;
+  if (p.team === playerTeam) controlledIdx = team.indexOf(p);
+}
+
+function setupSetPiece() {
+  const { victim, fouler } = setPiece;
+  if (fouler.sentOff) { fouler.x = -1; fouler.y = -1; }
+  if (getCP().sentOff) switchPlayer();
+  const foes = activeOf(victim.team === 'red' ? blueTeam : redTeam);
+  const side = victim.team === 'red' ? 1 : -1;
+
+  if (setPiece.type === 'free') {
+    victim.x = Math.max(FL, Math.min(FR, setPiece.spotX));
+    victim.y = Math.max(FT, Math.min(FB, setPiece.spotY));
+    // Mauer-Abstand: Gegner weg vom Ball
+    for (const f of foes) {
+      const dx = f.x - victim.x, dy = f.y - victim.y, d = Math.hypot(dx, dy) || 1;
+      if (d < 0.14) {
+        f.x = Math.max(FL, Math.min(FR, victim.x + dx / d * 0.14));
+        f.y = Math.max(FT, Math.min(FB, victim.y + dy / d * 0.14));
+      }
+    }
+    ballOwner = victim;
+    takeControlOf(victim);
+    protectUntil = Date.now() + 1500;
+    gameState = 'playing'; lastFrameMs = 0;
+    return;
+  }
+
+  // Elfmeter: Ball auf den Punkt, alle anderen raus aus dem Strafraum
+  const attackRight = victim.team === 'red';
+  const spotX = attackRight ? 1 - FPADX - 0.12 * H() / W() : FPADX + 0.12 * H() / W();
+  const outX  = attackRight ? 1 - FPADX - PENALTY_BOX_X - 0.06 : FPADX + PENALTY_BOX_X + 0.06;
+  const ys = [0.25, 0.4, 0.6, 0.75, 0.32];
+  let i = 0;
+  for (const p of activeOf([...redTeam, ...blueTeam])) {
+    if (p === victim) continue;
+    p.x = outX - side * (i % 2) * 0.05; p.y = ys[i % ys.length]; p.vx = 0; p.vy = 0; i++;
+  }
+  // Schütze so hinstellen, dass der Ball genau auf dem Punkt liegt
+  victim.x = spotX - side * 0.045; victim.y = 0.5 - 0.055;
+  ballOwner = victim;
+  takeControlOf(victim);
+  redKeeper.y = 0.5; blueKeeper.y = 0.5;
+  penalty = { taker: victim, attackRight, t0: Date.now(), aimY: 0.5 };
+  gameState = 'penalty';
+}
+
+function shootPenalty(aimY) {
+  const { taker, attackRight } = penalty;
+  const lineX = attackRight ? 1 - FPADX : FPADX;
+  const dx = lineX - ball.x, dy = aimY - ball.y, len = Math.hypot(dx, dy) || 1;
+  ball.vx = dx / len * KICK_SPD * 1.1; ball.vy = dy / len * KICK_SPD * 1.1;
+  goalScorer = taker; ballOwner = null;
+
+  // Torwart springt sofort in eine Ecke
+  const keeper = attackRight ? blueKeeper : redKeeper;
+  let diveY;
+  if (keeper.team === playerTeam) {
+    const up = dpad.up || keys['ArrowUp'] || keys['w'], down = dpad.down || keys['ArrowDown'] || keys['s'];
+    diveY = up ? 0.44 : down ? 0.56 : 0.5;
+  } else {
+    const guess = Math.random() < KEEPER_GUESS[difficulty.name];
+    const other = aimY < 0.5 ? 0.56 : 0.44;
+    diveY = guess ? aimY : other;
+  }
+  keeper.diveY = diveY; keeper.diveUntil = Date.now() + 1200;
+  penalty = null; setPiece = null;
+  protectUntil = Date.now() + 800;
+  gameState = 'playing'; lastFrameMs = 0;
+}
+
+function updatePenalty() {
+  const now = Date.now(), { taker } = penalty;
+  if (taker.team === playerTeam) {
+    // Zielpunkt wandert am Tor hoch und runter, Schuss-Taste schießt
+    penalty.aimY = 0.5 + Math.sin((now - penalty.t0) / 380) * 0.085;
+    if (keys[' '] || keys['Enter'] || btnActive.shoot) {
+      keys[' '] = false; keys['Enter'] = false; btnActive.shoot = false;
+      shootPenalty(penalty.aimY);
+    } else if (now - penalty.t0 > 7000) shootPenalty(penalty.aimY);
+  } else if (now - penalty.t0 > 2500) {
+    const r = Math.random();
+    shootPenalty(r < 0.4 ? 0.43 : r < 0.8 ? 0.57 : 0.5);
+  }
 }
 
 // ── Aktionen ────────────────────────────────────────────────────────
 function doShoot() {
+  if (gameState === 'penalty') { if (penalty.taker.team === playerTeam) shootPenalty(penalty.aimY); return; }
   const cp = getCP();
   if (ballOwner !== cp) return;
   const goalX = playerTeam === 'red' ? FR : FL;
@@ -1632,12 +1763,18 @@ function doPass() {
 }
 
 function doTackle() {
+  if (gameState !== 'playing' || Date.now() < protectUntil) return;
   const cp = getCP();
-  const opponents = playerTeam === 'red' ? blueTeam : redTeam;
+  const opponents = activeOf(playerTeam === 'red' ? blueTeam : redTeam);
+  let target = null, best = TACKLE_DIST;
   for (const op of opponents) {
-    if (ballOwner !== op) continue;
-    if (Math.hypot(cp.x-op.x, cp.y-op.y) < TACKLE_DIST) { ballOwner=cp; break; }
+    const d = Math.hypot(cp.x-op.x, cp.y-op.y);
+    if (d < best) { best = d; target = op; }
   }
+  if (!target) return;
+  // Mit Ball: meistens sauber; ohne Ball ist es oft ein Foul
+  if (ballOwner === target) { if (Math.random() < 0.25) commitFoul(cp, target); else ballOwner = cp; }
+  else if (Math.random() < 0.5) commitFoul(cp, target);
 }
 
 // ── Eingabe ─────────────────────────────────────────────────────────
@@ -1677,6 +1814,8 @@ function hitDpad(tx,ty,b) { return Math.abs(tx-b.x)<b.s*0.6 && Math.abs(ty-b.y)<
 function hitBtn(tx,ty,b)  { const dx=tx-b.x,dy=ty-b.y; return dx*dx+dy*dy<b.r*b.r*1.8; }
 
 function startMatch() {
+  for (const p of allPlayers) { p.sentOff = false; p.yellow = 0; }
+  setPiece = null; penalty = null; protectUntil = 0;
   controlledIdx=0; ballOwner=playerTeam==='red'?redP:blueP;
   currentHalf=1; halfTimeLeft=halfSecs; breakTimeLeft=BREAK_SECS; lastFrameMs=0;
   inExtra=false; score.red=0; score.blue=0;
@@ -1854,6 +1993,7 @@ function updateAI() {
   const foeSupY = [0.5, 0.3, 0.7];
   for (let i=0; i<foeTeam.length; i++) {
     const fp = foeTeam[i];
+    if (fp.sentOff) continue;
     const sx = foeGoalX + (playerTeam==='red' ? 0.06 : -0.06);
     if (ballOwner===fp) {
       if (foeClose(fp) && aiShootCooldown<=0) {
@@ -1863,7 +2003,10 @@ function updateAI() {
       } else { moveTo(fp, sx, foeSupY[i], difficulty.speed); }
     } else if (ballOwner && ballOwner.team===playerTeam) {
       moveTo(fp, ballOwner.x, ballOwner.y, difficulty.speed);
-      if (Math.hypot(fp.x-ballOwner.x,fp.y-ballOwner.y)<TACKLE_DIST*0.8 && Math.random()<difficulty.steal) ballOwner=fp;
+      if (Date.now()>=protectUntil && Math.hypot(fp.x-ballOwner.x,fp.y-ballOwner.y)<TACKLE_DIST*0.8 && Math.random()<difficulty.steal) {
+        if (Math.random()<0.22) { commitFoul(fp, ballOwner); return; }
+        ballOwner=fp;
+      }
     } else if (!ballOwner) {
       moveTo(fp, ball.x, ball.y, difficulty.speed);
     } else {
@@ -1872,7 +2015,7 @@ function updateAI() {
   }
 
   // ── Eigene Mitspieler (KI, nicht der gesteuerte Spieler) ──
-  const teammates = myTeam.filter(p => p !== cp);
+  const teammates = myTeam.filter(p => p !== cp && !p.sentOff);
   const mySupY = [0.28, 0.72];
   const mySuppX = playerTeam==='red' ? 0.38 : 0.62;
   for (let i=0; i<teammates.length; i++) {
@@ -1904,6 +2047,11 @@ function updateKeepers() {
     { k: blueKeeper, homeX: 0.93, isLeft: false },
   ].forEach(({ k, homeX, isLeft }) => {
     k.x = homeX;
+    if (k.diveUntil && Date.now() < k.diveUntil) {
+      const step = 0.03;
+      if (Math.abs(k.diveY - k.y) > step) k.y += Math.sign(k.diveY - k.y) * step; else k.y = k.diveY;
+      return;
+    }
     // Eigener Torwart bleibt immer gleich, der gegnerische hängt von der Schwierigkeit ab
     const foe = k.team !== playerTeam;
     const KSPEED = foe ? difficulty.keeperSpeed : 0.0032;
@@ -1955,6 +2103,12 @@ function update() {
     }
     return;
   }
+
+  if (gameState === 'foul') {
+    if (now >= setPiece.until) setupSetPiece();
+    return;
+  }
+  if (gameState === 'penalty') { updatePenalty(); return; }
 
   if (gameState !== 'playing') return;
 
@@ -2019,6 +2173,7 @@ function update() {
       ball.x=1-FPADX-bRx; ball.vx*=-0.7;
     }
     for (const p of allPlayers) {
+      if (p.sentOff) continue;
       if (Math.hypot(p.x-ball.x, p.y-ball.y)<PICKUP_DIST) { ballOwner=p; break; }
     }
   }
@@ -2501,6 +2656,72 @@ function drawUI() {
   }
 }
 
+function drawCard(x, y, hgt, color) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(-0.12);
+  ctx.shadowColor='rgba(0,0,0,0.5)'; ctx.shadowBlur=12;
+  ctx.fillStyle=color;
+  roundRect(-hgt*0.35, -hgt/2, hgt*0.7, hgt, hgt*0.06); ctx.fill();
+  ctx.restore();
+}
+
+function drawSetPieceUI() {
+  const w=W(), h=H();
+  ctx.save();
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  if (gameState === 'foul') {
+    const { victim, fouler, card, type } = setPiece;
+    ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(0,0,w,h);
+    ctx.fillStyle='#fff';
+    ctx.font=`900 ${Math.min(w*0.13,72)}px system-ui`;
+    ctx.fillText('FOUL!', w/2, h*0.24);
+    ctx.font=`bold ${Math.min(w*0.04,20)}px system-ui`;
+    ctx.fillStyle='rgba(255,255,255,0.85)';
+    ctx.fillText(`${playerName(fouler)} foult ${playerName(victim)}`, w/2, h*0.35);
+    let y = h*0.5;
+    if (card) {
+      const ch = Math.min(h*0.17, 90);
+      if (card === 'yellowred') { drawCard(w/2-ch*0.25, y, ch, '#ffd400'); drawCard(w/2+ch*0.25, y, ch, '#e10600'); }
+      else drawCard(w/2, y, ch, card === 'yellow' ? '#ffd400' : '#e10600');
+      const txt = card === 'yellow' ? 'Gelbe Karte' : card === 'red' ? 'Rote Karte! Platzverweis!' : 'Gelb-Rot! Platzverweis!';
+      ctx.fillStyle = card === 'yellow' ? '#ffd400' : '#ff4d4d';
+      ctx.font=`bold ${Math.min(w*0.045,22)}px system-ui`;
+      ctx.fillText(txt, w/2, y + ch*0.75);
+      y += ch*0.75 + 34;
+    }
+    const club = clubOf(victim);
+    ctx.fillStyle = type === 'penalty' ? '#feca57' : '#fff';
+    ctx.font=`900 ${Math.min(w*(type === 'penalty' ? 0.07 : 0.05), type === 'penalty' ? 40 : 26)}px system-ui`;
+    ctx.fillText(type === 'penalty' ? `ELFMETER für ${club.name}!` : `Freistoß für ${club.name}`, w/2, y);
+  }
+  if (gameState === 'penalty') {
+    const mine = penalty.taker.team === playerTeam;
+    const keeperMine = !mine;
+    if (mine) {
+      // Zielkreuz auf der Torlinie
+      const lx = (penalty.attackRight ? 1 - FPADX : FPADX) * w, ly = penalty.aimY * h, r = Math.min(w,h)*0.025;
+      ctx.strokeStyle='#ff3b3b'; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.arc(lx, ly, r, 0, Math.PI*2);
+      ctx.moveTo(lx-r*1.5, ly); ctx.lineTo(lx+r*1.5, ly);
+      ctx.moveTo(lx, ly-r*1.5); ctx.lineTo(lx, ly+r*1.5);
+      ctx.stroke();
+    }
+    ctx.fillStyle='rgba(0,0,0,0.6)';
+    const bw=Math.min(w*0.7, 460), bh=Math.min(h*0.14, 70);
+    roundRect(w/2-bw/2, h*0.14, bw, bh, 12); ctx.fill();
+    ctx.fillStyle='#feca57';
+    ctx.font=`900 ${bh*0.36}px system-ui`;
+    ctx.fillText('ELFMETER!', w/2, h*0.14+bh*0.33);
+    ctx.fillStyle='#fff';
+    ctx.font=`bold ${bh*0.22}px system-ui`;
+    ctx.fillText(mine ? 'Drück „Schuss“, wenn das Ziel in der Ecke ist!'
+                      : (keeperMine ? 'Halte ↑ oder ↓, damit dein Torwart in die Ecke springt!' : ''),
+                 w/2, h*0.14+bh*0.72, bw-16);
+  }
+  ctx.restore();
+}
+
 // ── Schleife ────────────────────────────────────────────────────────
 function loop() {
   if (resizeFrames < 60) { resize(); resizeFrames++; }
@@ -2526,6 +2747,7 @@ function loop() {
 
   const ps=Math.min(w,h)*0.07;
   for (const p of allPlayers) {
+    if (p.sentOff) continue;
     const cel = gameState==='goal' && goalTeam===p.team;
     const px=p.x*w, py=p.y*h-ps*1.5;
     const mdx=p.x-(p._lx ?? p.x), mdy=p.y-(p._ly ?? p.y);
@@ -2567,6 +2789,10 @@ function loop() {
         ctx.fillStyle='#fff';
         ctx.textAlign='center'; ctx.textBaseline='middle';
         ctx.fillText(playerName, px, py+ps*2.21);
+        if (p.yellow) {
+          ctx.fillStyle='#ffd400';
+          ctx.fillRect(px+nameW/2+3, py+ps*2.0, ps*0.26, ps*0.38);
+        }
         ctx.restore();
       }
     }
@@ -2578,6 +2804,7 @@ function loop() {
   updateAudio();
   updateChants();
   drawUI();
+  if (gameState === 'foul' || gameState === 'penalty') drawSetPieceUI();
   requestAnimationFrame(loop);
 }
 
