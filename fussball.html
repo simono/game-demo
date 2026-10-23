@@ -934,7 +934,7 @@ const GOAL_T = 0.40, GOAL_B = 0.60;
 let AC = null;
 let noiseBuffer = null;
 let crowdSource = null, crowdGainNode = null, crowdLFO = null;
-let menuTimer = null, melodyIdx = 0;
+let menuTimer = null;
 let lastAudioState = '';
 
 function getAC() {
@@ -975,39 +975,127 @@ function stopCrowd() {
   crowdSource = null; crowdGainNode = null; crowdLFO = null;
 }
 
-// Menü-Musik — einfache Fanfare-Melodie
-const MELODY = [
-  [392,0.18],[392,0.12],[440,0.22],[392,0.22],[349,0.12],[392,0.42],
-  [440,0.18],[440,0.12],[494,0.22],[440,0.22],[392,0.12],[523,0.55],
-  [392,0.12],[440,0.12],[392,0.12],[349,0.22],[330,0.12],[392,0.42],
-  [330,0.18],[349,0.18],[330,0.18],[294,0.18],[262,0.55],[0,0.3],
+// Titelmusik: Stadion-Hymne mit Schlagzeug, Bass, Akkorden und Melodie.
+// Ein Takt hat 16 Schritte; die Noten werden kurz im Voraus eingeplant,
+// damit der Takt auch bei ruckelndem Bild sauber bleibt.
+const MUSIC_BPM  = 128;
+const MUSIC_STEP = 60 / MUSIC_BPM / 4;
+const midiHz = m => 440 * Math.pow(2, (m - 69) / 12);
+const MUSIC_CHORDS = [
+  { bass:36, notes:[60,64,67] },  // C
+  { bass:43, notes:[59,62,67] },  // G
+  { bass:45, notes:[57,60,64] },  // Am
+  { bass:41, notes:[57,60,65] },  // F
 ];
+// [Schritt, Note, Länge in Schritten] pro Takt, 8 Takte
+const MUSIC_LEAD = [
+  [[0,67,3],[3,67,1],[4,69,2],[6,67,2],[8,72,4],[12,71,2],[14,69,2]],
+  [[0,67,3],[3,67,1],[4,71,2],[6,74,2],[8,74,6]],
+  [[0,72,3],[3,72,1],[4,76,2],[6,74,2],[8,72,4],[12,71,2],[14,69,2]],
+  [[0,69,2],[2,72,2],[4,71,2],[6,69,2],[8,67,8]],
+  [[0,76,2],[2,76,2],[4,76,4],[8,74,2],[10,72,2],[12,74,4]],
+  [[0,74,2],[2,74,2],[4,74,4],[8,72,2],[10,71,2],[12,72,4]],
+  [[0,72,2],[2,76,2],[4,79,4],[8,77,2],[10,76,2],[12,74,4]],
+  [[0,72,4],[4,74,4],[8,71,4],[12,67,4]],
+];
+let musicStep = 0, musicNextTime = 0, musicOut = null;
 
-function playMenuNote() {
-  if (gameState !== 'menu' && gameState !== 'title') { menuTimer=null; return; }
+function musicVoice(type, freq, t, dur, vol, filterHz) {
   const ac = getAC();
-  const [freq, dur] = MELODY[melodyIdx % MELODY.length];
-  melodyIdx++;
-  if (freq > 0) {
-    const osc = ac.createOscillator(), g = ac.createGain();
-    osc.type='triangle'; osc.frequency.value=freq;
-    g.gain.setValueAtTime(0.13, ac.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime+dur*0.85);
-    osc.connect(g); g.connect(ac.destination);
-    osc.start(); osc.stop(ac.currentTime+dur);
-    // Oktave tiefer leise dazu
-    const osc2 = ac.createOscillator(), g2 = ac.createGain();
-    osc2.type='sine'; osc2.frequency.value=freq/2;
-    g2.gain.setValueAtTime(0.04, ac.currentTime);
-    g2.gain.exponentialRampToValueAtTime(0.001, ac.currentTime+dur*0.85);
-    osc2.connect(g2); g2.connect(ac.destination);
-    osc2.start(); osc2.stop(ac.currentTime+dur);
+  const o = ac.createOscillator(), g = ac.createGain();
+  o.type = type; o.frequency.value = freq;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol, t + 0.015);
+  g.gain.setValueAtTime(vol, t + dur * 0.7);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  let node = o;
+  if (filterHz) {
+    const f = ac.createBiquadFilter();
+    f.type = 'lowpass'; f.frequency.value = filterHz;
+    o.connect(f); node = f;
   }
-  menuTimer = setTimeout(playMenuNote, dur*1000);
+  node.connect(g); g.connect(musicOut);
+  o.start(t); o.stop(t + dur + 0.02);
 }
 
-function startMenuMusic() { if (!menuTimer) { melodyIdx=0; playMenuNote(); } }
-function stopMenuMusic()  { if (menuTimer) { clearTimeout(menuTimer); menuTimer=null; } }
+function musicNoise(t, dur, vol, type, freq) {
+  const ac = getAC();
+  const src = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
+  src.buffer = getNoiseBuf();
+  f.type = type; f.frequency.value = freq;
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(f); f.connect(g); g.connect(musicOut);
+  src.start(t, Math.random() * 0.5); src.stop(t + dur);
+}
+
+function musicKick(t) {
+  const ac = getAC();
+  const o = ac.createOscillator(), g = ac.createGain();
+  o.frequency.setValueAtTime(150, t);
+  o.frequency.exponentialRampToValueAtTime(40, t + 0.12);
+  g.gain.setValueAtTime(0.55, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
+  o.connect(g); g.connect(musicOut);
+  o.start(t); o.stop(t + 0.26);
+}
+
+function playMusicStep(step, t) {
+  const bar = Math.floor(step / 16) % MUSIC_LEAD.length, pos = step % 16;
+  const chord = MUSIC_CHORDS[bar % MUSIC_CHORDS.length];
+
+  // Schlagzeug: Bassdrum auf jedem Schlag, Klatschen auf 2 und 4, Hi-Hat dazwischen
+  if (pos % 4 === 0) musicKick(t);
+  if (pos === 4 || pos === 12) { musicNoise(t, 0.18, 0.28, 'bandpass', 1500); musicNoise(t + 0.012, 0.12, 0.18, 'bandpass', 2200); }
+  if (pos % 2 === 0) musicNoise(t, pos % 4 === 2 ? 0.12 : 0.04, 0.07, 'highpass', 7000);
+  if (pos === 0 && bar % 4 === 0) musicNoise(t, 1.2, 0.12, 'highpass', 5000);
+
+  // Bass in Achteln, auf den Offbeats eine Oktave höher
+  if (pos % 2 === 0) {
+    const m = chord.bass + (pos % 4 === 2 ? 12 : 0);
+    musicVoice('sawtooth', midiHz(m), t, MUSIC_STEP * 1.8, 0.11, 600);
+  }
+
+  // Akkord-Teppich am Anfang jedes Takts
+  if (pos === 0) {
+    for (const n of chord.notes) musicVoice('triangle', midiHz(n), t, MUSIC_STEP * 15.5, 0.035);
+  }
+
+  // Melodie: zwei leicht verstimmte Sägezähne klingen wie Blechbläser
+  for (const [st, note, len] of MUSIC_LEAD[bar]) {
+    if (st !== pos) continue;
+    const dur = MUSIC_STEP * len * 0.95;
+    musicVoice('sawtooth', midiHz(note) * 1.003, t, dur, 0.06, 2800);
+    musicVoice('sawtooth', midiHz(note) * 0.997, t, dur, 0.06, 2800);
+    musicVoice('square',   midiHz(note - 12),    t, dur, 0.025, 1500);
+  }
+}
+
+function musicScheduler() {
+  if (gameState !== 'menu' && gameState !== 'title') { stopMenuMusic(); return; }
+  const ac = getAC();
+  // Nach einem Hänger (z.B. Tab im Hintergrund) nicht alle verpassten Noten auf einmal spielen
+  if (musicNextTime < ac.currentTime - 0.2) musicNextTime = ac.currentTime + 0.05;
+  while (musicNextTime < ac.currentTime + 0.12) {
+    playMusicStep(musicStep, musicNextTime);
+    musicStep++;
+    musicNextTime += MUSIC_STEP;
+  }
+}
+
+function startMenuMusic() {
+  if (menuTimer) return;
+  const ac = getAC();
+  if (!musicOut) {
+    musicOut = ac.createGain();
+    musicOut.gain.value = 0.55;
+    musicOut.connect(ac.destination);
+  }
+  musicStep = 0;
+  musicNextTime = ac.currentTime + 0.05;
+  menuTimer = setInterval(musicScheduler, 25);
+}
+function stopMenuMusic()  { if (menuTimer) { clearInterval(menuTimer); menuTimer=null; } }
 
 // Jubel-Sound bei Tor
 function playGoalSound() {
