@@ -1429,7 +1429,7 @@ function updateAudio() {
   lastAudioState = gameState;
   if (gameState === 'menu' || gameState === 'title') { stopCrowd(); startMenuMusic(); }
   if (gameState === 'playing')  { stopMenuMusic(); startCrowd(); }
-  if (gameState === 'goal' && (prev==='playing')) {
+  if (gameState === 'goal' && (prev==='playing' || prev==='penalty')) {
     playGoalSound();
     const scorer = goalTeam === playerTeam ? playerClub : opponentClub;
     stopChants();
@@ -1650,8 +1650,13 @@ function commitFoul(fouler, victim) {
   const attackRight = victim.team === 'red';
   const inBox = victim.y > PENALTY_BOX_T && victim.y < PENALTY_BOX_B &&
     (attackRight ? victim.x > 1 - FPADX - PENALTY_BOX_X : victim.x < FPADX + PENALTY_BOX_X);
-  setPiece = { type: inBox ? 'penalty' : 'free', victim, fouler, card, until: Date.now() + 2600,
-               spotX: victim.x, spotY: victim.y };
+  const now = Date.now();
+  // Schiri kommt vom näheren Rand (oben oder unten) zum Foulspieler gelaufen
+  const fromTop = fouler.y < 0.5;
+  setPiece = { type: inBox ? 'penalty' : 'free', victim, fouler, card, t0: now, until: now + (card ? 3600 : 2600),
+               spotX: victim.x, spotY: victim.y,
+               ref: { fromX: fouler.x, fromY: fromTop ? FT - 0.05 : FB + 0.05,
+                      toX: Math.max(FL, Math.min(FR, fouler.x + 0.06)), toY: fouler.y + (fromTop ? -0.04 : 0.04) } };
   ballOwner = null; ball.vx = 0; ball.vy = 0;
   gameState = 'foul';
 }
@@ -1696,57 +1701,130 @@ function setupSetPiece() {
     if (p === victim) continue;
     p.x = outX - side * (i % 2) * 0.05; p.y = ys[i % ys.length]; p.vx = 0; p.vy = 0; i++;
   }
-  // Schütze so hinstellen, dass der Ball genau auf dem Punkt liegt
-  victim.x = spotX - side * 0.045; victim.y = 0.5 - 0.055;
-  ballOwner = victim;
+  ballOwner = null;
+  ball.x = spotX; ball.y = 0.5; ball.vx = 0; ball.vy = 0;
+  // Schütze steht mit etwas Anlauf hinter dem Ball
+  victim.x = spotX - side * 0.12; victim.y = 0.5 - 0.09;
   takeControlOf(victim);
-  redKeeper.y = 0.5; blueKeeper.y = 0.5;
-  penalty = { taker: victim, attackRight, t0: Date.now(), aimY: 0.5 };
+  const keeper = attackRight ? blueKeeper : redKeeper;
+  keeper.y = 0.5; keeper.diveAngle = 0;
+  penalty = { taker: victim, keeper, attackRight, side, mine: victim.team === playerTeam,
+              phase: 'aim', t0: Date.now(), aimY: 0.5, power: 0.5, keeperChoice: 0,
+              kickX: spotX - side * 0.045, kickY: 0.5 - 0.055, runFromX: victim.x, runFromY: victim.y };
   gameState = 'penalty';
 }
 
-function shootPenalty(aimY) {
-  const { taker, attackRight } = penalty;
-  const lineX = attackRight ? 1 - FPADX : FPADX;
-  const dx = lineX - ball.x, dy = aimY - ball.y, len = Math.hypot(dx, dy) || 1;
-  ball.vx = dx / len * KICK_SPD * 1.1; ball.vy = dy / len * KICK_SPD * 1.1;
-  goalScorer = taker; ballOwner = null;
+const easeOut = t => 1 - Math.pow(1 - t, 3);
+let ballLift = 0;   // Höhe des Balls beim Elfmeter, nur fürs Zeichnen
 
-  // Torwart springt sofort in eine Ecke
-  const keeper = attackRight ? blueKeeper : redKeeper;
+function penaltyInput() {
+  const up = dpad.up || keys['ArrowUp'] || keys['w'], down = dpad.down || keys['ArrowDown'] || keys['s'];
+  return up ? -1 : down ? 1 : 0;
+}
+
+function startRunUp() {
+  penalty.phase = 'runup';
+  penalty.t0 = Date.now();
+}
+
+function startShot() {
+  const pn = penalty, k = pn.keeper;
+  // Zu fest geschossen geht daneben
+  const miss = pn.mine ? pn.power > 0.9 : Math.random() < 0.08;
   let diveY;
-  if (keeper.team === playerTeam) {
-    const up = dpad.up || keys['ArrowUp'] || keys['w'], down = dpad.down || keys['ArrowDown'] || keys['s'];
-    diveY = up ? 0.44 : down ? 0.56 : 0.5;
+  if (k.team === playerTeam) {
+    diveY = 0.5 + pn.keeperChoice * 0.065;
   } else {
+    const center = Math.abs(pn.aimY - 0.5) < 0.03;
     const guess = Math.random() < KEEPER_GUESS[difficulty.name];
-    const other = aimY < 0.5 ? 0.56 : 0.44;
-    diveY = guess ? aimY : other;
+    diveY = guess ? (center ? 0.5 : (pn.aimY < 0.5 ? 0.435 : 0.565)) : (pn.aimY < 0.5 ? 0.565 : 0.435);
   }
-  keeper.diveY = diveY; keeper.diveUntil = Date.now() + 1200;
+  const reach = 0.045 + (pn.power < 0.35 ? 0.03 : 0);   // schwache Schüsse sind leichter zu halten
+  const saved = !miss && Math.abs(diveY - pn.aimY) < reach;
+  pn.outcome = miss ? 'miss' : saved ? 'save' : 'goal';
+  pn.diveY = diveY;
+  pn.startX = ball.x; pn.startY = ball.y;
+  if (pn.outcome === 'goal') { pn.endX = pn.attackRight ? 1 - FPADX * 0.35 : FPADX * 0.35; pn.endY = pn.aimY; }
+  else if (pn.outcome === 'save') { pn.endX = k.x - pn.side * 0.01; pn.endY = diveY; }
+  else { pn.endX = pn.attackRight ? 1 - FPADX * 0.2 : FPADX * 0.2; pn.endY = pn.aimY < 0.5 ? GOAL_T - 0.05 : GOAL_B + 0.05; }
+  pn.dur = 0.75 - pn.power * 0.35;
+  pn.phase = 'shot';
+  pn.t0 = Date.now();
+  goalScorer = pn.taker;
+}
+
+function finishPenalty() {
+  const k = penalty.keeper;
+  k.diveAngle = 0; k.y = 0.5;
+  ballLift = 0;
+  ballOwner = k;
   penalty = null; setPiece = null;
   protectUntil = Date.now() + 800;
   gameState = 'playing'; lastFrameMs = 0;
 }
 
 function updatePenalty() {
-  const now = Date.now(), { taker } = penalty;
-  if (taker.team === playerTeam) {
-    // Zielpunkt wandert am Tor hoch und runter, Schuss-Taste schießt
-    penalty.aimY = 0.5 + Math.sin((now - penalty.t0) / 380) * 0.085;
-    if (keys[' '] || keys['Enter'] || btnActive.shoot) {
-      keys[' '] = false; keys['Enter'] = false; btnActive.shoot = false;
-      shootPenalty(penalty.aimY);
-    } else if (now - penalty.t0 > 7000) shootPenalty(penalty.aimY);
-  } else if (now - penalty.t0 > 2500) {
-    const r = Math.random();
-    shootPenalty(r < 0.4 ? 0.43 : r < 0.8 ? 0.57 : 0.5);
+  const now = Date.now(), pn = penalty, el = (now - pn.t0) / 1000;
+  if (pn.phase === 'aim') {
+    if (pn.mine) {
+      // Mit ↑/↓ zielen, die Kraftanzeige pendelt, Schuss-Taste schießt
+      pn.aimY = Math.max(0.42, Math.min(0.58, pn.aimY + penaltyInput() * 0.004));
+      pn.power = (Math.sin(el * 3.2 - Math.PI / 2) + 1) / 2;
+      if (keys[' '] || keys['Enter'] || btnActive.shoot) {
+        keys[' '] = false; keys['Enter'] = false; btnActive.shoot = false;
+        startRunUp();
+      } else if (el > 9) startRunUp();
+    } else {
+      pn.keeperChoice = penaltyInput();
+      if (el > 2.8) {
+        const r = Math.random();
+        pn.aimY = r < 0.4 ? 0.43 : r < 0.8 ? 0.57 : 0.5;
+        pn.power = 0.45 + Math.random() * 0.4;
+        startRunUp();
+      }
+    }
+  } else if (pn.phase === 'runup') {
+    if (!pn.mine) pn.keeperChoice = penaltyInput();
+    const t = Math.min(1, el / 0.6);
+    pn.taker.x = pn.runFromX + (pn.kickX - pn.runFromX) * t;
+    pn.taker.y = pn.runFromY + (pn.kickY - pn.runFromY) * t;
+    if (t >= 1) startShot();
+  } else if (pn.phase === 'shot') {
+    const t = Math.min(1, el / pn.dur);
+    ball.x = pn.startX + (pn.endX - pn.startX) * t;
+    ball.y = pn.startY + (pn.endY - pn.startY) * t;
+    ballLift = Math.sin(Math.PI * t) * (0.3 + pn.power * 0.5);
+    // Torwart hechtet schon beim Schuss los
+    const k = pn.keeper, kt = easeOut(Math.min(1, el / (pn.dur * 0.85)));
+    k.y = 0.5 + (pn.diveY - 0.5) * kt;
+    k.diveAngle = pn.diveY === 0.5 ? 0 : Math.sign(pn.diveY - 0.5) * pn.side * kt * Math.PI / 2;
+    if (t >= 1) {
+      ballLift = 0;
+      if (pn.outcome === 'goal') {
+        if (pn.taker.team === 'red') score.red++; else score.blue++;
+        goalTeam = pn.taker.team; halfTimeLeft += 10;
+        k.diveAngle = 0;
+        penalty = null; setPiece = null;
+        gameState = 'goal';
+        resetPositions();
+        return;
+      }
+      pn.phase = 'result'; pn.t0 = now;
+      if (pn.outcome === 'save') playWhistle();
+    }
+  } else if (pn.phase === 'result') {
+    // Gehaltener Ball springt zurück ins Feld
+    if (pn.outcome === 'save') {
+      ball.x -= pn.side * 0.006 * Math.max(0, 1 - el);
+      ball.y += (pn.diveY - 0.5) * 0.02 * Math.max(0, 1 - el);
+    }
+    if (el > 1.6) finishPenalty();
   }
 }
 
 // ── Aktionen ────────────────────────────────────────────────────────
 function doShoot() {
-  if (gameState === 'penalty') { if (penalty.taker.team === playerTeam) shootPenalty(penalty.aimY); return; }
+  if (gameState === 'penalty') { if (penalty.mine && penalty.phase === 'aim') startRunUp(); return; }
   const cp = getCP();
   if (ballOwner !== cp) return;
   const goalX = playerTeam === 'red' ? FR : FL;
@@ -2049,11 +2127,6 @@ function updateKeepers() {
     { k: blueKeeper, homeX: 0.93, isLeft: false },
   ].forEach(({ k, homeX, isLeft }) => {
     k.x = homeX;
-    if (k.diveUntil && Date.now() < k.diveUntil) {
-      const step = 0.03;
-      if (Math.abs(k.diveY - k.y) > step) k.y += Math.sign(k.diveY - k.y) * step; else k.y = k.diveY;
-      return;
-    }
     // Eigener Torwart bleibt immer gleich, der gegnerische hängt von der Schwierigkeit ab
     const foe = k.team !== playerTeam;
     const KSPEED = foe ? difficulty.keeperSpeed : 0.0032;
@@ -2718,58 +2791,205 @@ function drawCard(x, y, hgt, color) {
   ctx.restore();
 }
 
+let camZoom = 1, camFocusX = 0;
+
+// Liegender Gefoulter, hechtender Torwart
+function poseAngle(p) {
+  if (p.diveAngle) return p.diveAngle;
+  if (gameState === 'foul' && setPiece && p === setPiece.victim) {
+    const el = (Date.now() - setPiece.t0) / 1000;
+    const fall = Math.min(1, el / 0.25);
+    const dir = setPiece.fouler.x < p.x ? 1 : -1;
+    return dir * (Math.PI / 2) * fall + Math.sin(el * 9) * 0.08 * fall;
+  }
+  return 0;
+}
+
+// Staubwolke an der Foulstelle
+function drawFoulScene(w, h, ps) {
+  const el = (Date.now() - setPiece.t0) / 1000;
+  if (el > 0.7) return;
+  const x = setPiece.spotX * w, y = setPiece.spotY * h;
+  ctx.save();
+  for (let i = 0; i < 7; i++) {
+    const a = i / 7 * Math.PI * 2, r = ps * (0.3 + el * 1.6);
+    ctx.fillStyle = `rgba(210,190,150,${0.45 * (1 - el / 0.7)})`;
+    ctx.beginPath();
+    ctx.arc(x + Math.cos(a) * r, y + Math.sin(a) * r * 0.5, ps * (0.18 + el * 0.4), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// Schiri läuft zum Foulspieler und zeigt die Karte hoch
+function drawReferee(w, h, ps) {
+  const sp = setPiece, ref = sp.ref, el = (Date.now() - sp.t0) / 1000;
+  const t = easeOut(Math.max(0, Math.min(1, (el - 0.2) / 1.0)));
+  const rx = ref.fromX + (ref.toX - ref.fromX) * t, ry = ref.fromY + (ref.toY - ref.fromY) * t;
+  const px = rx * w, py = ry * h - ps * 1.5;
+  const moving = t > 0 && t < 1;
+  const refStyle = { shortsColor:'#111111', shortSleeves:true, socksColor:'#111111', socksStripe:'#ffffff', trim:'#ffd400' };
+  const refLook = { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#555555', hairStyle:'buzz' };
+  drawPlayer(px, py, ps, '#151515', '', false, '#fff', refStyle, refLook,
+             { moving, phase: el * 14, face: ref.toX >= ref.fromX ? 1 : -1 });
+  ctx.save();
+  ctx.font = `bold ${ps * 0.28}px system-ui`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  roundRect(px - ps * 0.45, py + ps * 2.0, ps * 0.9, ps * 0.42, ps * 0.1); ctx.fill();
+  ctx.fillStyle = '#ffd400';
+  ctx.fillText('Schiri', px, py + ps * 2.21);
+  ctx.restore();
+  if (sp.card && el > 1.25) {
+    const up = easeOut(Math.min(1, (el - 1.25) / 0.25));
+    const col = sp.card === 'yellow' ? '#ffd400' : '#e10600';
+    ctx.save();
+    ctx.strokeStyle = '#151515'; ctx.lineWidth = ps * 0.13; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(px + ps * 0.3, py + ps * 0.25); ctx.lineTo(px + ps * 0.45, py + ps * (0.25 - 0.7 * up)); ctx.stroke();
+    ctx.translate(px + ps * 0.47, py + ps * (0.05 - 0.75 * up));
+    ctx.rotate(0.15);
+    ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 10;
+    ctx.fillRect(-ps * 0.14, -ps * 0.4, ps * 0.28, ps * 0.4);
+    ctx.restore();
+  }
+}
+
+// Zielkreuz und gestrichelte Schusslinie beim eigenen Elfmeter
+function drawPenaltyAim(w, h) {
+  const pn = penalty;
+  const lx = (pn.attackRight ? 1 - FPADX : FPADX) * w, ly = pn.aimY * h, r = Math.min(w, h) * 0.022;
+  ctx.save();
+  ctx.strokeStyle = '#ff3b3b'; ctx.lineWidth = 2.5;
+  ctx.shadowColor = '#ff3b3b'; ctx.shadowBlur = 8;
+  ctx.beginPath(); ctx.arc(lx, ly, r, 0, Math.PI * 2);
+  ctx.moveTo(lx - r * 1.6, ly); ctx.lineTo(lx + r * 1.6, ly);
+  ctx.moveTo(lx, ly - r * 1.6); ctx.lineTo(lx, ly + r * 1.6);
+  ctx.stroke();
+  ctx.setLineDash([6, 6]); ctx.lineWidth = 1.5; ctx.shadowBlur = 0;
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+  ctx.beginPath(); ctx.moveTo(ball.x * w, ball.y * h); ctx.lineTo(lx, ly); ctx.stroke();
+  ctx.restore();
+}
+
 function drawSetPieceUI() {
   const w=W(), h=H();
   ctx.save();
   ctx.textAlign='center'; ctx.textBaseline='middle';
   if (gameState === 'foul') {
     const { victim, fouler, card, type } = setPiece;
-    ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(0,0,w,h);
-    ctx.fillStyle='#fff';
-    ctx.font=`900 ${Math.min(w*0.13,72)}px system-ui`;
-    ctx.fillText('FOUL!', w/2, h*0.24);
-    ctx.font=`bold ${Math.min(w*0.04,20)}px system-ui`;
-    ctx.fillStyle='rgba(255,255,255,0.85)';
-    ctx.fillText(`${playerName(fouler)} foult ${playerName(victim)}`, w/2, h*0.35);
-    let y = h*0.5;
-    if (card) {
-      const ch = Math.min(h*0.17, 90);
-      if (card === 'yellowred') { drawCard(w/2-ch*0.25, y, ch, '#ffd400'); drawCard(w/2+ch*0.25, y, ch, '#e10600'); }
-      else drawCard(w/2, y, ch, card === 'yellow' ? '#ffd400' : '#e10600');
-      const txt = card === 'yellow' ? 'Gelbe Karte' : card === 'red' ? 'Rote Karte! Platzverweis!' : 'Gelb-Rot! Platzverweis!';
-      ctx.fillStyle = card === 'yellow' ? '#ffd400' : '#ff4d4d';
-      ctx.font=`bold ${Math.min(w*0.045,22)}px system-ui`;
-      ctx.fillText(txt, w/2, y + ch*0.75);
-      y += ch*0.75 + 34;
+    const el = (Date.now() - setPiece.t0) / 1000;
+    const vig = ctx.createRadialGradient(w/2, h/2, Math.min(w,h)*0.3, w/2, h/2, Math.max(w,h)*0.7);
+    vig.addColorStop(0, 'rgba(0,0,0,0)'); vig.addColorStop(1, 'rgba(0,0,0,0.45)');
+    ctx.fillStyle = vig; ctx.fillRect(0, 0, w, h);
+    // FOUL! knallt rein
+    const slam = 1 + Math.max(0, 1 - el / 0.22) * 1.6;
+    ctx.save();
+    ctx.translate(w/2, h*0.18); ctx.scale(slam, slam); ctx.rotate(-0.06);
+    ctx.font=`900 ${Math.min(w*0.12,66)}px system-ui`;
+    ctx.lineWidth = 6; ctx.strokeStyle = '#000'; ctx.strokeText('FOUL!', 0, 0);
+    ctx.fillStyle = '#ff3b3b'; ctx.fillText('FOUL!', 0, 0);
+    ctx.restore();
+    if (el > 0.3) {
+      ctx.globalAlpha = Math.min(1, (el - 0.3) / 0.3);
+      ctx.font=`bold ${Math.min(w*0.035,18)}px system-ui`;
+      const line = `${playerName(fouler)} foult ${playerName(victim)}`;
+      const lw = ctx.measureText(line).width + 24;
+      ctx.fillStyle='rgba(0,0,0,0.55)';
+      roundRect(w/2-lw/2, h*0.28-14, lw, 28, 14); ctx.fill();
+      ctx.fillStyle='#fff';
+      ctx.fillText(line, w/2, h*0.28);
+      ctx.globalAlpha = 1;
     }
-    const club = clubOf(victim);
-    ctx.fillStyle = type === 'penalty' ? '#feca57' : '#fff';
-    ctx.font=`900 ${Math.min(w*(type === 'penalty' ? 0.07 : 0.05), type === 'penalty' ? 40 : 26)}px system-ui`;
-    ctx.fillText(type === 'penalty' ? `ELFMETER für ${club.name}!` : `Freistoß für ${club.name}`, w/2, y);
+    // Karte dreht sich groß ins Bild
+    if (card && el > 1.4) {
+      const flip = easeOut(Math.min(1, (el - 1.4) / 0.3));
+      const ch = Math.min(h*0.16, 80);
+      ctx.save();
+      ctx.translate(w*0.85, h*0.45); ctx.scale(flip, 1);
+      if (card === 'yellowred') { drawCard(-ch*0.22, 0, ch, '#ffd400'); drawCard(ch*0.22, 0, ch, '#e10600'); }
+      else drawCard(0, 0, ch, card === 'yellow' ? '#ffd400' : '#e10600');
+      ctx.restore();
+      ctx.globalAlpha = flip;
+      ctx.fillStyle = card === 'yellow' ? '#ffd400' : '#ff4d4d';
+      ctx.font=`900 ${Math.min(w*0.035,20)}px system-ui`;
+      ctx.fillText(card === 'yellow' ? 'Gelbe Karte' : card === 'red' ? 'Rote Karte!' : 'Gelb-Rot!', w*0.85, h*0.45 + ch*0.75);
+      if (card !== 'yellow') {
+        ctx.font=`bold ${Math.min(w*0.028,14)}px system-ui`;
+        ctx.fillText('Platzverweis!', w*0.85, h*0.45 + ch*0.75 + 20);
+      }
+      ctx.globalAlpha = 1;
+    }
+    const showAt = card ? 2.0 : 1.2;
+    if (el > showAt) {
+      const club = clubOf(victim);
+      const a = Math.min(1, (el - showAt) / 0.3);
+      const pen = type === 'penalty';
+      const bw = Math.min(w*0.7, 460), bh = Math.min(h*0.12, 60), y = h*0.75 + (1-a)*20;
+      ctx.globalAlpha = a;
+      ctx.fillStyle = pen ? 'rgba(254,202,87,0.92)' : 'rgba(0,0,0,0.7)';
+      roundRect(w/2-bw/2, y-bh/2, bw, bh, 12); ctx.fill();
+      ctx.fillStyle = pen ? '#111' : '#fff';
+      ctx.font=`900 ${bh*0.42}px system-ui`;
+      ctx.fillText(pen ? `ELFMETER für ${club.name}!` : `Freistoß für ${club.name}`, w/2, y, bw-20);
+      ctx.globalAlpha = 1;
+    }
   }
   if (gameState === 'penalty') {
-    const mine = penalty.taker.team === playerTeam;
-    const keeperMine = !mine;
-    if (mine) {
-      // Zielkreuz auf der Torlinie
-      const lx = (penalty.attackRight ? 1 - FPADX : FPADX) * w, ly = penalty.aimY * h, r = Math.min(w,h)*0.025;
-      ctx.strokeStyle='#ff3b3b'; ctx.lineWidth=3;
-      ctx.beginPath(); ctx.arc(lx, ly, r, 0, Math.PI*2);
-      ctx.moveTo(lx-r*1.5, ly); ctx.lineTo(lx+r*1.5, ly);
-      ctx.moveTo(lx, ly-r*1.5); ctx.lineTo(lx, ly+r*1.5);
-      ctx.stroke();
-    }
-    ctx.fillStyle='rgba(0,0,0,0.6)';
-    const bw=Math.min(w*0.7, 460), bh=Math.min(h*0.14, 70);
-    roundRect(w/2-bw/2, h*0.14, bw, bh, 12); ctx.fill();
+    const pn = penalty;
+    const bw=Math.min(w*0.72, 480), bh=Math.min(h*0.13, 66), by=h*0.04;
+    ctx.fillStyle='rgba(0,0,0,0.65)';
+    roundRect(w/2-bw/2, by, bw, bh, 12); ctx.fill();
     ctx.fillStyle='#feca57';
     ctx.font=`900 ${bh*0.36}px system-ui`;
-    ctx.fillText('ELFMETER!', w/2, h*0.14+bh*0.33);
+    ctx.fillText('ELFMETER!', w/2, by+bh*0.33);
     ctx.fillStyle='#fff';
-    ctx.font=`bold ${bh*0.22}px system-ui`;
-    ctx.fillText(mine ? 'Drück „Schuss“, wenn das Ziel in der Ecke ist!'
-                      : (keeperMine ? 'Halte ↑ oder ↓, damit dein Torwart in die Ecke springt!' : ''),
-                 w/2, h*0.14+bh*0.72, bw-16);
+    ctx.font=`bold ${bh*0.21}px system-ui`;
+    const hint = pn.phase !== 'aim' && pn.phase !== 'runup' ? `${playerName(pn.taker)} gegen ${playerName(pn.keeper)}` :
+      pn.mine ? '↑ ↓ zielen · „Schuss“ drücken, wenn die Kraft passt (nicht zu fest!)' : 'Halte ↑ oder ↓: dein Torwart springt in diese Ecke!';
+    ctx.fillText(hint, w/2, by+bh*0.72, bw-16);
+
+    // Kraftanzeige
+    if (pn.mine && pn.phase === 'aim') {
+      const pw = Math.min(w*0.4, 260), ph = 16, px = w/2-pw/2, py = h*0.9;
+      const g = ctx.createLinearGradient(px, 0, px+pw, 0);
+      g.addColorStop(0, '#2ecc71'); g.addColorStop(0.7, '#f1c40f'); g.addColorStop(0.9, '#e67e22'); g.addColorStop(1, '#e74c3c');
+      ctx.fillStyle='rgba(0,0,0,0.6)'; roundRect(px-6, py-6, pw+12, ph+12, 10); ctx.fill();
+      ctx.fillStyle=g; roundRect(px, py, pw, ph, 6); ctx.fill();
+      ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(px+pw*0.9, py, 2, ph);
+      ctx.fillStyle='#fff';
+      ctx.fillRect(px + pw*pn.power - 3, py - 5, 6, ph + 10);
+      ctx.font='bold 12px system-ui';
+      ctx.fillText('KRAFT', w/2, py - 14);
+    }
+    // Torwart-Wahl
+    if (!pn.mine && (pn.phase === 'aim' || pn.phase === 'runup')) {
+      const labels = ['↑ oben', 'Mitte', '↓ unten'];
+      const bw2 = Math.min(w*0.12, 80);
+      labels.forEach((l, i) => {
+        const sel = pn.keeperChoice === i - 1;
+        const x = w/2 + (i-1)*(bw2+10);
+        ctx.fillStyle = sel ? '#27ae60' : 'rgba(0,0,0,0.6)';
+        roundRect(x-bw2/2, h*0.88, bw2, 32, 10); ctx.fill();
+        ctx.fillStyle='#fff'; ctx.font='bold 14px system-ui';
+        ctx.fillText(l, x, h*0.88+16);
+      });
+    }
+    // Ergebnis
+    if (pn.phase === 'result') {
+      const el = (Date.now() - pn.t0) / 1000;
+      const sc = 1 + Math.max(0, 1 - el/0.2)*1.2;
+      const txt = pn.outcome === 'save' ? 'GEHALTEN!' : 'DANEBEN!';
+      ctx.save();
+      ctx.translate(w/2, h*0.45); ctx.scale(sc, sc);
+      ctx.font=`900 ${Math.min(w*0.12,64)}px system-ui`;
+      ctx.lineWidth=6; ctx.strokeStyle='#000'; ctx.strokeText(txt, 0, 0);
+      ctx.fillStyle = pn.outcome === 'save' ? '#2ecc71' : '#feca57';
+      ctx.fillText(txt, 0, 0);
+      ctx.restore();
+      ctx.fillStyle='#fff';
+      ctx.font=`bold ${Math.min(w*0.035,18)}px system-ui`;
+      ctx.fillText(pn.outcome === 'save' ? `Super Parade von ${playerName(pn.keeper)}!` : `${playerName(pn.taker)} schießt vorbei!`, w/2, h*0.56);
+    }
   }
   ctx.restore();
 }
@@ -2779,6 +2999,19 @@ function loop() {
   if (resizeFrames < 60) { resize(); resizeFrames++; }
   const w=W(), h=H();
   ctx.clearRect(0,0,w,h);
+  // Beim Elfmeter zoomt die Kamera aufs Tor
+  const camTarget = gameState === 'penalty' ? 1.45 : 1;
+  camZoom += (camTarget - camZoom) * 0.08;
+  if (penalty) camFocusX = penalty.attackRight ? w * 0.82 : w * 0.18;
+  if (Math.abs(camZoom - 1) < 0.002) camZoom = 1;
+  const camOn = camZoom !== 1;
+  if (camOn) {
+    const cx = Math.max(w / (2 * camZoom), Math.min(w - w / (2 * camZoom), camFocusX));
+    ctx.save();
+    ctx.translate(w / 2, h / 2);
+    ctx.scale(camZoom, camZoom);
+    ctx.translate(-cx, -h / 2);
+  }
   drawField();
   if (gameState==='goal') {
     const sy=h*FPADY*0.58;
@@ -2798,10 +3031,13 @@ function loop() {
   update();
 
   const ps=Math.min(w,h)*0.07;
+  if (gameState === 'foul') drawFoulScene(w, h, ps);
   for (const p of allPlayers) {
     if (p.sentOff) continue;
     const cel = gameState==='goal' && goalTeam===p.team;
     const px=p.x*w, py=p.y*h-ps*1.5;
+    const rot = poseAngle(p);
+    if (rot) { ctx.save(); ctx.translate(px, py+ps*0.9); ctx.rotate(rot); ctx.translate(-px, -(py+ps*0.9)); }
     const mdx=p.x-(p._lx ?? p.x), mdy=p.y-(p._ly ?? p.y);
     p._lx=p.x; p._ly=p.y;
     const step=Math.hypot(mdx*w, mdy*h);
@@ -2848,10 +3084,14 @@ function loop() {
         ctx.restore();
       }
     }
+    if (rot) ctx.restore();
   }
+  if (gameState === 'foul') drawReferee(w, h, ps);
 
   const ballR=Math.min(w,h)*0.022;
-  drawBall(ball.x*w, ball.y*h, ballR);
+  drawBall(ball.x*w, ball.y*h - ballLift*ballR*2.5, ballR*(1+ballLift*0.5));
+  if (gameState === 'penalty' && penalty.mine && penalty.phase === 'aim') drawPenaltyAim(w, h);
+  if (camOn) ctx.restore();
 
   updateAudio();
   updateChants();
