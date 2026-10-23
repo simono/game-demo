@@ -374,7 +374,7 @@ let fieldCache = null, fieldCacheKey = '';
 
 function drawField() {
   const w = W(), h = H(), dpr = window.devicePixelRatio || 1;
-  const key = `${w}x${h}@${dpr}`;
+  const key = `${w}x${h}@${dpr}/${playerClub.short}/${opponentClub.short}`;
   if (key !== fieldCacheKey) {
     fieldCache = document.createElement('canvas');
     fieldCache.width = w * dpr;
@@ -385,6 +385,66 @@ function drawField() {
     fieldCacheKey = key;
   }
   ctx.drawImage(fieldCache, 0, 0, w, h);
+}
+
+// Tribünen im Heimstadion: Fans in Vereinsfarben, Gästeblock unten rechts, Werbebanden
+function paintStands(f, w, h, padX, padY) {
+  const home = playerClub, away = opponentClub;
+  const standY = padY * 0.58, boardH = padY * 0.2, standX = padX * 0.58;
+  const goalTop = h * GOAL_T - h * 0.03, goalBot = h * GOAL_B + h * 0.03;
+  const regions = [
+    [0, 0, w, standY],
+    [0, h - standY, w, standY],
+    [0, standY, standX, goalTop - standY],
+    [0, goalBot, standX, h - standY - goalBot],
+    [w - standX, standY, standX, goalTop - standY],
+    [w - standX, goalBot, standX, h - standY - goalBot],
+  ];
+  let seed = 11;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const gap = 4.5;
+  for (const [rx, ry, rw, rh] of regions) {
+    if (rw <= 0 || rh <= 0) continue;
+    f.fillStyle = '#1b1e29';
+    f.fillRect(rx, ry, rw, rh);
+    for (let y = ry + gap / 2; y < ry + rh; y += gap) {
+      for (let x = rx + gap / 2; x < rx + rw; x += gap) {
+        const awayBlock = x > w * 0.78 && y > h - standY;
+        const cols = awayBlock ? away.fans : home.fans;
+        const r = rnd();
+        f.fillStyle = r < 0.75 ? cols[Math.floor(rnd() * cols.length)] : (r < 0.88 ? '#e0b090' : '#2a2a2a');
+        f.globalAlpha = 0.55 + rnd() * 0.45;
+        f.beginPath();
+        f.arc(x + (rnd() - 0.5), y + (rnd() - 0.5), 1.7, 0, Math.PI * 2);
+        f.fill();
+      }
+    }
+    f.globalAlpha = 1;
+    // Stufen der Tribüne
+    f.fillStyle = 'rgba(0,0,0,0.25)';
+    for (let y = ry + gap * 2; y < ry + rh; y += gap * 2) f.fillRect(rx, y, rw, 0.7);
+  }
+
+  // Werbebanden oben und unten
+  const ads = [home.stadium, 'FUSSBALL', home.name, 'TOOOR!', 'BUNDESLIGA-DUELL'];
+  f.font = `bold ${boardH * 0.7}px system-ui`;
+  f.textAlign = 'center';
+  f.textBaseline = 'middle';
+  for (const by of [standY, h - standY - boardH]) {
+    let x = 0, i = 0;
+    while (x < w) {
+      const text = ads[i % ads.length];
+      const segW = f.measureText(text).width + boardH * 3;
+      const dark = i % 2 === 0;
+      f.fillStyle = dark ? '#0d0d0d' : home.color;
+      f.fillRect(x, by, segW, boardH);
+      f.fillStyle = dark ? '#ffffff' : (home.numColor || '#ffffff');
+      f.fillText(text, x + segW / 2, by + boardH / 2);
+      x += segW; i++;
+    }
+    f.fillStyle = 'rgba(255,255,255,0.25)';
+    f.fillRect(0, by, w, 1);
+  }
 }
 
 function paintField(f, w, h) {
@@ -424,6 +484,8 @@ function paintField(f, w, h) {
   f.fillRect(0, h - padY, w, padY);
   f.fillRect(0, padY, padX, h - padY * 2);
   f.fillRect(w - padX, padY, padX, h - padY * 2);
+
+  paintStands(f, w, h, padX, padY);
 
   // Flutlicht aus den vier Ecken
   for (const [lx, ly] of [[0, 0], [w, 0], [0, h], [w, h]]) {
@@ -1195,6 +1257,12 @@ const BMG     = { name: 'Borussia M\'gladbach',    short: 'BMG', color: '#111111
   ]
 };
 
+KOELN.stadium   = 'RheinEnergieStadion'; KOELN.fans   = ['#e3000f', '#ffffff'];
+BVB.stadium     = 'Signal Iduna Park';   BVB.fans     = ['#ffe500', '#ffe500', '#111111'];
+SCHALKE.stadium = 'Veltins-Arena';       SCHALKE.fans = ['#004c9f', '#ffffff'];
+BMG.stadium     = 'Borussia-Park';       BMG.fans     = ['#111111', '#ffffff', '#00a650'];
+let stadiumBannerUntil = 0;
+
 let ball  = { x: 0.5, y: 0.5, vx: 0, vy: 0 };
 let ballOwner = redP;
 let score = { red: 0, blue: 0 };
@@ -1336,6 +1404,7 @@ function startMatch() {
   currentHalf=1; halfTimeLeft=halfSecs; breakTimeLeft=BREAK_SECS; lastFrameMs=0;
   inExtra=false; score.red=0; score.blue=0;
   gameState='playing'; teamChosen=false; opponentChosen=false;
+  stadiumBannerUntil=Date.now()+3500;
 }
 
 // Knöpfe im Hauptmenü: gleiche Rechtecke fürs Zeichnen und Antippen
@@ -1895,6 +1964,25 @@ function drawUI() {
   const w=W(), h=H();
   if (gameState === 'title') { drawTitle(); return; }
 
+  if (gameState === 'playing' && Date.now() < stadiumBannerUntil) {
+    const left=stadiumBannerUntil-Date.now();
+    ctx.save();
+    ctx.globalAlpha=Math.min(1, left/500, (3500-left)/300);
+    const bw=Math.min(w*0.6, 420), bh=Math.min(h*0.14, 70), bx=w/2-bw/2, by=h*0.22;
+    ctx.fillStyle='rgba(0,0,0,0.7)';
+    roundRect(bx, by, bw, bh, 12); ctx.fill();
+    ctx.fillStyle=playerClub.color;
+    ctx.fillRect(bx+12, by+bh-6, bw-24, 3);
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillStyle='rgba(255,255,255,0.75)';
+    ctx.font=`${bh*0.22}px system-ui`;
+    ctx.fillText('Willkommen im', w/2, by+bh*0.3);
+    ctx.fillStyle='#fff';
+    ctx.font=`bold ${bh*0.36}px system-ui`;
+    ctx.fillText(playerClub.stadium, w/2, by+bh*0.62, bw-24);
+    ctx.restore();
+  }
+
   // Halbzeit-Bildschirm
   if (gameState === 'halftime') {
     ctx.save();
@@ -2172,6 +2260,16 @@ function loop() {
   const w=W(), h=H();
   ctx.clearRect(0,0,w,h);
   drawField();
+  if (gameState==='goal') {
+    const sy=h*FPADY*0.58;
+    ctx.fillStyle='#fff';
+    for (let i=0;i<25;i++) {
+      ctx.globalAlpha=Math.random();
+      const fy=Math.random()<0.5 ? Math.random()*sy : h-Math.random()*sy;
+      ctx.beginPath(); ctx.arc(Math.random()*w, fy, 1.5+Math.random()*2, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.globalAlpha=1;
+  }
 
   const goalH=h*(GOAL_B-GOAL_T), goalY=h*GOAL_T, padX=w*FPADX;
   drawGoal(0,       goalY, padX, goalH, true);
