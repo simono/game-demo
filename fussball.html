@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Fußball</title>
+<title>Kick it!</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
@@ -337,7 +337,7 @@ function paintStands(f, w, h, padX, padY) {
   }
 
   // Werbebanden oben und unten
-  const ads = [home.stadium, 'FUSSBALL', home.name, 'TOOOR!', 'BUNDESLIGA-DUELL'];
+  const ads = [home.stadium, 'KICK IT!', home.name, 'TOOOR!', 'BUNDESLIGA-DUELL'];
   f.font = `bold ${boardH * 0.7}px system-ui`;
   f.textAlign = 'center';
   f.textBaseline = 'middle';
@@ -1923,7 +1923,7 @@ function drawTitle() {
     const tg=ctx.createLinearGradient(0,h*0.27-ts/2,0,h*0.27+ts/2);
     tg.addColorStop(0,'#ffffff'); tg.addColorStop(1,'#c8f5c8');
     ctx.fillStyle=tg;
-    ctx.fillText('FUSSBALL', w/2, h*0.27);
+    ctx.fillText('KICK IT!', w/2, h*0.27);
     ctx.shadowBlur=0;
     ctx.font=`bold ${Math.min(w*0.035,20)}px system-ui`;
     ctx.fillStyle='#feca57';
@@ -2158,7 +2158,7 @@ function drawUI() {
       ctx.fillStyle='#fff';
       ctx.font=`bold ${Math.min(w*0.09,38)}px system-ui`;
       ctx.shadowColor='#27ae60'; ctx.shadowBlur=20;
-      ctx.fillText('⚽ FUSSBALL', w/2, h*0.22);
+      ctx.fillText('⚽ KICK IT!', w/2, h*0.22);
       ctx.shadowBlur=0;
       ctx.fillStyle='rgba(255,255,255,0.8)';
       ctx.font=`bold ${Math.min(w*0.048,20)}px system-ui`;
