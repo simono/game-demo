@@ -732,6 +732,11 @@ function drawPlayer(x, y, size, color, label, celebrate=false, numColor='rgba(25
   ctx.fill();
   ctx.fillStyle = 'rgba(0,0,0,0.15)';
   ctx.fillRect(x - s * 0.29, y + s * 0.78, s * 0.58, s * 0.05);
+  if (style.shortsStripe) {
+    ctx.fillStyle = style.shortsStripe;
+    ctx.fillRect(x - s * 0.3, y + s * 0.83, s * 0.04, s * 0.25);
+    ctx.fillRect(x + s * 0.26, y + s * 0.83, s * 0.04, s * 0.25);
+  }
 
   // Arme: Ärmel in Trikotfarbe, dann Unterarm und Hand
   const longSleeves = !style.shortSleeves;
@@ -749,6 +754,12 @@ function drawPlayer(x, y, size, color, label, celebrate=false, numColor='rgba(25
     ctx.beginPath(); ctx.moveTo(shX, shY); ctx.lineTo(elX, elY);
     if (longSleeves) ctx.lineTo(hdX, hdY);
     ctx.stroke();
+    if (!longSleeves && style.trim) {
+      ctx.strokeStyle = style.trim;
+      ctx.lineWidth = s * 0.155;
+      const cx0 = shX + (elX - shX) * 0.82, cy0 = shY + (elY - shY) * 0.82;
+      ctx.beginPath(); ctx.moveTo(cx0, cy0); ctx.lineTo(elX, elY); ctx.stroke();
+    }
     if (!longSleeves) {
       ctx.strokeStyle = skinDark;
       ctx.lineWidth = s * 0.12;
@@ -760,14 +771,41 @@ function drawPlayer(x, y, size, color, label, celebrate=false, numColor='rgba(25
   arm(-1, -swing);
 
   // Trikot: breite Schultern, schmalere Taille, mit Licht von links
-  ctx.beginPath();
-  ctx.moveTo(x - s * 0.36, y + s * 0.2);
-  ctx.quadraticCurveTo(x, y + s * 0.1, x + s * 0.36, y + s * 0.2);
-  ctx.lineTo(x + s * 0.3, y + s * 0.84);
-  ctx.quadraticCurveTo(x, y + s * 0.88, x - s * 0.3, y + s * 0.84);
-  ctx.closePath();
+  function shirt() {
+    ctx.beginPath();
+    ctx.moveTo(x - s * 0.36, y + s * 0.2);
+    ctx.quadraticCurveTo(x, y + s * 0.1, x + s * 0.36, y + s * 0.2);
+    ctx.lineTo(x + s * 0.3, y + s * 0.84);
+    ctx.quadraticCurveTo(x, y + s * 0.88, x - s * 0.3, y + s * 0.84);
+    ctx.closePath();
+  }
+  shirt();
   ctx.fillStyle = color;
   ctx.fill();
+  if (style.pattern || style.sidePanel) {
+    ctx.save();
+    shirt(); ctx.clip();
+    if (style.pattern === 'pinstripes') {
+      ctx.fillStyle = style.patternColor;
+      for (let px = -0.3; px <= 0.3; px += 0.1) ctx.fillRect(x + px * s - s * 0.008, y, s * 0.016, s);
+    } else if (style.pattern === 'hoops') {
+      ctx.fillStyle = style.patternColor;
+      for (let py = 0.3; py < 0.85; py += 0.14) ctx.fillRect(x - s * 0.4, y + py * s, s * 0.8, s * 0.06);
+    } else if (style.pattern === 'chevron') {
+      ctx.strokeStyle = style.patternColor;
+      ctx.lineWidth = s * 0.06;
+      ctx.beginPath();
+      ctx.moveTo(x - s * 0.4, y + s * 0.28); ctx.lineTo(x, y + s * 0.42); ctx.lineTo(x + s * 0.4, y + s * 0.28);
+      ctx.stroke();
+    }
+    if (style.sidePanel) {
+      ctx.fillStyle = style.sidePanel;
+      ctx.fillRect(x - s * 0.4, y, s * 0.1, s);
+      ctx.fillRect(x + s * 0.3, y, s * 0.1, s);
+    }
+    ctx.restore();
+    shirt();
+  }
   const light = ctx.createLinearGradient(x - s * 0.36, 0, x + s * 0.36, 0);
   light.addColorStop(0, 'rgba(255,255,255,0.22)');
   light.addColorStop(0.5, 'rgba(255,255,255,0)');
@@ -782,7 +820,7 @@ function drawPlayer(x, y, size, color, label, celebrate=false, numColor='rgba(25
   ctx.moveTo(x + s * 0.2,  y + s * 0.72); ctx.quadraticCurveTo(x + s * 0.12, y + s * 0.62, x + s * 0.22, y + s * 0.52);
   ctx.stroke();
   // Kragen
-  ctx.strokeStyle = shade(color.startsWith('#') ? color : '#888888', -0.35);
+  ctx.strokeStyle = style.trim || shade(color.startsWith('#') ? color : '#888888', -0.35);
   ctx.lineWidth = s * 0.05;
   ctx.beginPath();
   ctx.moveTo(x - s * 0.1, y + s * 0.15);
@@ -828,11 +866,40 @@ function drawPlayer(x, y, size, color, label, celebrate=false, numColor='rgba(25
       ctx.arc(hx + Math.cos(a) * s * 0.17, hy - s * 0.02 + Math.sin(a) * s * 0.19, s * 0.08, 0, Math.PI * 2);
       ctx.fill();
     }
+  } else if (hairStyle === 'buzz') {
+    ctx.globalAlpha = 0.75;
+    ctx.beginPath();
+    ctx.ellipse(hx, hy - s * 0.03, s * 0.19, s * 0.2, 0, Math.PI * 1.05, Math.PI * 1.95);
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  } else if (hairStyle === 'top') {
+    // Seiten kurz, oben länger
+    ctx.globalAlpha = 0.7;
+    ctx.beginPath();
+    ctx.ellipse(hx, hy - s * 0.03, s * 0.19, s * 0.2, 0, Math.PI * 1.05, Math.PI * 1.95);
+    ctx.closePath(); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.beginPath();
+    ctx.ellipse(hx + s * 0.02, hy - s * 0.18, s * 0.15, s * 0.09, -0.15, 0, Math.PI * 2);
+    ctx.fill();
   } else {
     ctx.beginPath();
     ctx.ellipse(hx, hy - s * 0.04, s * 0.2, s * 0.2, 0, Math.PI * 1.03, Math.PI * 1.97);
     ctx.quadraticCurveTo(hx + s * 0.05, hy - s * 0.12, hx - s * 0.19, hy - s * 0.06);
     ctx.fill();
+  }
+  if (appearance.beard) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(hx, hy, s * 0.19, s * 0.22, 0, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.fillStyle = hairCol;
+    ctx.globalAlpha = appearance.beard === 'stubble' ? 0.35 : 0.8;
+    ctx.beginPath();
+    ctx.ellipse(hx, hy + s * 0.15, s * 0.2, s * 0.12, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
   // Augenbrauen und Augen
@@ -1156,16 +1223,35 @@ const blueTeam  = [blueP, blueP2, blueP3];
 let redKeeper  = { x:0.07, y:0.5, vx:0, vy:0, team:'red',  num:'1', skin:'#ffe4c4', skinDark:'#d4a870', hair:'#555', hairStyle:'short', isKeeper:true };
 let blueKeeper = { x:0.93, y:0.5, vx:0, vy:0, team:'blue', num:'1', skin:'#c07840', skinDark:'#905020', hair:'#222', hairStyle:'short', isKeeper:true };
 const allPlayers = [...redTeam, ...blueTeam, redKeeper, blueKeeper];
-const KOELN   = { name: '1. FC Köln',              short: 'KÖL', color: '#e3000f', light: '#ff3a3a', numColor:'#fff', nums:['7','10','11'],  names:['Waldschmidt','El Mala','Heskey'], keeperName:'Schwäbe', style:{shortsColor:'#ffffff', shortSleeves:true, socksColor:'#ffffff', socksStripe:'#e3000f'} };
-const SCHALKE = { name: 'Schalke 04',              short: 'S04', color: '#004c9f', light: '#1a6cc8', numColor:'#fff', nums:['19','9','23'], names:['Karaman','Sylla','El-Faouzi'], keeperName:'Karius', style:{shortsColor:'#ffffff', shortSleeves:true, socksColor:'#004c9f', socksStripe:'#ffffff'} };
-const BVB     = { name: 'Borussia Dortmund',       short: 'BVB', color: '#ffe500', light: '#ffed4a', numColor:'#111', nums:['9','14','7'],  names:['Guirassy','Beier','Bellingham'], keeperName:'Kobel', style:{shortsColor:'#111111', shortSleeves:true, socksColor:'#ffe500', socksStripe:'#111111'} };
-const BMG     = { name: 'Borussia M\'gladbach',    short: 'BMG', color: '#111111', light: '#555555', numColor:'#fff', nums:['11','7','3'], names:['Kleindienst','Stöger','Lidberg'], keeperName:'Nicolas',
-  style:{shortsColor:'#ffffff', shortSleeves:true, socksColor:'#111111', socksStripe:'#ffffff'},
+const KOELN   = { name: '1. FC Köln',              short: 'KÖL', color: '#e3000f', light: '#ff3a3a', numColor:'#fff', nums:['7','10','11'],  names:['Waldschmidt','El Mala','Heskey'], keeperName:'Schwäbe', style:{shortsColor:'#ffffff', shortSleeves:true, socksColor:'#ffffff', socksStripe:'#e3000f', trim:'#ffffff', pattern:'pinstripes', patternColor:'rgba(255,255,255,0.18)', shortsStripe:'#e3000f'},
   appearances:[
-    { skin:'#8B4513', skinDark:'#6B3210', hair:'#111111', hairStyle:'short'  },
-    { skin:'#ffe0c0', skinDark:'#ddb080', hair:'#222222', hairStyle:'curly'  },
-    { skin:'#c07840', skinDark:'#905020', hair:'#d4a020', hairStyle:'short'  },
-  ]
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#6b4a2b', hairStyle:'top', beard:'stubble' },
+    { skin:'#c99470', skinDark:'#a06e4c', hair:'#141414', hairStyle:'curly' },
+    { skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'buzz' },
+  ],
+  keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#7a5a3a', hairStyle:'short', beard:'full' } };
+const SCHALKE = { name: 'Schalke 04',              short: 'S04', color: '#004c9f', light: '#1a6cc8', numColor:'#fff', nums:['19','9','23'], names:['Karaman','Sylla','El-Faouzi'], keeperName:'Karius', style:{shortsColor:'#ffffff', shortSleeves:true, socksColor:'#004c9f', socksStripe:'#ffffff', trim:'#ffffff', pattern:'chevron', patternColor:'rgba(255,255,255,0.22)', shortsStripe:'#004c9f'},
+  appearances:[
+    { skin:'#e8b58e', skinDark:'#c98f68', hair:'#151515', hairStyle:'short', beard:'full' },
+    { skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'buzz' },
+    { skin:'#c99470', skinDark:'#a06e4c', hair:'#141414', hairStyle:'top', beard:'stubble' },
+  ],
+  keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#8a6a45', hairStyle:'top', beard:'stubble' } };
+const BVB     = { name: 'Borussia Dortmund',       short: 'BVB', color: '#ffe500', light: '#ffed4a', numColor:'#111', nums:['9','14','7'],  names:['Guirassy','Beier','Bellingham'], keeperName:'Kobel', style:{shortsColor:'#111111', shortSleeves:true, socksColor:'#ffe500', socksStripe:'#111111', trim:'#111111', sidePanel:'#111111', shortsStripe:'#ffe500'},
+  appearances:[
+    { skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'buzz', beard:'full' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#3a2516', hairStyle:'top' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#3a2516', hairStyle:'curly' },
+  ],
+  keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#2a1a10', hairStyle:'short', beard:'full' } };
+const BMG     = { name: 'Borussia M\'gladbach',    short: 'BMG', color: '#111111', light: '#555555', numColor:'#fff', nums:['11','7','3'], names:['Kleindienst','Stöger','Lidberg'], keeperName:'Nicolas',
+  style:{shortsColor:'#ffffff', shortSleeves:true, socksColor:'#111111', socksStripe:'#ffffff', trim:'#00a650', pattern:'hoops', patternColor:'rgba(0,166,80,0.25)', shortsStripe:'#00a650'},
+  appearances:[
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#b08850', hairStyle:'short', beard:'full' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#5a3a20', hairStyle:'top', beard:'full' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#d8c070', hairStyle:'short' },
+  ],
+  keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#5a3a20', hairStyle:'short' }
 };
 
 KOELN.stadium   = 'RheinEnergieStadion'; KOELN.fans   = ['#e3000f', '#ffffff'];
@@ -2195,9 +2281,9 @@ function loop() {
     if (Math.abs(mdx*w)>0.3) p._face=Math.sign(mdx);
     const motion={ moving: step>0.3, phase: p._run, face: p._face || (p.x<0.5 ? 1 : -1) };
     if (p.isKeeper) {
-      const keeperStyle = {shortsColor:'#1a6b1a', shortSleeves:false, socksColor:'#1a6b1a', socksStripe:'#fff', gloves:true};
-      drawPlayer(px, py, ps, '#27ae60', p.num, cel, '#fff', keeperStyle, p, motion);
       const kClub = p.team===playerTeam ? playerClub : opponentClub;
+      const keeperStyle = {shortsColor:'#1a6b1a', shortSleeves:false, socksColor:'#1a6b1a', socksStripe:'#fff', gloves:true, trim:'#111111', pattern:'hoops', patternColor:'rgba(0,0,0,0.12)'};
+      drawPlayer(px, py, ps, '#27ae60', p.num, cel, '#fff', keeperStyle, kClub.keeperLook || p, motion);
       const kName = kClub.keeperName;
       if (kName) {
         ctx.save();
