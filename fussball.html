@@ -79,62 +79,81 @@ function drawKoelnCrest(cx, cy, s) {
   ctx.textAlign='center'; ctx.textBaseline='middle';
   ctx.fillText('1. FC KÖLN', 0, -s*0.335, s*0.76);
 
-  // Kölner Dom: zwei spitze Türme, dazwischen das Kirchenschiff
+  // Kölner Dom von vorne: zwei sehr hohe Türme mit gestuften Geschossen,
+  // durchbrochenen Turmhelmen und dem Mittelportal dazwischen
+  ctx.save(); shield(0.86); ctx.clip();
   ctx.fillStyle='#111';
-  for (const tx of [-s*0.17, s*0.17]) {
+  const tiers=[[0.46,0.14,0.07],[0.14,-0.03,0.055],[-0.03,-0.1,0.04]];
+  for (const tx of [-s*0.16, s*0.16]) {
+    for (const [yb,yt,hw] of tiers) {
+      ctx.fillRect(tx-s*hw, s*yt, s*hw*2, s*(yb-yt));
+      // Fialen an den Ecken jedes Geschosses
+      for (const px of [tx-s*hw, tx+s*hw]) {
+        ctx.beginPath();
+        ctx.moveTo(px-s*0.015, s*yt); ctx.lineTo(px, s*yt-s*0.06); ctx.lineTo(px+s*0.015, s*yt);
+        ctx.closePath(); ctx.fill();
+      }
+    }
+    // Turmhelm
     ctx.beginPath();
-    ctx.moveTo(tx-s*0.08, s*0.3);
-    ctx.lineTo(tx-s*0.08, -s*0.02);
-    ctx.lineTo(tx-s*0.05, -s*0.05);
-    ctx.lineTo(tx, -s*0.22);
-    ctx.lineTo(tx+s*0.05, -s*0.05);
-    ctx.lineTo(tx+s*0.08, -s*0.02);
-    ctx.lineTo(tx+s*0.08, s*0.3);
-    ctx.closePath();
-    ctx.fill();
-    // Kreuzblume auf der Spitze
-    ctx.fillRect(tx-s*0.006, -s*0.25, s*0.012, s*0.04);
+    ctx.moveTo(tx-s*0.04, -s*0.1); ctx.lineTo(tx, -s*0.27); ctx.lineTo(tx+s*0.04, -s*0.1);
+    ctx.closePath(); ctx.fill();
+    ctx.fillRect(tx-s*0.005, -s*0.29, s*0.01, s*0.03);
   }
+  // Mittelteil mit Giebel
   ctx.beginPath();
-  ctx.moveTo(-s*0.09, s*0.3);
-  ctx.lineTo(-s*0.09, s*0.06);
-  ctx.lineTo(0, -s*0.02);
-  ctx.lineTo(s*0.09, s*0.06);
-  ctx.lineTo(s*0.09, s*0.3);
-  ctx.closePath();
-  ctx.fill();
-  // Spitzbogenfenster in Weiß
-  ctx.fillStyle='#fff';
-  for (const wx of [-s*0.17, 0, s*0.17]) {
-    ctx.beginPath();
-    ctx.moveTo(wx-s*0.025, s*0.17);
-    ctx.lineTo(wx-s*0.025, s*0.09);
-    ctx.lineTo(wx, s*0.05);
-    ctx.lineTo(wx+s*0.025, s*0.09);
-    ctx.lineTo(wx+s*0.025, s*0.17);
-    ctx.closePath();
-    ctx.fill();
-  }
+  ctx.moveTo(-s*0.09, s*0.46); ctx.lineTo(-s*0.09, s*0.08);
+  ctx.lineTo(0, -s*0.06);
+  ctx.lineTo(s*0.09, s*0.08); ctx.lineTo(s*0.09, s*0.46);
+  ctx.closePath(); ctx.fill();
 
-  // Geißbock Hennes vor dem Dom (weiß mit schwarzem Umriss)
-  ctx.fillStyle='#fff'; ctx.strokeStyle='#111'; ctx.lineWidth=s*0.025;
+  // Weiße Details: Maßwerk im Helm, Spitzbogenfenster, großes Mittelfenster
+  ctx.strokeStyle='#fff'; ctx.fillStyle='#fff'; ctx.lineWidth=Math.max(0.6, s*0.01);
+  function arch(x, yb, hw, h) {
+    ctx.beginPath();
+    ctx.moveTo(x-hw, yb); ctx.lineTo(x-hw, yb-h+hw*1.6);
+    ctx.lineTo(x, yb-h); ctx.lineTo(x+hw, yb-h+hw*1.6); ctx.lineTo(x+hw, yb);
+    ctx.closePath();
+  }
+  for (const tx of [-s*0.16, s*0.16]) {
+    ctx.beginPath();
+    for (let i=1;i<4;i++) {
+      const y=-s*0.1-i*s*0.04, hw=s*0.04*(1-i*0.04/0.17);
+      ctx.moveTo(tx-hw*0.7, y); ctx.lineTo(tx+hw*0.7, y);
+    }
+    ctx.stroke();
+    arch(tx-s*0.025, s*0.12, s*0.012, s*0.13); ctx.fill();
+    arch(tx+s*0.025, s*0.12, s*0.012, s*0.13); ctx.fill();
+    arch(tx, -s*0.045, s*0.012, s*0.08); ctx.fill();
+  }
+  arch(0, s*0.2, s*0.045, s*0.2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, s*0.2); ctx.lineTo(0, s*0.05); ctx.stroke();
+  ctx.beginPath(); ctx.arc(0, s*0.03, s*0.018, 0, Math.PI*2); ctx.stroke();
+  ctx.restore();
+
+  // Geißbock Hennes klein vor dem Dom
+  ctx.save();
+  ctx.translate(-s*0.02, s*0.38);
+  ctx.scale(0.6, 0.6);
+  ctx.translate(s*0.02, -s*0.3);
+  ctx.fillStyle='#fff'; ctx.strokeStyle='#111'; ctx.lineWidth=s*0.03;
   ctx.beginPath(); ctx.ellipse(-s*0.02, s*0.3, s*0.17, s*0.09, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-  // Beine
-  ctx.lineWidth=s*0.035;
+  ctx.lineWidth=s*0.045;
   ctx.beginPath();
-  for (const lx of [-s*0.13, -s*0.06, s*0.04, s*0.1]) { ctx.moveTo(lx, s*0.36); ctx.lineTo(lx, s*0.44); }
+  for (const lx of [-s*0.13, -s*0.06, s*0.04, s*0.1]) { ctx.moveTo(lx, s*0.37); ctx.lineTo(lx, s*0.46); }
   ctx.stroke();
-  // Kopf mit Hörnern und Bart
-  ctx.lineWidth=s*0.025;
-  ctx.beginPath(); ctx.ellipse(s*0.18, s*0.2, s*0.07, s*0.055, -0.5, 0, Math.PI*2); ctx.fill(); ctx.stroke();
   ctx.lineWidth=s*0.03;
+  ctx.beginPath(); ctx.ellipse(s*0.18, s*0.2, s*0.07, s*0.055, -0.5, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+  ctx.lineWidth=s*0.035;
+  ctx.strokeStyle='#111';
   ctx.beginPath();
   ctx.moveTo(s*0.15, s*0.15); ctx.quadraticCurveTo(s*0.07, s*0.05, s*0.13, s*0.0);
   ctx.moveTo(s*0.19, s*0.15); ctx.quadraticCurveTo(s*0.14, s*0.04, s*0.2, s*0.0);
   ctx.moveTo(s*0.22, s*0.24); ctx.lineTo(s*0.22, s*0.3);
   ctx.stroke();
   ctx.fillStyle='#111';
-  ctx.beginPath(); ctx.arc(s*0.195, s*0.19, s*0.012, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(s*0.195, s*0.19, s*0.015, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
 
   // Kontur
   shield(); ctx.strokeStyle='#8a0009'; ctx.lineWidth=s*0.025; ctx.stroke();
