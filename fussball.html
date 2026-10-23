@@ -637,199 +637,241 @@ function drawBall(x, y, r) {
   ctx.restore();
 }
 
-function drawPlayer(x, y, size, color, label, celebrate=false, numColor='rgba(255,255,255,0.9)', style={}, appearance={}) {
+// Farbe heller (amt > 0) oder dunkler (amt < 0) machen
+function shade(hex, amt) {
+  const n = parseInt(hex.slice(1), 16);
+  const f = c => Math.max(0, Math.min(255, Math.round(amt > 0 ? c + (255 - c) * amt : c * (1 + amt))));
+  return `rgb(${f(n >> 16)},${f((n >> 8) & 255)},${f(n & 255)})`;
+}
+
+// motion: { moving, phase, face } – face ist 1 (nach rechts) oder -1 (nach links)
+function drawPlayer(x, y, size, color, label, celebrate=false, numColor='rgba(255,255,255,0.9)', style={}, appearance={}, motion={}) {
   const skinCol  = appearance.skin     || '#d4956a';
   const skinDark = appearance.skinDark || '#b07040';
   const hairCol  = appearance.hair     || '#4a2800';
   const hairStyle= appearance.hairStyle|| 'short';
+  const shortsCol = style.shortsColor || '#333';
+  const socksCol  = style.socksColor  || '#333';
+  const face   = motion.face || 1;
+  const moving = !!motion.moving && !celebrate;
+  const swing  = moving ? Math.sin(motion.phase || 0) : 0;
+  const s = size;
   ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
 
-  // Jubel: hüpfen
-  const bounce = celebrate ? Math.abs(Math.sin(Date.now()*0.01)) * size * 0.5 : 0;
+  // Jubel: hüpfen; Laufen: leichtes Auf und Ab
+  const bounce = celebrate ? Math.abs(Math.sin(Date.now()*0.01)) * s * 0.5
+               : moving ? Math.abs(swing) * s * 0.06 : 0;
   y -= bounce;
 
   // Schatten (kleiner beim Hüpfen)
-  ctx.fillStyle = 'rgba(0,0,0,0.2)';
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
   ctx.beginPath();
-  const shadowScale = celebrate ? Math.max(0.3, 1 - bounce/size) : 1;
-  ctx.ellipse(x + 2, y + size * 1.7 + bounce + 3, size * 0.6 * shadowScale, size * 0.15 * shadowScale, 0, 0, Math.PI * 2);
+  const shadowScale = celebrate ? Math.max(0.3, 1 - bounce/s) : 1;
+  ctx.ellipse(x + 3, y + s * 1.76 + bounce, s * 0.5 * shadowScale, s * 0.13 * shadowScale, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Beine: Hose (oben) + Stulpen (unten)
-  const shortsCol = style.shortsColor || '#333';
-  const socksCol  = style.socksColor  || '#333';
-  ctx.lineWidth = size * 0.22;
-  ctx.lineCap = 'round';
-
-  if (celebrate) {
-    // Hose (Oberschenkel)
-    ctx.strokeStyle = shortsCol;
-    ctx.beginPath(); ctx.moveTo(x - size*0.18, y + size*0.9); ctx.lineTo(x - size*0.28, y + size*1.2); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(x + size*0.18, y + size*0.9); ctx.lineTo(x + size*0.28, y + size*1.2); ctx.stroke();
-    // Stulpen (Unterschenkel, angewinkelt)
+  // Beine: Hüfte -> Knie -> Knöchel, beim Laufen schwingen sie gegengleich
+  function leg(side, sw) {
+    const hipX = x + side * s * 0.13, hipY = y + s * 0.95;
+    let kneeX = hipX + sw * s * 0.18 * face, kneeY = y + s * 1.28 - Math.max(0, sw) * s * 0.06;
+    let footX = hipX + sw * s * 0.3 * face + side * s * 0.03, footY = y + s * 1.66 - Math.max(0, -sw) * s * 0.12;
+    if (celebrate) { kneeX = hipX + side * s * 0.12; footX = hipX + side * s * 0.02; footY = y + s * 1.62; }
+    // Oberschenkel (Haut unter der Hose)
+    ctx.strokeStyle = skinDark;
+    ctx.lineWidth = s * 0.17;
+    ctx.beginPath(); ctx.moveTo(hipX, hipY); ctx.lineTo(kneeX, kneeY); ctx.stroke();
+    // Stutzen
     ctx.strokeStyle = socksCol;
-    ctx.beginPath(); ctx.moveTo(x - size*0.28, y + size*1.2); ctx.lineTo(x - size*0.35, y + size*1.4); ctx.lineTo(x - size*0.15, y + size*1.7); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(x + size*0.28, y + size*1.2); ctx.lineTo(x + size*0.35, y + size*1.4); ctx.lineTo(x + size*0.15, y + size*1.7); ctx.stroke();
-  } else {
-    // Hose (Oberschenkel)
-    ctx.strokeStyle = shortsCol;
-    ctx.beginPath(); ctx.moveTo(x - size*0.18, y + size*0.9); ctx.lineTo(x - size*0.23, y + size*1.2); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(x + size*0.18, y + size*0.9); ctx.lineTo(x + size*0.23, y + size*1.2); ctx.stroke();
-    // Stulpen (Unterschenkel)
-    ctx.strokeStyle = socksCol;
-    ctx.beginPath(); ctx.moveTo(x - size*0.23, y + size*1.2); ctx.lineTo(x - size*0.28, y + size*1.68); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(x + size*0.23, y + size*1.2); ctx.lineTo(x + size*0.28, y + size*1.68); ctx.stroke();
-    // Stulpen-Streifen oben
+    ctx.lineWidth = s * 0.15;
+    ctx.beginPath(); ctx.moveTo(kneeX, kneeY + s * 0.04); ctx.lineTo(footX, footY); ctx.stroke();
     if (style.socksStripe) {
       ctx.strokeStyle = style.socksStripe;
-      ctx.lineWidth = size * 0.09;
-      ctx.beginPath(); ctx.moveTo(x - size*0.31, y + size*1.25); ctx.lineTo(x - size*0.14, y + size*1.25); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(x + size*0.14, y + size*1.25); ctx.lineTo(x + size*0.31, y + size*1.25); ctx.stroke();
+      ctx.lineWidth = s * 0.155;
+      const t = 0.15;
+      ctx.beginPath();
+      ctx.moveTo(kneeX + (footX - kneeX) * t, kneeY + (footY - kneeY) * t + s * 0.03);
+      ctx.lineTo(kneeX + (footX - kneeX) * (t + 0.12), kneeY + (footY - kneeY) * (t + 0.12) + s * 0.03);
+      ctx.stroke();
     }
+    // Fußballschuh mit Sohle
+    ctx.fillStyle = '#151515';
+    ctx.beginPath();
+    ctx.ellipse(footX + face * s * 0.07, footY + s * 0.05, s * 0.15, s * 0.07, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#e8e8e8';
+    ctx.fillRect(footX - s * 0.04, footY + s * 0.02, s * 0.12 * face, s * 0.025);
   }
+  // Hinteres Bein zuerst, damit das vordere darüber liegt
+  leg(-1, swing);
+  leg(1, -swing);
 
-  // Schuhe
-  ctx.fillStyle = '#222';
+  // Hose
+  ctx.fillStyle = shortsCol;
   ctx.beginPath();
-  ctx.ellipse(x - size * 0.3, y + size * 1.75, size * 0.22, size * 0.12, -0.3, 0, Math.PI * 2);
+  ctx.moveTo(x - s * 0.29, y + s * 0.78);
+  ctx.lineTo(x + s * 0.29, y + s * 0.78);
+  ctx.lineTo(x + s * 0.3,  y + s * 1.08);
+  ctx.lineTo(x + s * 0.03, y + s * 1.08);
+  ctx.lineTo(x,            y + s * 0.98);
+  ctx.lineTo(x - s * 0.03, y + s * 1.08);
+  ctx.lineTo(x - s * 0.3,  y + s * 1.08);
+  ctx.closePath();
   ctx.fill();
-  ctx.beginPath();
-  ctx.ellipse(x + size * 0.3, y + size * 1.75, size * 0.22, size * 0.12, 0.3, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.fillStyle = 'rgba(0,0,0,0.15)';
+  ctx.fillRect(x - s * 0.29, y + s * 0.78, s * 0.58, s * 0.05);
 
-  // Körper (Trikot)
+  // Arme: Ärmel in Trikotfarbe, dann Unterarm und Hand
+  const longSleeves = !style.shortSleeves;
+  function arm(side, sw) {
+    const shX = x + side * s * 0.3, shY = y + s * 0.22;
+    let elX = shX + side * s * 0.08 - sw * s * 0.14 * face, elY = y + s * 0.5;
+    let hdX = elX + side * s * 0.02 - sw * s * 0.12 * face, hdY = y + s * 0.74 - Math.abs(sw) * s * 0.06;
+    if (celebrate) {
+      const wave = Math.sin(Date.now() * 0.008) * s * 0.12 * side;
+      elX = shX + side * s * 0.22; elY = y - s * 0.05;
+      hdX = shX + side * s * 0.4;  hdY = y - s * 0.4 + wave;
+    }
+    ctx.lineWidth = s * 0.15;
+    ctx.strokeStyle = color;
+    ctx.beginPath(); ctx.moveTo(shX, shY); ctx.lineTo(elX, elY);
+    if (longSleeves) ctx.lineTo(hdX, hdY);
+    ctx.stroke();
+    if (!longSleeves) {
+      ctx.strokeStyle = skinDark;
+      ctx.lineWidth = s * 0.12;
+      ctx.beginPath(); ctx.moveTo(elX, elY); ctx.lineTo(hdX, hdY); ctx.stroke();
+    }
+    ctx.fillStyle = style.gloves ? '#f5f5f5' : skinCol;
+    ctx.beginPath(); ctx.arc(hdX, hdY, s * (style.gloves ? 0.1 : 0.07), 0, Math.PI * 2); ctx.fill();
+  }
+  arm(-1, -swing);
+
+  // Trikot: breite Schultern, schmalere Taille, mit Licht von links
+  ctx.beginPath();
+  ctx.moveTo(x - s * 0.36, y + s * 0.2);
+  ctx.quadraticCurveTo(x, y + s * 0.1, x + s * 0.36, y + s * 0.2);
+  ctx.lineTo(x + s * 0.3, y + s * 0.84);
+  ctx.quadraticCurveTo(x, y + s * 0.88, x - s * 0.3, y + s * 0.84);
+  ctx.closePath();
   ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.ellipse(x, y + size * 0.55, size * 0.42, size * 0.48, 0, 0, Math.PI * 2);
   ctx.fill();
+  const light = ctx.createLinearGradient(x - s * 0.36, 0, x + s * 0.36, 0);
+  light.addColorStop(0, 'rgba(255,255,255,0.22)');
+  light.addColorStop(0.5, 'rgba(255,255,255,0)');
+  light.addColorStop(1, 'rgba(0,0,0,0.25)');
+  ctx.fillStyle = light;
+  ctx.fill();
+  // Falten
+  ctx.strokeStyle = 'rgba(0,0,0,0.12)';
+  ctx.lineWidth = s * 0.025;
+  ctx.beginPath();
+  ctx.moveTo(x - s * 0.18, y + s * 0.7); ctx.quadraticCurveTo(x - s * 0.1, y + s * 0.6, x - s * 0.2, y + s * 0.5);
+  ctx.moveTo(x + s * 0.2,  y + s * 0.72); ctx.quadraticCurveTo(x + s * 0.12, y + s * 0.62, x + s * 0.22, y + s * 0.52);
+  ctx.stroke();
+  // Kragen
+  ctx.strokeStyle = shade(color.startsWith('#') ? color : '#888888', -0.35);
+  ctx.lineWidth = s * 0.05;
+  ctx.beginPath();
+  ctx.moveTo(x - s * 0.1, y + s * 0.15);
+  ctx.lineTo(x, y + s * 0.26);
+  ctx.lineTo(x + s * 0.1, y + s * 0.15);
+  ctx.stroke();
 
-  // Arme — beim Jubel hoch gestreckt in V-Form
-  ctx.strokeStyle = color;
-  ctx.lineWidth = size * 0.2;
-  ctx.lineCap = 'round';
-  if (celebrate) {
-    const wave = Math.sin(Date.now()*0.008) * size * 0.15;
-    ctx.beginPath();
-    ctx.moveTo(x - size * 0.38, y + size * 0.3);
-    ctx.lineTo(x - size * 0.75, y - size * 0.45 + wave);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(x + size * 0.38, y + size * 0.3);
-    ctx.lineTo(x + size * 0.75, y - size * 0.45 - wave);
-    ctx.stroke();
-  } else if (style.shortSleeves) {
-    // Kurze Ärmel (Trikotfarbe)
-    ctx.beginPath();
-    ctx.moveTo(x - size * 0.38, y + size * 0.3);
-    ctx.lineTo(x - size * 0.55, y + size * 0.52);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(x + size * 0.38, y + size * 0.3);
-    ctx.lineTo(x + size * 0.55, y + size * 0.52);
-    ctx.stroke();
-    // Unterarme (Hautfarbe)
-    ctx.strokeStyle = skinDark;
-    ctx.beginPath();
-    ctx.moveTo(x - size * 0.55, y + size * 0.52);
-    ctx.lineTo(x - size * 0.65, y + size * 0.82);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(x + size * 0.55, y + size * 0.52);
-    ctx.lineTo(x + size * 0.65, y + size * 0.82);
-    ctx.stroke();
-    // Hände
-    ctx.fillStyle = skinCol;
-    ctx.beginPath(); ctx.arc(x - size*0.66, y + size*0.86, size*0.1, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(x + size*0.66, y + size*0.86, size*0.1, 0, Math.PI*2); ctx.fill();
-  } else {
-    ctx.beginPath();
-    ctx.moveTo(x - size * 0.38, y + size * 0.3);
-    ctx.lineTo(x - size * 0.65, y + size * 0.85);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(x + size * 0.38, y + size * 0.3);
-    ctx.lineTo(x + size * 0.65, y + size * 0.85);
-    ctx.stroke();
-  }
+  arm(1, swing);
 
-  // Kopf
-  const headGrad = ctx.createRadialGradient(x - size*0.1, y - size*0.15, size*0.05, x, y, size*0.38);
+  // Rückennummer
+  ctx.fillStyle = numColor || 'rgba(255,255,255,0.9)';
+  ctx.font = `bold ${s * 0.32}px system-ui`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, x, y + s * 0.52);
+
+  // Hals
+  ctx.strokeStyle = skinDark;
+  ctx.lineWidth = s * 0.12;
+  ctx.beginPath(); ctx.moveTo(x, y + s * 0.02); ctx.lineTo(x, y + s * 0.16); ctx.stroke();
+
+  // Kopf: etwas länger als breit, Gesicht schaut in Laufrichtung
+  const hx = x, hy = y - s * 0.1;
+  const look = face * s * 0.04;
+  const headGrad = ctx.createRadialGradient(hx - s * 0.07, hy - s * 0.07, s * 0.03, hx, hy, s * 0.24);
   headGrad.addColorStop(0, skinCol);
   headGrad.addColorStop(1, skinDark);
   ctx.fillStyle = headGrad;
   ctx.beginPath();
-  ctx.arc(x, y, size * 0.38, 0, Math.PI * 2);
+  ctx.ellipse(hx, hy, s * 0.19, s * 0.22, 0, 0, Math.PI * 2);
   ctx.fill();
+  // Ohren
+  ctx.fillStyle = skinDark;
+  ctx.beginPath(); ctx.ellipse(hx - s * 0.19, hy + s * 0.02, s * 0.04, s * 0.06, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(hx + s * 0.19, hy + s * 0.02, s * 0.04, s * 0.06, 0, 0, Math.PI * 2); ctx.fill();
 
   // Haare
   ctx.fillStyle = hairCol;
   if (hairStyle === 'curly') {
-    // Lockige Haare — mehrere Bögen
-    for (let i = 0; i < 5; i++) {
-      const hx = x - size*0.28 + i * size*0.14;
+    for (let i = 0; i < 6; i++) {
+      const a = Math.PI + 0.25 + i * (Math.PI - 0.5) / 5;
       ctx.beginPath();
-      ctx.arc(hx, y - size*0.28, size*0.13, Math.PI, Math.PI*2);
+      ctx.arc(hx + Math.cos(a) * s * 0.17, hy - s * 0.02 + Math.sin(a) * s * 0.19, s * 0.08, 0, Math.PI * 2);
       ctx.fill();
     }
   } else {
-    // Kurze Haare — flache Ellipse
     ctx.beginPath();
-    ctx.ellipse(x, y - size*0.22, size*0.35, size*0.18, 0, Math.PI, Math.PI*2);
+    ctx.ellipse(hx, hy - s * 0.04, s * 0.2, s * 0.2, 0, Math.PI * 1.03, Math.PI * 1.97);
+    ctx.quadraticCurveTo(hx + s * 0.05, hy - s * 0.12, hx - s * 0.19, hy - s * 0.06);
     ctx.fill();
   }
 
-  // Augen — beim Jubel geschlossen (Bogen)
+  // Augenbrauen und Augen
+  const ex = s * 0.075, ey = hy + s * 0.0;
+  ctx.strokeStyle = shade(hairCol.length === 7 ? hairCol : '#444444', -0.2);
+  ctx.lineWidth = s * 0.03;
+  ctx.beginPath();
+  ctx.moveTo(hx - ex - s * 0.04 + look, ey - s * 0.06); ctx.lineTo(hx - ex + s * 0.04 + look, ey - s * 0.07);
+  ctx.moveTo(hx + ex - s * 0.04 + look, ey - s * 0.07); ctx.lineTo(hx + ex + s * 0.04 + look, ey - s * 0.06);
+  ctx.stroke();
   if (celebrate) {
     ctx.strokeStyle = '#1a1a1a';
-    ctx.lineWidth = size * 0.06;
+    ctx.lineWidth = s * 0.03;
     ctx.beginPath();
-    ctx.arc(x - size * 0.13, y - size * 0.04, size * 0.09, Math.PI, 0);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(x + size * 0.13, y - size * 0.04, size * 0.09, Math.PI, 0);
+    ctx.arc(hx - ex + look, ey + s * 0.01, s * 0.035, Math.PI, 0);
+    ctx.moveTo(hx + ex + look + s * 0.035, ey + s * 0.01);
+    ctx.arc(hx + ex + look, ey + s * 0.01, s * 0.035, 0, Math.PI, true);
     ctx.stroke();
   } else {
-    ctx.fillStyle = '#fff';
-    ctx.beginPath();
-    ctx.ellipse(x - size * 0.13, y - size * 0.04, size * 0.09, size * 0.1, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(x + size * 0.13, y - size * 0.04, size * 0.09, size * 0.1, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#1a1a1a';
-    ctx.beginPath();
-    ctx.arc(x - size * 0.11, y - size * 0.04, size * 0.055, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(x + size * 0.15, y - size * 0.04, size * 0.055, 0, Math.PI * 2);
-    ctx.fill();
+    for (const ox of [-ex, ex]) {
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.ellipse(hx + ox + look, ey, s * 0.04, s * 0.028, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#2b1a0e';
+      ctx.beginPath(); ctx.arc(hx + ox + look * 1.6, ey, s * 0.022, 0, Math.PI * 2); ctx.fill();
+    }
   }
 
-  // Mund — beim Jubel breites offenes Lachen
-  ctx.strokeStyle = '#a0522d';
-  ctx.lineWidth = size * 0.06;
-  ctx.lineCap = 'round';
+  // Nase
+  ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+  ctx.lineWidth = s * 0.025;
+  ctx.beginPath();
+  ctx.moveTo(hx + look * 1.5, ey + s * 0.02);
+  ctx.lineTo(hx + look * 1.5 + face * s * 0.025, ey + s * 0.08);
+  ctx.lineTo(hx + look * 1.5, ey + s * 0.09);
+  ctx.stroke();
+
+  // Mund
   if (celebrate) {
-    ctx.beginPath();
-    ctx.arc(x, y + size * 0.1, size * 0.22, 0.05, Math.PI - 0.05);
-    ctx.stroke();
-    // Zähne
+    ctx.fillStyle = '#5a1a10';
+    ctx.beginPath(); ctx.ellipse(hx + look, ey + s * 0.14, s * 0.06, s * 0.045, 0, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#fff';
-    ctx.beginPath();
-    ctx.arc(x, y + size * 0.18, size * 0.14, 0, Math.PI);
-    ctx.fill();
+    ctx.fillRect(hx + look - s * 0.045, ey + s * 0.105, s * 0.09, s * 0.02);
   } else {
+    ctx.strokeStyle = '#8a4a3a';
+    ctx.lineWidth = s * 0.025;
     ctx.beginPath();
-    ctx.arc(x, y + size * 0.1, size * 0.15, 0.2, Math.PI - 0.2);
+    ctx.moveTo(hx + look - s * 0.045, ey + s * 0.135);
+    ctx.quadraticCurveTo(hx + look, ey + s * 0.155, hx + look + s * 0.045, ey + s * 0.135);
     ctx.stroke();
   }
-
-  // Nummer / Label auf Trikot
-  ctx.fillStyle = numColor || 'rgba(255,255,255,0.9)';
-  ctx.font = `bold ${size * 0.35}px system-ui`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(label, x, y + size * 0.55);
 
   ctx.restore();
 }
@@ -1762,9 +1804,15 @@ function loop() {
   for (const p of allPlayers) {
     const cel = gameState==='goal' && goalTeam===p.team;
     const px=p.x*w, py=p.y*h-ps*1.5;
+    const mdx=p.x-(p._lx ?? p.x), mdy=p.y-(p._ly ?? p.y);
+    p._lx=p.x; p._ly=p.y;
+    const step=Math.hypot(mdx*w, mdy*h);
+    p._run=(p._run||0)+step*0.18;
+    if (Math.abs(mdx*w)>0.3) p._face=Math.sign(mdx);
+    const motion={ moving: step>0.3, phase: p._run, face: p._face || (p.x<0.5 ? 1 : -1) };
     if (p.isKeeper) {
-      const keeperStyle = {shortsColor:'#1a6b1a', shortSleeves:false, socksColor:'#1a6b1a', socksStripe:'#fff'};
-      drawPlayer(px, py, ps, '#27ae60', p.num, cel, '#fff', keeperStyle, p);
+      const keeperStyle = {shortsColor:'#1a6b1a', shortSleeves:false, socksColor:'#1a6b1a', socksStripe:'#fff', gloves:true};
+      drawPlayer(px, py, ps, '#27ae60', p.num, cel, '#fff', keeperStyle, p, motion);
       const kClub = p.team===playerTeam ? playerClub : opponentClub;
       const kName = kClub.keeperName;
       if (kName) {
@@ -1782,7 +1830,7 @@ function loop() {
       const team = p.team==='red' ? redTeam : blueTeam;
       const num  = club.nums[team.indexOf(p)] ?? p.num;
       const appearance = (club.appearances ? club.appearances[team.indexOf(p)] : null) || p;
-      drawPlayer(px, py, ps, club.color, num, cel, club.numColor, club.style||{}, appearance);
+      drawPlayer(px, py, ps, club.color, num, cel, club.numColor, club.style||{}, appearance, motion);
       const playerName = club.names ? club.names[team.indexOf(p)] : null;
       if (playerName) {
         ctx.save();
