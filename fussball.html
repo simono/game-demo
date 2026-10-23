@@ -1255,18 +1255,21 @@ function getTitleButtons() {
   const w=W(), h=H();
   const bw=Math.min(w*0.42, 320), bh=Math.min(h*0.1, 56), x=w/2-bw/2;
   if (showControls) return [{ id:'back', label:'← Zurück', x, y:h*0.84, w:bw, h:bh }];
+  const y0=h*0.46, gap=bh*1.22;
   return [
-    { id:'play',     label:'▶  Spielen',                              x, y:h*0.52, w:bw, h:bh },
-    { id:'duration', label:`⏱  Halbzeit: ${halfSecs/60} Min`,         x, y:h*0.52+bh*1.3, w:bw, h:bh },
-    { id:'controls', label:'🎮  Steuerung',                           x, y:h*0.52+bh*2.6, w:bw, h:bh },
+    { id:'play',       label:'▶  Spielen',                        x, y:y0,       w:bw, h:bh },
+    { id:'difficulty', label:`💪  Schwierigkeit: ${difficulty.name}`, x, y:y0+gap,   w:bw, h:bh, accent:difficulty.color },
+    { id:'duration',   label:`⏱  Halbzeit: ${halfSecs/60} Min`,   x, y:y0+gap*2, w:bw, h:bh },
+    { id:'controls',   label:'🎮  Steuerung',                     x, y:y0+gap*3, w:bw, h:bh },
   ];
 }
 
 function titleAction(id) {
   if (id==='play')     { gameState='menu'; teamChosen=false; opponentChosen=false; }
+  if (id==='difficulty') { difficulty=DIFFICULTIES[(DIFFICULTIES.indexOf(difficulty)+1)%DIFFICULTIES.length]; }
   if (id==='duration') { halfSecs=HALF_OPTIONS[(HALF_OPTIONS.indexOf(halfSecs)+1)%HALF_OPTIONS.length]; }
   if (id==='controls') { showControls=true; titleSel=0; }
-  if (id==='back')     { showControls=false; titleSel=2; }
+  if (id==='back')     { showControls=false; titleSel=3; }
 }
 
 function titleButtonHit(tx, ty) {
@@ -1403,6 +1406,14 @@ window.addEventListener('keyup', e=>{ keys[e.key]=false; });
 // ── KI Gegner ───────────────────────────────────────────────────────
 let aiShootCooldown = 0;
 
+// Schwierigkeit betrifft nur den Gegner: Tempo, Zweikämpfe, Schüsse und seinen Torwart
+const DIFFICULTIES = [
+  { name:'Leicht', color:'#2ecc71', speed:0.0011, steal:0.006, aim:0.03,  cooldown:100, keeperSpeed:0.0024, keeperError:0.07 },
+  { name:'Mittel', color:'#f39c12', speed:0.0014, steal:0.012, aim:0.01,  cooldown:70,  keeperSpeed:0.0032, keeperError:0.04 },
+  { name:'Schwer', color:'#e74c3c', speed:0.0019, steal:0.022, aim:0.004, cooldown:45,  keeperSpeed:0.0042, keeperError:0.02 },
+];
+let difficulty = DIFFICULTIES[1];
+
 function moveTo(p, tx, ty, spd) {
   const dx=tx-p.x, dy=ty-p.y, len=Math.sqrt(dx*dx+dy*dy)||1;
   p.vx=dx/len*spd; p.vy=dy/len*spd;
@@ -1428,16 +1439,16 @@ function updateAI() {
     if (ballOwner===fp) {
       if (foeClose(fp) && aiShootCooldown<=0) {
         const dx=foeGoalX-fp.x, dy=0.5-fp.y, len=Math.hypot(dx,dy)||1;
-        ball.vx=(dx/len)*KICK_SPD; ball.vy=(dy/len)*KICK_SPD+(Math.random()-0.5)*0.01;
-        goalScorer=fp; ballOwner=null; aiShootCooldown=70;
-      } else { moveTo(fp, sx, foeSupY[i], AI_SPEED); }
+        ball.vx=(dx/len)*KICK_SPD; ball.vy=(dy/len)*KICK_SPD+(Math.random()-0.5)*difficulty.aim;
+        goalScorer=fp; ballOwner=null; aiShootCooldown=difficulty.cooldown;
+      } else { moveTo(fp, sx, foeSupY[i], difficulty.speed); }
     } else if (ballOwner && ballOwner.team===playerTeam) {
-      moveTo(fp, ballOwner.x, ballOwner.y, AI_SPEED);
-      if (Math.hypot(fp.x-ballOwner.x,fp.y-ballOwner.y)<TACKLE_DIST*0.8 && Math.random()<0.012) ballOwner=fp;
+      moveTo(fp, ballOwner.x, ballOwner.y, difficulty.speed);
+      if (Math.hypot(fp.x-ballOwner.x,fp.y-ballOwner.y)<TACKLE_DIST*0.8 && Math.random()<difficulty.steal) ballOwner=fp;
     } else if (!ballOwner) {
-      moveTo(fp, ball.x, ball.y, AI_SPEED);
+      moveTo(fp, ball.x, ball.y, difficulty.speed);
     } else {
-      moveTo(fp, sx, foeSupY[i], AI_SPEED*0.65);
+      moveTo(fp, sx, foeSupY[i], difficulty.speed*0.65);
     }
   }
 
@@ -1469,12 +1480,14 @@ function updateAI() {
 
 // ── Torwart-KI ──────────────────────────────────────────────────────
 function updateKeepers() {
-  const KSPEED = 0.0032; // langsamer → leichter zu überwinden
   [
     { k: redKeeper,  homeX: 0.07, isLeft: true  },
     { k: blueKeeper, homeX: 0.93, isLeft: false },
   ].forEach(({ k, homeX, isLeft }) => {
     k.x = homeX;
+    // Eigener Torwart bleibt immer gleich, der gegnerische hängt von der Schwierigkeit ab
+    const foe = k.team !== playerTeam;
+    const KSPEED = foe ? difficulty.keeperSpeed : 0.0032;
 
     if (ballOwner === k) {
       const dir = isLeft ? 1 : -1;
@@ -1496,7 +1509,7 @@ function updateKeepers() {
     }
 
     // Ziel: Ball-y + kleiner Fehler (nicht perfekt)
-    const error = (Math.random()-0.5) * 0.04;
+    const error = (Math.random()-0.5) * (foe ? difficulty.keeperError : 0.04);
     const targetY = ball.y + error;
     const clamped = Math.max(GOAL_T+0.04, Math.min(GOAL_B-0.04, targetY));
 
@@ -1775,9 +1788,13 @@ function drawTitle() {
     roundRect(b.x, b.y, b.w, b.h, b.h*0.3); ctx.fill();
     ctx.shadowBlur=0;
     ctx.strokeStyle=sel?'#fff':'rgba(255,255,255,0.35)'; ctx.lineWidth=sel?3:1.5; ctx.stroke();
+    if (b.accent) {
+      ctx.fillStyle=b.accent;
+      roundRect(b.x+6, b.y+6, 8, b.h-12, 4); ctx.fill();
+    }
     ctx.fillStyle='#fff';
     ctx.font=`bold ${Math.min(b.h*0.42,24)}px system-ui`;
-    ctx.fillText(b.label, b.x+b.w/2, b.y+b.h/2);
+    ctx.fillText(b.label, b.x+b.w/2, b.y+b.h/2, b.w-28);
   });
 
   ctx.font=`${Math.min(w*0.025,13)}px system-ui`;
