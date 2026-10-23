@@ -266,95 +266,6 @@ function drawBMGCrest(cx, cy, s) {
   ctx.restore();
 }
 
-function drawDFBCrest(cx, cy, s) {
-  ctx.save();
-  ctx.translate(cx, cy);
-
-  // Schild
-  ctx.beginPath();
-  ctx.moveTo(-s*0.5, -s*0.55);
-  ctx.lineTo( s*0.5, -s*0.55);
-  ctx.quadraticCurveTo( s*0.55, -s*0.55,  s*0.55, -s*0.38);
-  ctx.lineTo( s*0.55,  s*0.12);
-  ctx.quadraticCurveTo( s*0.55,  s*0.38,  0,       s*0.6);
-  ctx.quadraticCurveTo(-s*0.55,  s*0.38, -s*0.55,  s*0.12);
-  ctx.lineTo(-s*0.55, -s*0.38);
-  ctx.quadraticCurveTo(-s*0.55, -s*0.55, -s*0.5, -s*0.55);
-  ctx.closePath();
-  ctx.shadowColor='rgba(0,0,0,0.5)'; ctx.shadowBlur=s*0.12;
-  ctx.fillStyle='#fff'; ctx.fill();
-  ctx.shadowBlur=0;
-  ctx.strokeStyle='#111'; ctx.lineWidth=s*0.04; ctx.stroke();
-
-  // Adler — schwarze Silhouette
-  ctx.fillStyle='#111';
-
-  // Linker Flügel
-  ctx.beginPath();
-  ctx.moveTo(-s*0.06, -s*0.08);
-  ctx.bezierCurveTo(-s*0.18, -s*0.32, -s*0.46, -s*0.26, -s*0.48, -s*0.04);
-  ctx.lineTo(-s*0.41,  s*0.04);
-  ctx.lineTo(-s*0.34, -s*0.02);
-  ctx.lineTo(-s*0.27,  s*0.05);
-  ctx.lineTo(-s*0.19,  0);
-  ctx.lineTo(-s*0.12,  s*0.07);
-  ctx.closePath();
-  ctx.fill();
-
-  // Rechter Flügel
-  ctx.beginPath();
-  ctx.moveTo( s*0.06, -s*0.08);
-  ctx.bezierCurveTo( s*0.18, -s*0.32,  s*0.46, -s*0.26,  s*0.48, -s*0.04);
-  ctx.lineTo( s*0.41,  s*0.04);
-  ctx.lineTo( s*0.34, -s*0.02);
-  ctx.lineTo( s*0.27,  s*0.05);
-  ctx.lineTo( s*0.19,  0);
-  ctx.lineTo( s*0.12,  s*0.07);
-  ctx.closePath();
-  ctx.fill();
-
-  // Körper
-  ctx.beginPath();
-  ctx.ellipse(0, s*0.1, s*0.11, s*0.2, 0, 0, Math.PI*2);
-  ctx.fill();
-
-  // Schwanz
-  ctx.beginPath();
-  ctx.moveTo(-s*0.1, s*0.27);
-  ctx.lineTo( s*0.1, s*0.27);
-  ctx.lineTo( s*0.14, s*0.4);
-  ctx.lineTo(-s*0.14, s*0.4);
-  ctx.closePath();
-  ctx.fill();
-
-  // Kopf (schaut nach rechts)
-  ctx.beginPath();
-  ctx.arc(s*0.07, -s*0.22, s*0.12, 0, Math.PI*2);
-  ctx.fill();
-
-  // Schnabel
-  ctx.beginPath();
-  ctx.moveTo(s*0.17, -s*0.24);
-  ctx.lineTo(s*0.32, -s*0.2);
-  ctx.lineTo(s*0.17, -s*0.14);
-  ctx.closePath();
-  ctx.fill();
-
-  // Auge (weiß)
-  ctx.fillStyle='#fff';
-  ctx.beginPath();
-  ctx.arc(s*0.11, -s*0.25, s*0.035, 0, Math.PI*2);
-  ctx.fill();
-
-  // DFB Schriftzug
-  ctx.fillStyle='#111';
-  ctx.font=`bold ${s*0.2}px system-ui`;
-  ctx.textAlign='center'; ctx.textBaseline='middle';
-  ctx.fillText('DFB', 0, s*0.5);
-
-  ctx.restore();
-}
-
 function roundRect(x, y, w, h, r) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
@@ -1825,9 +1736,9 @@ function drawStadiumBackdrop(w, h, t) {
 }
 
 // Eigenes Spiel-Logo: Wappenschild mit Ball, Sternen und Lorbeer
-function drawGameLogo(cx, cy, size, t) {
+function drawGameLogo(cx, cy, size, t, alpha=0.32) {
   ctx.save();
-  ctx.globalAlpha=0.32;
+  ctx.globalAlpha=alpha;
   const sw=size*0.8, sh=size;
   function shield() {
     ctx.beginPath();
@@ -1871,7 +1782,7 @@ function drawGameLogo(cx, cy, size, t) {
     }
     ctx.closePath(); ctx.fill();
   }
-  ctx.globalAlpha=0.45;
+  ctx.globalAlpha=Math.min(1, alpha*1.4);
   drawBall(cx, cy+sh*0.05, size*0.2);
   ctx.restore();
 }
@@ -2154,8 +2065,8 @@ function drawUI() {
       ctx.fillText(label, cx, by+BH/2);
     }
 
-    // DFB-Wappen klein oben
-    drawDFBCrest(w/2, h*0.1, CS*0.85);
+    // Spiel-Logo oben, wie im Hauptmenü
+    drawGameLogo(w/2, h*0.1, CS*1.05, Date.now()/1000, 1);
 
     if (!teamChosen) {
       ctx.fillStyle='#fff';
