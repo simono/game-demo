@@ -65,10 +65,6 @@ const rand = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x
 // ── Strecke ────────────────────────────────────────────────────────
 // Die Spielwelt ist kleiner als die echte Welt, damit ein Flug nur ein paar Minuten dauert.
 const RWY_A = { x0: 0, x1: 2800 };               // Startbahn Frankfurt
-const DEST = 45000;                               // Anfang der Landebahn auf Mallorca
-const RWY_B = { x0: DEST, x1: DEST + 3200 };
-const SEA_FROM = 16000, SEA_TO = DEST - 3500;
-const DIST_SCALE = 27;    // 45 km im Spiel = 1215 km Anzeige
 const ALT_SCALE = 10;     // 1 m im Spiel = 10 m Anzeige
 const GEAR_H = 8.2;       // von den Rädern bis zur Rumpfmitte
 const VR = 75;            // Abhebetempo in m/s (270 km/h)
@@ -154,12 +150,17 @@ function buttonAt(x, y) {
   return null;
 }
 
-let menuBtn = null, resBtns = {};
+let menuBtn = null, menuPrev = null, menuNext = null, resBtns = {};
 canvas.addEventListener('pointerdown', e => {
   e.preventDefault();
   getAC();
   const x = e.clientX, y = e.clientY;
-  if (state === 'menu') { if (hit(menuBtn, x, y)) newFlight(); return; }
+  if (state === 'menu') {
+    if (hit(menuBtn, x, y)) newFlight();
+    else if (hit(menuPrev, x, y)) changeRoute(-1);
+    else if (hit(menuNext, x, y)) changeRoute(1);
+    return;
+  }
   if (result && resultT <= 0) {
     if (hit(resBtns.again, x, y)) newFlight();
     else if (hit(resBtns.menu, x, y)) toMenu();
@@ -189,6 +190,8 @@ window.addEventListener('keydown', e => {
   getAC();
   if ((e.key === 'g' || e.key === 'G') && state === 'flying') toggleGear();
   if (e.key === 'c' || e.key === 'C') toggleView();
+  if (state === 'menu' && e.key === 'ArrowLeft') changeRoute(-1);
+  if (state === 'menu' && e.key === 'ArrowRight') changeRoute(1);
   if (e.key === 'Enter' && (state === 'menu' || (result && resultT <= 0))) newFlight();
   if (e.key === 'Escape' && state !== 'menu') toMenu();
 });
@@ -273,6 +276,59 @@ function applause() {
   for (let i = 0; i < 70; i++) noiseBurst(Math.random() * 3, 0.06, 0.5 + Math.random() * 0.5, 1500 + Math.random() * 1500, 'bandpass');
 }
 
+// ── Ziele ──────────────────────────────────────────────────────────
+// x der Bauwerke ist relativ zum Anfang der Landebahn, z ist seitlich (minus = links)
+const ROUTES = [
+  { name: 'Mallorca', in: 'auf Mallorca', code: 'PMI', icon: '🌴', km: 1215, dest: 45000, sea: [16000, 41500], seaName: 'das Mittelmeer',
+    ground: ['#7aa64e', '#6f9c46'], fields: ['#9bae5a', '#b5a45e', '#7f9a4a', '#c7a86a', '#8aa050', '#a9b86a'],
+    trees: 'palm', houses: ['#f4efe4', '#e2dccf', '#c0503a', '#a8443a'], hills: 2, hill: '#6c9a6e',
+    mountains: [9000, -16000, 5000, 320, '#7d9a8c'], sky: ['#4a9be6', '#cfe9ff'], terminal: '#e9dcc2',
+    landmarks: [['cathedral', 2600, -900]] },
+  { name: 'London', in: 'in London', code: 'LHR', icon: '🇬🇧', km: 650, dest: 30000, sea: [21000, 25500], seaName: 'der Ärmelkanal',
+    ground: ['#5a9a4a', '#52924a'], fields: ['#5d9e4c', '#6aa856', '#4e8f40', '#7fb062', '#8c9e52', '#679c4a'],
+    trees: 'tree', houses: ['#b0664c', '#9c5a43', '#5a5a60', '#4c4c52'], hills: 0.7, hill: '#5f8f5e',
+    mountains: null, sky: ['#7d93a8', '#d3dbe3'], terminal: '#a8b0b8',
+    landmarks: [['bigben', 2000, -900], ['eye', 2800, -1000]] },
+  { name: 'Paris', in: 'in Paris', code: 'CDG', icon: '🇫🇷', km: 480, dest: 26000, sea: null, seaName: '',
+    ground: ['#8db55a', '#84ad52'], fields: ['#8fbf5a', '#c9b85a', '#a8c060', '#d4c46a', '#7a9a3a', '#b9a85a'],
+    trees: 'tree', houses: ['#efe6d4', '#ddd2bd', '#6a7684', '#5c6876'], hills: 0.8, hill: '#6c9a6e',
+    mountains: null, sky: ['#5aa2e6', '#d6ebff'], terminal: '#c7ccd3',
+    landmarks: [['eiffel', 2200, -1100]] },
+  { name: 'Dubai', in: 'in Dubai', code: 'DXB', icon: '🏜️', km: 4840, dest: 70000, sea: [20000, 42000], seaName: 'das Mittelmeer',
+    ground: ['#e3c58a', '#dab97c'], fields: ['#e6c88f', '#dcbc80', '#e9cf9a', '#d4b277', '#e0c286'],
+    trees: 'sparse', houses: ['#e8dcc4', '#d6c8ac', '#efe4cc', '#e6d9bd'], hills: 0.6, hill: '#d8b878', desert: true,
+    mountains: [20000, -20000, 20000, 200, '#b89a78'], sky: ['#5aa7e0', '#f2e3c4'], terminal: '#e8e2d6',
+    landmarks: [['burj', 3500, -1800]] },
+  { name: 'New York', in: 'in New York', code: 'JFK', icon: '🗽', km: 6200, dest: 80000, sea: [14000, 76000], seaName: 'der Atlantik',
+    ground: ['#6a9a5a', '#62925a'], fields: ['#6a9a5a', '#7aa466', '#5c8c50', '#8a9c6a', '#6e8e5e'],
+    trees: 'tree', houses: ['#c9c4bb', '#b5afa5', '#6b6b6b', '#5e5e5e'], hills: 0.5, hill: '#6c8e6a',
+    mountains: null, sky: ['#4f98e0', '#d2e6fa'], terminal: '#b5bcc4',
+    landmarks: [['liberty', -6000, -1200], ['skyline', 4000, -3500]] },
+];
+let R, routeIdx = 0, DEST, RWY_B, SEA_FROM, SEA_TO, DEST_FROM;
+function setRoute(i) {
+  routeIdx = i;
+  R = ROUTES[i];
+  DEST = R.dest;
+  RWY_B = { x0: DEST, x1: DEST + 3200 };
+  // ohne Meer liegt die Wasserkante weit hinter dem Start, dann ist alles Land
+  [SEA_FROM, SEA_TO] = R.sea || [-1e9, -1e9];
+  DEST_FROM = R.sea ? SEA_TO : DEST - 8000;
+}
+try { routeIdx = clamp(parseInt(localStorage.getItem('flug-ziel'), 10) || 0, 0, ROUTES.length - 1); } catch (e) {}
+setRoute(routeIdx);
+function changeRoute(dir) {
+  setRoute((routeIdx + dir + ROUTES.length) % ROUTES.length);
+  try { localStorage.setItem('flug-ziel', routeIdx); } catch (e) {}
+  tone(660 + routeIdx * 60, 0, 0.12, 0.1);
+}
+const kmLeft = () => Math.max(0, Math.round((DEST - p.x) / DEST * R.km));
+function treeKind(x, n) {
+  if (x <= DEST_FROM) return 'tree';
+  if (R.trees === 'sparse') return rand(n + 0.77) < 0.12 ? 'palm' : null;
+  return R.trees;
+}
+
 // ── Physik ─────────────────────────────────────────────────────────
 const inside = (x, r) => x >= r.x0 && x <= r.x1;
 
@@ -342,7 +398,7 @@ function update(dt) {
   if (p.onGround && Math.abs(p.z) > 32) return crash('field', 'Von der Bahn abgekommen! Lenk mit ◀ ▶, damit du in der Mitte bleibst.');
   if (p.onGround && p.flown && p.v < 1.5) return landed();
   if (!p.onGround && p.x > RWY_B.x1 + 3000) {
-    return finish({ ok: false, title: 'Vorbeigeflogen!', text: 'Mallorca liegt schon hinter dir. Folge beim nächsten Mal den grünen Punkten runter zur Landebahn.' });
+    return finish({ ok: false, title: 'Vorbeigeflogen!', text: `${R.name} liegt schon hinter dir. Folge beim nächsten Mal den grünen Punkten runter zur Landebahn.` });
   }
 
   // Kondensstreifen hoch oben
@@ -357,7 +413,7 @@ function update(dt) {
 function touchdown() {
   const sink = -p.vy;
   p.y = 0;
-  if (p.x > SEA_FROM && p.x < SEA_TO) return crash('sea', 'Du bist im Meer gelandet. Flieg weiter bis zur Insel Mallorca!');
+  if (p.x > SEA_FROM && p.x < SEA_TO) return crash('sea', `Du bist im Meer gelandet. Flieg weiter bis nach ${R.name}!`);
   if (p.gear < 0.9) return crash('belly', 'Bauchlandung! Das Fahrwerk war nicht ausgefahren. Drück vor der Landung auf „Fahrwerk“.');
   if (p.pitch < -2) return crash('nose', 'Mit der Nase zuerst aufgesetzt! Zieh kurz vor dem Boden die Nase etwas hoch.');
   if (p.pitch > 12) return crash('tail', 'Heckaufsetzer! Die Nase war viel zu weit oben.');
@@ -377,14 +433,14 @@ function touchdown() {
 
 function landed() {
   if (p.rwy === RWY_A) {
-    return finish({ ok: true, stars: 0, title: 'Zurück in Frankfurt', text: 'Sicher gelandet! Aber Mallorca wartet noch auf dich. 🌴' });
+    return finish({ ok: true, stars: 0, title: 'Zurück in Frankfurt', text: `Sicher gelandet! Aber ${R.name} wartet noch auf dich. ${R.icon}` });
   }
   const s = p.touchSink;
   const stars = s < 3 ? 3 : s < 5 ? 2 : 1;
   const text = stars === 3 ? 'Butterweich aufgesetzt! Die Passagiere klatschen.'
-             : stars === 2 ? 'Gute Landung! Willkommen auf Mallorca. 🌴'
+             : stars === 2 ? `Gute Landung! Willkommen ${R.in}. ${R.icon}`
              : 'Etwas hart, aber alle sind heil angekommen!';
-  finish({ ok: true, stars, title: 'Gelandet auf Mallorca!', text });
+  finish({ ok: true, stars, title: `Gelandet ${R.in}!`, text });
   applause();
 }
 
@@ -443,7 +499,7 @@ function glideAlt(x) { return (DEST - x) * Math.tan(GLIDE); }
 
 function hint() {
   const dist = DEST - p.x;
-  if (welcomeT > 0) return ['🔔 Bitte anschnallen! Wir fliegen nach Mallorca.', false];
+  if (welcomeT > 0) return [`🔔 Bitte anschnallen! Wir fliegen nach ${R.name}.`, false];
   const side = p.z > 0 ? 'links ◀' : 'rechts ▶';
   if (p.onGround && Math.abs(p.z) > 12) return [`Bleib in der Mitte der Bahn! Lenk nach ${side}`, true];
   if (p.onGround && !p.flown) {
@@ -457,13 +513,14 @@ function hint() {
   if (dist < 5000 && !p.gearDown) return ['Fahrwerk ausfahren! ⚙️', true];
   if (dist < 8000 && p.v > 105) return ['Zu schnell für die Landung! Schub weg.', true];
   if (dist < GLIDE_LEN + 3000 && Math.abs(p.z) > 40) return [`Die Landebahn ist ${side} – schau aufs Radar`, true];
-  if (dist >= GLIDE_LEN + 3000 && Math.abs(p.hdg) > 25 * DEG) return [`Mallorca liegt ${p.hdg > 0 ? 'links ◀' : 'rechts ▶'}`, false];
+  if (dist >= GLIDE_LEN + 3000 && Math.abs(p.hdg) > 25 * DEG) return [`${R.name} liegt ${p.hdg > 0 ? 'links ◀' : 'rechts ▶'}`, false];
   if (dist < 1500 && p.y < 30) return ['Gleich am Boden: Nase ganz leicht hoch ▲', false];
   if (dist < GLIDE_LEN + 1500 && p.y > glideAlt(p.x) + 60) return ['Zeit für den Sinkflug! Folge den grünen Punkten ▼', false];
   if (dist < GLIDE_LEN && p.y < glideAlt(p.x) - 60) return ['Zu tief! Etwas höher ▲', true];
   if (dist < GLIDE_LEN) return ['Super, genau auf den grünen Punkten! 👍', false];
   if (p.y < 600) return ['Steig auf Reiseflughöhe: über 6000 m ▲', false];
-  if (p.x > SEA_FROM && p.x < SEA_TO) return ['Unter dir ist das Meer 🌊', false];
+  if (p.x > SEA_FROM && p.x < SEA_TO) return [`Unter dir ist ${R.seaName} 🌊`, false];
+  if (R.desert && p.x > DEST_FROM) return ['Unter dir ist die Wüste 🐪', false];
   return ['Reiseflug! Genieß die Aussicht ☁️', false];
 }
 
@@ -524,6 +581,111 @@ function cloud(x, y, r, alpha) {
   ctx.moveTo(x + r * 0.62, y - r * 0.55); ctx.arc(x + r * 0.27, y - r * 0.55, r * 0.35, 0, Math.PI * 2);
   ctx.moveTo(x - r * 0.25, y - r * 0.15); ctx.arc(x - r * 0.55, y - r * 0.15, r * 0.3, 0, Math.PI * 2);
   ctx.fill();
+}
+
+// ── Berühmte Bauwerke ──────────────────────────────────────────────
+// in Metern, (0,0) ist die Mitte unten, nach oben ist minus
+function drawLandmark(kind, X, Y, s) {
+  ctx.save();
+  ctx.translate(X, Y); ctx.scale(s, s);
+  const lw = 1 / s;   // eine Bildschirm-Linie dünn
+  if (kind === 'cathedral') {
+    ctx.fillStyle = '#d9c49a';
+    ctx.fillRect(-60, -30, 120, 30);
+    for (let i = -60; i <= 60; i += 15) { ctx.fillRect(i - 2, -40, 4, 40); ctx.beginPath(); ctx.moveTo(i - 2, -40); ctx.lineTo(i, -46); ctx.lineTo(i + 2, -40); ctx.fill(); }
+    ctx.fillRect(-70, -48, 12, 48); ctx.fillRect(58, -48, 12, 48);
+    ctx.fillStyle = '#8a6a3c';
+    ctx.beginPath(); ctx.arc(0, -20, 6, 0, Math.PI * 2); ctx.fill();
+    for (let i = -50; i <= 50; i += 15) ctx.fillRect(i - 1.5, -24, 3, 12);
+  } else if (kind === 'bigben') {
+    // Parlament
+    ctx.fillStyle = '#c9a96a';
+    ctx.fillRect(6, -24, 130, 24);
+    for (let i = 10; i < 136; i += 12) { ctx.fillRect(i, -32, 3, 8); }
+    ctx.fillRect(126, -60, 16, 60);
+    ctx.fillStyle = '#8f7444';
+    for (let i = 12; i < 130; i += 6) ctx.fillRect(i, -18, 2, 10);
+    // Turm mit Uhr
+    ctx.fillStyle = '#c9a96a';
+    ctx.fillRect(-6, -70, 12, 70);
+    ctx.fillRect(-7.5, -84, 15, 14);
+    ctx.fillRect(-6.5, -90, 13, 6);
+    ctx.fillStyle = '#4a5560';
+    ctx.beginPath(); ctx.moveTo(-6.5, -90); ctx.lineTo(0, -106); ctx.lineTo(6.5, -90); ctx.closePath(); ctx.fill();
+    ctx.fillRect(-0.4, -110, 0.8, 5);
+    ctx.fillStyle = '#f4f0e0';
+    ctx.beginPath(); ctx.arc(0, -77, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#222'; ctx.lineWidth = 0.7;
+    ctx.beginPath(); ctx.moveTo(0, -77); ctx.lineTo(0, -80.5); ctx.moveTo(0, -77); ctx.lineTo(2.5, -77); ctx.stroke();
+    ctx.fillStyle = '#8f7444';
+    for (let y = -64; y < -4; y += 8) ctx.fillRect(-4, y, 8, 3);
+  } else if (kind === 'eye') {
+    const cy = -75, r = 60, rot = time * 0.05;
+    ctx.strokeStyle = '#e8ecf0'; ctx.lineWidth = Math.max(1.5, 2 * lw);
+    ctx.beginPath(); ctx.moveTo(-25, 0); ctx.lineTo(0, cy); ctx.lineTo(25, 0); ctx.stroke();
+    ctx.lineWidth = Math.max(1, 1.5 * lw);
+    ctx.beginPath(); ctx.arc(0, cy, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.lineWidth = Math.max(0.5, 0.6 * lw);
+    ctx.beginPath();
+    for (let i = 0; i < 16; i++) { const a = rot + i * Math.PI / 8; ctx.moveTo(0, cy); ctx.lineTo(Math.cos(a) * r, cy + Math.sin(a) * r); }
+    ctx.stroke();
+    ctx.fillStyle = '#cfe6f5';
+    for (let i = 0; i < 32; i++) { const a = rot + i * Math.PI / 16; ctx.beginPath(); ctx.ellipse(Math.cos(a) * r, cy + Math.sin(a) * r + 2, 2.6, 1.8, 0, 0, Math.PI * 2); ctx.fill(); }
+  } else if (kind === 'eiffel') {
+    ctx.fillStyle = '#7b5b3e';
+    ctx.beginPath();
+    ctx.moveTo(-62, 0); ctx.quadraticCurveTo(-45, -30, -35, -57); ctx.lineTo(-20, -115); ctx.quadraticCurveTo(-10, -200, -5, -276); ctx.lineTo(-2, -300);
+    ctx.lineTo(2, -300); ctx.lineTo(5, -276); ctx.quadraticCurveTo(10, -200, 20, -115); ctx.lineTo(35, -57); ctx.quadraticCurveTo(45, -30, 62, 0);
+    ctx.lineTo(40, 0); ctx.quadraticCurveTo(0, -60, -40, 0); ctx.closePath(); ctx.fill();
+    ctx.save(); ctx.clip();
+    ctx.strokeStyle = 'rgba(255,220,170,0.35)'; ctx.lineWidth = Math.max(0.6, 0.8 * lw);
+    ctx.beginPath();
+    for (let i = -320; i < 320; i += 9) { ctx.moveTo(i, 0); ctx.lineTo(i + 300, -300); ctx.moveTo(i, 0); ctx.lineTo(i - 300, -300); }
+    ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = '#5e4630';
+    ctx.fillRect(-40, -60, 80, 6); ctx.fillRect(-24, -118, 48, 5); ctx.fillRect(-7, -279, 14, 5);
+  } else if (kind === 'burj') {
+    const g = ctx.createLinearGradient(-35, 0, 35, 0);
+    g.addColorStop(0, '#9aa6b2'); g.addColorStop(0.45, '#eef2f6'); g.addColorStop(1, '#8a96a2');
+    ctx.fillStyle = g;
+    for (const [a, b, wd] of [[0, 150, 70], [150, 300, 56], [300, 450, 42], [450, 580, 30], [580, 680, 18], [680, 760, 10]]) ctx.fillRect(-wd / 2, -b, wd, b - a);
+    ctx.beginPath(); ctx.moveTo(-3, -760); ctx.lineTo(0, -828); ctx.lineTo(3, -760); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(60,90,130,0.25)';
+    for (let y = -10; y > -740; y -= 12) ctx.fillRect(-2, y, 4, 6);
+  } else if (kind === 'liberty') {
+    ctx.fillStyle = '#6f9a5a';
+    ctx.beginPath(); ctx.ellipse(0, 0, 70, 6, 0, Math.PI, 0); ctx.fill();
+    ctx.fillStyle = '#b8a888';
+    ctx.fillRect(-25, -15, 50, 15);
+    ctx.beginPath(); ctx.moveTo(-10, -15); ctx.lineTo(-8, -47); ctx.lineTo(8, -47); ctx.lineTo(10, -15); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#5fa89a';
+    ctx.beginPath(); ctx.moveTo(-5, -47); ctx.lineTo(-3, -84); ctx.lineTo(3, -84); ctx.lineTo(5, -47); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.arc(0, -87, 2.6, 0, Math.PI * 2); ctx.fill();
+    for (let i = -3; i <= 3; i++) { ctx.beginPath(); ctx.moveTo(i * 0.8 - 0.4, -89); ctx.lineTo(i * 1.6, -93); ctx.lineTo(i * 0.8 + 0.4, -89); ctx.fill(); }
+    ctx.strokeStyle = '#5fa89a'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(2, -80); ctx.lineTo(5, -98); ctx.stroke();
+    ctx.fillRect(-6, -72, 3, 6);
+    ctx.fillStyle = '#ffb02e';
+    ctx.beginPath(); ctx.ellipse(5.3, -101, 1.6, 3, 0, 0, Math.PI * 2); ctx.fill();
+  } else if (kind === 'skyline') {
+    for (let i = 0; i < 26; i++) {
+      const x = -380 + i * 30 + rand(i + 3) * 8, wd = 18 + rand(i + 5) * 10, ht = 70 + rand(i + 7) * 190;
+      ctx.fillStyle = i % 3 ? '#7f8fa3' : '#6b7b90';
+      ctx.fillRect(x, -ht, wd, ht);
+      ctx.fillStyle = 'rgba(255,240,190,0.35)';
+      for (let y = -ht + 4; y < -4; y += 9) ctx.fillRect(x + 3, y, wd - 6, 2);
+    }
+    // Empire State Building
+    ctx.fillStyle = '#8c96a4';
+    ctx.fillRect(-15, -250, 30, 250); ctx.fillRect(-10, -310, 20, 60); ctx.fillRect(-6, -350, 12, 40);
+    ctx.fillRect(-1.2, -443, 2.4, 93);
+    // One World Trade Center
+    ctx.fillStyle = '#a9c3d8';
+    ctx.beginPath(); ctx.moveTo(180, 0); ctx.lineTo(220, 0); ctx.lineTo(212, -417); ctx.lineTo(188, -417); ctx.closePath(); ctx.fill();
+    ctx.fillRect(199, -541, 2, 124);
+  }
+  ctx.restore();
 }
 
 // ── Zeichnen: der A380 ─────────────────────────────────────────────
@@ -673,7 +835,6 @@ function drawA380(gear, lights) {
 
 // ── Zeichnen: Welt ─────────────────────────────────────────────────
 const FIELDS = ['#5da84a', '#6bb04f', '#4f9a3f', '#8fbf5a', '#c9b85a', '#a8c060', '#7a9a3a', '#b98f5a'];
-const FIELDS_ISLE = ['#9bae5a', '#b5a45e', '#7f9a4a', '#c7a86a', '#8aa050', '#a9b86a'];
 
 function landFactor(x) {
   if (x < SEA_FROM) return clamp((SEA_FROM - x) / 1500, 0, 1);
@@ -681,11 +842,21 @@ function landFactor(x) {
   return 0;
 }
 
+// Himmel färbt sich auf den letzten Kilometern wie am Ziel, oben wird er dunkler
+function skyColors(t) {
+  const k = clamp((p.x - (DEST - 20000)) / 12000, 0, 1);
+  return [
+    lerpRGB(lerpRGB(hex2rgb('#4a9be6'), hex2rgb(R.sky[0]), k), hex2rgb('#0b2a66'), t),
+    lerpRGB(lerpRGB(hex2rgb('#cfe9ff'), hex2rgb(R.sky[1]), k), hex2rgb('#4f86cf'), t),
+  ];
+}
+
 function drawSky() {
   const t = clamp(cam.a / 1100, 0, 1);
+  const [top, low] = skyColors(t);
   const g = ctx.createLinearGradient(0, 0, 0, H());
-  g.addColorStop(0, mix('#4a9be6', '#0b2a66', t));
-  g.addColorStop(1, mix('#cfe9ff', '#4f86cf', t));
+  g.addColorStop(0, rgb(top));
+  g.addColorStop(1, rgb(low));
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, W(), H());
   // Sonne
@@ -711,7 +882,7 @@ function drawHills(gy) {
   if (gy > H() + 10 || gy < -200) return;
   const layers = [
     { par: 0.2, amp: 70, col: mix('#8fb0b8', '#6f9aa8', 0.5), shift: 0 },
-    { par: 0.45, amp: 35, col: '#6c9a6e', shift: 3 },
+    { par: 0.45, amp: 35, col: p.x > DEST_FROM - 3000 ? R.hill : '#6c9a6e', shift: 3 },
   ];
   for (const L of layers) {
     ctx.fillStyle = L.col;
@@ -720,7 +891,7 @@ function drawHills(gy) {
     for (let x = -10; x <= W() + 10; x += 8) {
       const wx = p.x * L.par + (x - W() * 0.35) / S;
       const real = p.x + (x - W() * 0.35) / S / L.par;
-      const big = real > SEA_TO - 2000 ? 2 : 1;   // auf Mallorca gibt es richtige Berge
+      const big = real > DEST_FROM - 2000 ? R.hills : 1;   // am Ziel sind die Hügel anders hoch
       const h = (0.55 + 0.25 * Math.sin(wx / 530 + L.shift) + 0.15 * Math.sin(wx / 210 + 1.3) + 0.08 * Math.sin(wx / 90 + 2.1))
               * L.amp * landFactor(real) * big;
       ctx.lineTo(x, gy - h * S * 0.6);
@@ -749,12 +920,22 @@ function drawSkyline(gy) {
   }
 }
 
+function drawLandmarksSide(gy) {
+  for (const [kind, lx] of R.landmarks) {
+    // weit hinten: bewegt sich langsam vorbei und ist schon von weitem zu sehen
+    const X = W() * 0.35 + (DEST + lx - p.x) * S * 0.12;
+    if (X < -500 * S || X > W() + 500 * S) continue;
+    drawLandmark(kind, X, gy - 2, S * 0.4);
+  }
+}
+
 function drawGround(gy) {
   if (gy > H()) return;
   const x0 = p.x - (W() * 0.35) / S, x1 = p.x + (W() * 0.65) / S;
   // Wiese mit Feldern in drei Reihen, die nach vorne größer werden
   ctx.fillStyle = '#5da84a';
   ctx.fillRect(0, gy, W(), H() - gy);
+  if (x1 > DEST_FROM) { ctx.fillStyle = R.ground[0]; ctx.fillRect(Math.max(0, sx(DEST_FROM)), gy, W(), H() - gy); }
   const rows = [[0, 0.16, 90], [0.16, 0.42, 140], [0.42, 1, 220]];
   rows.forEach(([a, b, cw], ri) => {
     const ya = gy + (H() - gy) * a, yb = gy + (H() - gy) * b;
@@ -762,7 +943,7 @@ function drawGround(gy) {
     for (let c = Math.floor((x0 - off) / cw); c * cw + off < x1; c++) {
       const cx0 = c * cw + off;
       if (landFactor(cx0) < 1 || landFactor(cx0 + cw) < 1) continue;
-      const pal = cx0 > SEA_TO ? FIELDS_ISLE : FIELDS;
+      const pal = cx0 > DEST_FROM ? R.fields : FIELDS;
       ctx.fillStyle = pal[Math.floor(rand(c * 3.1 + ri * 17) * pal.length)];
       ctx.fillRect(sx(cx0), ya, cw * S + 1, yb - ya + 1);
     }
@@ -796,7 +977,7 @@ function drawGround(gy) {
       if (rand(i + Math.floor(time * 8) * 0.37) < 0.5) ctx.fillRect(sx(xw), yy, 3, 1.5);
     }
     // Segelboot
-    const bx = sx(30000);
+    const bx = sx((SEA_FROM + SEA_TO) / 2);
     if (bx > -50 && bx < W() + 50) {
       const k = S;
       ctx.fillStyle = '#7a3b1e';
@@ -836,7 +1017,8 @@ function drawTrees(gy) {
     if (landFactor(x) < 1) continue;
     if (x > -1000 && x < RWY_A.x1 + 300) continue;
     if (x > RWY_B.x0 - 1200 && x < RWY_B.x0 + 1700) continue;
-    drawTree(sx(x), gy - 3, (12 + rand(c + 0.3) * 10) * S, x > SEA_TO);
+    const kind = treeKind(x, c);
+    if (kind) drawTree(sx(x), gy - 3, (12 + rand(c + 0.3) * 10) * S, kind === 'palm');
   }
 }
 
@@ -872,12 +1054,12 @@ function drawAirports() {
     drawTower(1100, '#d8dde3');
     drawBuilding(1500, 160, 26, '#c7ccd3', 'rgba(255,255,255,0.4)');   // Halle
   }
-  // Mallorca
+  // Flughafen am Ziel
   if (p.x > DEST - 6000) {
-    drawBuilding(DEST + 600, 380, 18, '#e9dcc2', 'rgba(70,140,170,0.75)');
-    txt('MALLORCA', sx(DEST + 790), gy - 20.5 * S, Math.max(9, 3.6 * S), '#7a3b1e');
+    drawBuilding(DEST + 600, 380, 18, R.terminal, 'rgba(70,140,170,0.75)');
+    txt(R.name.toUpperCase(), sx(DEST + 790), gy - 20.5 * S, Math.max(9, 3.6 * S), '#1f2f4a');
     drawTower(DEST + 1300, '#f1ece0');
-    for (let i = 0; i < 8; i++) drawTree(sx(DEST + 520 + i * 60), gy, (14 + rand(i) * 4) * S, true);
+    if (R.trees !== 'tree') for (let i = 0; i < 8; i++) drawTree(sx(DEST + 520 + i * 60), gy, (14 + rand(i) * 4) * S, true);
   }
 }
 
@@ -1045,10 +1227,10 @@ function drawHUD() {
     txt(v, m + pw - 10 * u, m + fs * (0.95 + i * 1.1), fs, '#fff', 'right');
   });
   // rechts: Ziel
-  const dist = Math.max(0, (DEST - p.x) * DIST_SCALE / 1000);
+  const dist = kmLeft();
   const rw = 150 * u;
   panel(W() - m - rw, m, rw, ph);
-  txt('🌴 Mallorca', W() - m - rw / 2, m + fs * 1.1, fs, '#fff');
+  txt(`${R.icon} ${R.name}`, W() - m - rw / 2, m + fs * 1.1, fs, '#fff');
   txt(`noch ${Math.round(dist)} km`, W() - m - rw / 2, m + fs * 2.6, fs * 1.05, '#ffd34d');
 
   // Strecke als kleine Karte von der Seite
@@ -1064,7 +1246,7 @@ function drawHUD() {
   ctx.beginPath(); ctx.moveTo(mx(DEST - GLIDE_LEN), alt(glideAlt(DEST - GLIDE_LEN))); ctx.lineTo(mx(DEST), base); ctx.stroke();
   ctx.setLineDash([]);
   txt('FRA', mx(0) + 2, my + 9 * u, 9 * u, 'rgba(255,255,255,0.8)', 'left');
-  txt('PMI', mx(DEST) + 10, my + 9 * u, 9 * u, 'rgba(255,255,255,0.8)', 'left');
+  txt(R.code, mx(DEST) + 10, my + 9 * u, 9 * u, 'rgba(255,255,255,0.8)', 'left');
   ctx.save();
   ctx.translate(mx(Math.max(0, p.x)), alt(p.y));
   ctx.rotate(-p.pitch * DEG);
@@ -1095,8 +1277,8 @@ function drawHUD() {
   // Radar links über den Knöpfen
   const leftTop = Math.min(...[bs.thrUp, bs.gear].filter(r => r.x < W() * 0.3).map(r => r.y)) - 10;
   const radarTop = view === 'cockpit' ? my + mh + 8 : hy + hs * 2 + 8;
-  const R = Math.min(130 * u, leftTop - radarTop);
-  if (R >= 60 && view !== 'cockpit') drawRadar(m, leftTop - R, R);
+  const rs = Math.min(130 * u, leftTop - radarTop);
+  if (rs >= 60 && view !== 'cockpit') drawRadar(m, leftTop - rs, rs);
   // Schubanzeige
   const bx = bs.thrUp.x + bs.thrUp.w + 8, by = bs.thrUp.y, bh = bs.thrDn.y + bs.thrDn.h - by, bw = 12 * u;
   panel(bx, by, bw, bh);
@@ -1109,7 +1291,7 @@ function drawHUD() {
 }
 
 function drawRadar(x, y, R, RH = R) {
-  // Karte von oben: oben ist Richtung Mallorca, das Flugzeug in der Mitte
+  // Karte von oben: oben ist Richtung Ziel, das Flugzeug in der Mitte
   panel(x, y, R, RH);
   ctx.save();
   ctx.beginPath(); ctx.roundRect(x, y, R, RH, 10); ctx.clip();
@@ -1200,17 +1382,27 @@ function drawMenu(dt) {
 
   const ts = Math.min(W() * 0.09, 56 * u);
   txt('A380 Flugsimulator', W() / 2, H() * 0.13, ts, '#fff', 'center', 'rgba(20,40,90,0.7)');
-  txt('Henrik Airlines · Frankfurt ✈ Mallorca', W() / 2, H() * 0.13 + ts * 0.85, ts * 0.38, '#ffd34d', 'center', 'rgba(20,40,90,0.7)');
+  txt(`Henrik Airlines · Frankfurt ✈ ${R.name}`, W() / 2, H() * 0.13 + ts * 0.85, ts * 0.38, '#ffd34d', 'center', 'rgba(20,40,90,0.7)');
 
-  const bw = Math.min(320, W() * 0.7), bh = 56 * u;
+  const bh = 56 * u, bw = Math.min(320, W() - 2 * bh - 60);
   menuBtn = { x: W() / 2 - bw / 2, y: H() * 0.72, w: bw, h: bh };
+  // Pfeile, um das Ziel auszusuchen
+  menuPrev = { x: menuBtn.x - bh - 12, y: menuBtn.y, w: bh, h: bh };
+  menuNext = { x: menuBtn.x + bw + 12, y: menuBtn.y, w: bh, h: bh };
+  for (const [r, label] of [[menuPrev, '◀'], [menuNext, '▶']]) {
+    ctx.fillStyle = 'rgba(20,40,90,0.55)';
+    ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, 14); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2; ctx.stroke();
+    txt(label, r.x + r.w / 2, r.y + r.h / 2, bh * 0.4, '#fff');
+  }
   const pulse = 1 + Math.sin(time * 4) * 0.03;
   ctx.save();
   ctx.translate(W() / 2, menuBtn.y + bh / 2); ctx.scale(pulse, pulse);
   ctx.fillStyle = '#2bb24c';
   ctx.beginPath(); ctx.roundRect(-bw / 2, -bh / 2, bw, bh, 16); ctx.fill();
   ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 3; ctx.stroke();
-  txt('✈  Abflug!', 0, 0, 24 * u, '#fff');
+  txt(`✈ ${R.icon} ${R.name}`, 0, -bh * 0.12, 22 * u, '#fff');
+  txt(`Abflug · ${R.km} km · Ziel ${routeIdx + 1} von ${ROUTES.length}`, 0, bh * 0.3, 11 * u, 'rgba(255,255,255,0.85)');
   ctx.restore();
 
   const hs = 12 * u;
@@ -1233,14 +1425,13 @@ const lerpRGB = (A, B, t) => A.map((v, i) => v + (B[i] - v) * t);
 const rgb = A => `rgb(${A.map(Math.round).join(',')})`;
 const COL = {
   land: [hex2rgb('#5da84a'), hex2rgb('#54a043')],
-  isle: [hex2rgb('#7aa64e'), hex2rgb('#6f9c46')],
   sea: [hex2rgb('#2f8fd0'), hex2rgb('#2a86c4')],
   sand: [hex2rgb('#e8d49a'), hex2rgb('#e2cc8f')],
 };
 function groundColor(x, odd) {
   if (x > SEA_FROM && x < SEA_TO) return COL.sea[odd];
   if (x > SEA_FROM - 250 && x < SEA_TO + 250) return COL.sand[odd];
-  return x > SEA_TO ? COL.isle[odd] : COL.land[odd];
+  return x > DEST_FROM ? hex2rgb(R.ground[odd]) : COL.land[odd];
 }
 
 function drawCockpit() {
@@ -1287,9 +1478,9 @@ function drawCockpit() {
 
   // Himmel und Sonne
   const t = clamp(p.y / 1100, 0, 1);
-  const lowA = lerpRGB(hex2rgb('#cfe9ff'), hex2rgb('#4f86cf'), t);
+  const [topA, lowA] = skyColors(t);
   const g = ctx.createLinearGradient(0, hy - h, 0, hy);
-  g.addColorStop(0, mix('#4a9be6', '#0b2a66', t));
+  g.addColorStop(0, rgb(topA));
   g.addColorStop(1, rgb(lowA));
   ctx.fillStyle = g;
   ctx.fillRect(cx - big, cy - big, 2 * big, 2 * big);
@@ -1316,8 +1507,9 @@ function drawCockpit() {
     x = nx;
   }
 
-  // Berge am Horizont: flache Hügel bei Frankfurt, hohe Berge auf Mallorca
-  const ranges = [[12000, -9000, -800, 60, '#7f9fb0'], [DEST + 9000, -16000, 5000, 320, '#7d9a8c']];
+  // Berge am Horizont: flache Hügel bei Frankfurt, am Ziel je nach Land
+  const ranges = [[12000, -9000, -800, 60, '#7f9fb0']];
+  if (R.mountains) ranges.push([DEST + R.mountains[0], ...R.mountains.slice(1)]);
   let fieldMax = 7000;
   for (const [mx, z0, z1, mh, col] of ranges) {
     const dm = mx - eyeX;
@@ -1337,7 +1529,7 @@ function drawCockpit() {
   for (let row = Math.floor((eyeX - 1500) / FW); row * FW < eyeX + fieldMax; row++) {
     const x0 = row * FW, x1 = x0 + FW, xm = x0 + FW / 2;
     if (landFactor(x0) < 1 || landFactor(x1) < 1) continue;
-    const pal = xm > SEA_TO ? FIELDS_ISLE : FIELDS;
+    const pal = xm > DEST_FROM ? R.fields : FIELDS;
     const off = rand(row + 0.42) * FW;
     const airport = (xm > -800 && xm < RWY_A.x1 + 600) || (xm > RWY_B.x0 - 600 && xm < RWY_B.x1 + 600);
     for (let c = Math.floor((eyeZ - 6000 - off) / FW); c * FW + off < eyeZ + 6000; c++) {
@@ -1424,7 +1616,7 @@ function drawCockpit() {
     tower(1100, -130);
   }
   if (eyeX > DEST - 20000) {
-    box(DEST + 600, DEST + 980, -260, -180, 0, 18, '#e9dcc2', '#d9cbb0', '#f3eadb');
+    box(DEST + 600, DEST + 980, -260, -180, 0, 18, R.terminal, R.terminal, '#f3eadb');
     tower(DEST + 1300, -130);
   }
   // Dörfer mit roten Dächern
@@ -1433,10 +1625,10 @@ function drawCockpit() {
     if (rand(k + 0.33) > 0.65 || landFactor(vx - 200) < 1 || landFactor(vx + 600) < 1) continue;
     if ((vx > -1500 && vx < RWY_A.x1 + 1500) || (vx > RWY_B.x0 - 2500 && vx < RWY_B.x1 + 1500)) continue;
     const zc = (rand(k + 0.77) < 0.5 ? -1 : 1) * (400 + rand(k + 0.9) * 1200);
-    const isle = vx > SEA_TO;
+    const hc = vx > DEST_FROM ? R.houses : ['#eadfcb', '#d8ccb6', '#c0503a', '#a8443a'];
     for (let i = 0; i < 9; i++) {
       const hx = vx + rand(k * 9 + i) * 320, hz = zc + rand(k * 9 + i + 0.5) * 260;
-      box(hx, hx + 12, hz, hz + 10, 0, 6 + rand(k + i) * 3, isle ? '#f4efe4' : '#eadfcb', isle ? '#e2dccf' : '#d8ccb6', i % 3 ? '#c0503a' : '#a8443a');
+      box(hx, hx + 12, hz, hz + 10, 0, 6 + rand(k + i) * 3, hc[0], hc[1], i % 3 ? hc[2] : hc[3]);
     }
   }
   // Bäume und Palmen
@@ -1447,6 +1639,8 @@ function drawCockpit() {
       const z = (rand(n + 0.6) - 0.5) * 5000;
       if (landFactor(x) < 1 || Math.abs(z) < 60) continue;
       if (Math.abs(z) < 320 && ((x > -1000 && x < RWY_A.x1 + 300) || (x > RWY_B.x0 - 1200 && x < RWY_B.x1 + 300))) continue;
+      const kind = treeKind(x, n);
+      if (!kind) continue;
       const [d, l] = cam(x, z);
       if (!visible(d, l, 30)) continue;
       const ht = 12 + rand(n + 0.3) * 10;
@@ -1454,7 +1648,7 @@ function drawCockpit() {
         const [X, Y] = scr(d, l, 0), s = f / d;
         if (ht * s < 1.5) return;
         const save = S; S = s;
-        drawTree(X, Y, ht * s, x > SEA_TO);
+        drawTree(X, Y, ht * s, kind === 'palm');
         S = save;
       } });
     }
@@ -1467,15 +1661,26 @@ function drawCockpit() {
       if (rand(n) > 0.5) continue;
       const x = c * cell + rand(n + 0.2) * 60;
       const alt = 70 + rand(n + 0.3) * 1250, z = (rand(n + 0.55) - 0.5) * 8000;
-      const R = (14 + rand(n + 0.7) * 26) * 3;
+      const CR = (14 + rand(n + 0.7) * 26) * 3;
       const [d, l] = cam(x, z);
-      if (d < 20 || !visible(d, l, R * 3)) continue;
+      if (d < 20 || !visible(d, l, CR * 3)) continue;
       things.push({ d, draw() {
-        const [X, Y] = scr(d, l, alt), r = f * R / d;
+        const [X, Y] = scr(d, l, alt), r = f * CR / d;
         if (Y < -r * 2 - h || Y > 2 * h + r * 2) return;
         cloud(X, Y, r, clamp((d - 20) / 250, 0, 1) * 0.9);
       } });
     }
+  }
+  // berühmte Bauwerke am Ziel
+  for (const [kind, lx, lz] of R.landmarks) {
+    const [d, l] = cam(DEST + lx, lz);
+    if (!visible(d, l, 2000) || d > 60000) continue;
+    things.push({ d, draw() {
+      const [X, Y] = scr(d, l, 0);
+      ctx.globalAlpha = 1 - 0.7 * hazeAt(d);
+      drawLandmark(kind, X, Y, f / d * 2);   // doppelt so groß, damit man sie gut erkennt
+      ctx.globalAlpha = 1;
+    } });
   }
   // grüne Ringe der Landehilfe
   for (let x = DEST - GLIDE_LEN; x <= DEST; x += 120) {
@@ -1635,6 +1840,7 @@ function loop(ts) {
       drawFarClouds(farX, -cam.a * S * 0.05);
       drawHills(gy);
       if (p.x < 9000) drawSkyline(gy);
+      drawLandmarksSide(gy);
       drawGround(gy);
       drawAirports();
       drawTrees(gy);
