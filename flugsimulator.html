@@ -84,7 +84,7 @@ let p, cam, particles = [], contrail = [], result = null;
 let resultT = 0, welcomeT = 0, shake = 0, farX = 0, time = 0;
 
 function newFlight() {
-  p = { x: 120, y: 0, v: 0, vy: 0, pitch: 0, throttle: 0, gear: 1, gearDown: true,
+  p = { x: 120, y: 0, z: 0, hdg: 0, roll: 0, v: 0, vy: 0, pitch: 0, throttle: 0, gear: 1, gearDown: true,
         onGround: true, flown: false, rwy: RWY_A, touchSink: 0, sinkAnim: 0, tilt: 0, drop: 0 };
   cam = { a: 0, init: false };
   particles = []; contrail = []; result = null;
@@ -105,8 +105,10 @@ const pointers = new Map();   // Finger -> Knopf
 const keys = {};
 const KEYMAP = {
   ArrowUp: 'up', ArrowDown: 'dn',
-  ArrowRight: 'thrUp', w: 'thrUp', W: 'thrUp', '+': 'thrUp',
-  ArrowLeft: 'thrDn', s: 'thrDn', S: 'thrDn', '-': 'thrDn',
+  ArrowLeft: 'left', a: 'left', A: 'left',
+  ArrowRight: 'right', d: 'right', D: 'right',
+  w: 'thrUp', W: 'thrUp', '+': 'thrUp',
+  s: 'thrDn', S: 'thrDn', '-': 'thrDn',
   ' ': 'brake', b: 'brake', B: 'brake',
 };
 function held(k) {
@@ -124,15 +126,26 @@ function buttons() {
   const b = clamp(Math.min(W(), H()) * 0.16, 54, 84);
   const m = 14;
   const gw = b * 1.25, gh = b * 0.72;
-  return {
-    thrUp: { x: m, y: H() - m - 2 * b - 10, w: b, h: b },
-    thrDn: { x: m, y: H() - m - b, w: b, h: b },
-    up:    { x: W() - m - b, y: H() - m - 2 * b - 10, w: b, h: b },
-    dn:    { x: W() - m - b, y: H() - m - b, w: b, h: b },
-    gear:  { x: W() / 2 - gw - 6, y: H() - m - gh, w: gw, h: gh },
-    brake: { x: W() / 2 + 6, y: H() - m - gh, w: gw, h: gh },
-    view:  { x: W() - m - b, y: H() - m - 2 * b - 20 - gh, w: b, h: gh },
+  const top = H() - m - 2 * b - 10, bottom = H() - m - b, middle = (top + bottom) / 2;
+  const padX = W() - m - 2 * b - 10;
+  const bs = {
+    thrUp: { x: m, y: top, w: b, h: b },
+    thrDn: { x: m, y: bottom, w: b, h: b },
+    up:    { x: padX, y: top, w: b, h: b },
+    dn:    { x: padX, y: bottom, w: b, h: b },
+    left:  { x: padX - b - 10, y: middle, w: b, h: b },
+    right: { x: W() - m - b, y: middle, w: b, h: b },
+    view:  { x: W() - m - b, y: middle - gh - 10, w: b, h: gh },
   };
+  // Fahrwerk und Bremse unten in der Mitte; wenn dort kein Platz ist, über dem Schub
+  if (W() / 2 + 16 + gw <= bs.left.x && W() / 2 - 16 - gw >= m + b + 60) {
+    bs.gear = { x: W() / 2 - gw - 6, y: H() - m - gh, w: gw, h: gh };
+    bs.brake = { x: W() / 2 + 6, y: H() - m - gh, w: gw, h: gh };
+  } else {
+    bs.gear = { x: m, y: top - gh - 10, w: gw, h: gh };
+    bs.brake = { x: m + gw + 8, y: top - gh - 10, w: gw, h: gh };
+  }
+  return bs;
 }
 const hit = (r, x, y) => r && x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 function buttonAt(x, y) {
@@ -286,6 +299,19 @@ function update(dt) {
     p.pitch = clamp(p.pitch, -20, 20);
   }
 
+  // Kurven: in der Luft legt sich der Flieger schräg, am Boden lenkt das Bugrad
+  const lr = (held('right') ? 1 : 0) - (held('left') ? 1 : 0);
+  if (p.onGround) {
+    p.roll = 0;
+    p.hdg += lr * 4 * DEG * clamp(p.v / 10, 0, 1) * dt;
+  } else {
+    if (lr) p.roll += lr * 35 * dt;
+    else p.roll -= Math.sign(p.roll) * Math.min(Math.abs(p.roll), 25 * dt);   // richtet sich von selbst wieder gerade
+    p.roll = clamp(p.roll, -35, 35);
+    p.hdg += 9.81 * Math.tan(p.roll * DEG) / Math.max(p.v, 40) * 1.5 * dt;
+  }
+  p.hdg = clamp(p.hdg, -60 * DEG, 60 * DEG);
+
   const drag = 7.4e-5 * (1 + p.gear * 0.5);
   let acc = p.throttle * 5 - drag * p.v * p.v - 9.81 * Math.sin(p.pitch * DEG) * 0.6;
   if (p.onGround) acc -= 0.15 + (held('brake') ? 7 : 0);
@@ -293,7 +319,7 @@ function update(dt) {
 
   // langsam sinkt er auch mit waagerechter Nase, damit man beim Landen aufsetzt
   const sag = clamp((100 - p.v) / 25, 0, 1) * 3;
-  const vy = p.v * Math.sin(p.pitch * DEG) * lift - sag - (1 - lift) * 18;
+  const vy = p.v * Math.sin(p.pitch * DEG) * lift - sag - (1 - lift) * 18 - (1 - Math.cos(p.roll * DEG)) * 10;
   if (p.onGround) {
     p.vy = 0;
     if (vy > 0.5) p.onGround = false;
@@ -303,7 +329,9 @@ function update(dt) {
     p.y = Math.min(CEILING, p.y + p.vy * dt);
     if (p.y > 10) p.flown = true;
   }
-  p.x += p.v * Math.cos(p.pitch * DEG) * dt;
+  const vh = p.v * Math.cos(p.pitch * DEG);
+  p.x += vh * Math.cos(p.hdg) * dt;
+  p.z += vh * Math.sin(p.hdg) * dt;
 
   if (!p.onGround && p.y <= 0) { touchdown(); return; }
 
@@ -311,6 +339,7 @@ function update(dt) {
     if (!p.flown) return crash('field', 'Die Startbahn war zu Ende! Gib mehr Schub und zieh die Nase hoch, sobald du 270 km/h schnell bist.');
     return crash('field', 'Über die Landebahn hinaus gerollt! Halte nach dem Aufsetzen die Bremse gedrückt.');
   }
+  if (p.onGround && Math.abs(p.z) > 32) return crash('field', 'Von der Bahn abgekommen! Lenk mit ◀ ▶, damit du in der Mitte bleibst.');
   if (p.onGround && p.flown && p.v < 1.5) return landed();
   if (!p.onGround && p.x > RWY_B.x1 + 3000) {
     return finish({ ok: false, title: 'Vorbeigeflogen!', text: 'Mallorca liegt schon hinter dir. Folge beim nächsten Mal den grünen Punkten runter zur Landebahn.' });
@@ -333,8 +362,9 @@ function touchdown() {
   if (p.pitch < -2) return crash('nose', 'Mit der Nase zuerst aufgesetzt! Zieh kurz vor dem Boden die Nase etwas hoch.');
   if (p.pitch > 12) return crash('tail', 'Heckaufsetzer! Die Nase war viel zu weit oben.');
   if (sink > 8) return crash('hard', 'Viel zu hart aufgesetzt! Sink langsamer und zieh kurz vor dem Boden die Nase hoch.');
-  const rwy = inside(p.x, RWY_A) ? RWY_A : inside(p.x, RWY_B) ? RWY_B : null;
-  if (!rwy) return crash('field', 'Daneben! Du bist neben der Landebahn aufgesetzt.');
+  const onStrip = Math.abs(p.z) <= 30;
+  const rwy = !onStrip ? null : inside(p.x, RWY_A) ? RWY_A : inside(p.x, RWY_B) ? RWY_B : null;
+  if (!rwy) return crash('field', onStrip ? 'Daneben! Du bist vor oder hinter der Landebahn aufgesetzt.' : 'Daneben! Du bist neben der Landebahn aufgesetzt. Schau aufs Radar und lenk mit ◀ ▶.');
   p.onGround = true; p.vy = 0; p.rwy = rwy; p.touchSink = sink;
   if (p.flown) p.throttle = 0;   // nach der Landung geht der Schub automatisch auf Leerlauf
   shake = Math.min(8, 2 + sink * 1.5);
@@ -414,6 +444,8 @@ function glideAlt(x) { return (DEST - x) * Math.tan(GLIDE); }
 function hint() {
   const dist = DEST - p.x;
   if (welcomeT > 0) return ['🔔 Bitte anschnallen! Wir fliegen nach Mallorca.', false];
+  const side = p.z > 0 ? 'links ◀' : 'rechts ▶';
+  if (p.onGround && Math.abs(p.z) > 12) return [`Bleib in der Mitte der Bahn! Lenk nach ${side}`, true];
   if (p.onGround && !p.flown) {
     if (p.throttle < 0.7) return ['Gib Schub! Halte „Schub +“ gedrückt.', false];
     if (p.v < VR * 0.93) return ['Schneller werden … bei 270 km/h abheben!', false];
@@ -424,6 +456,8 @@ function hint() {
   if (p.gear > 0.5 && p.v > 110 && dist > 5000) return ['Fahrwerk einfahren! Sonst bremst es dich.', true];
   if (dist < 5000 && !p.gearDown) return ['Fahrwerk ausfahren! ⚙️', true];
   if (dist < 8000 && p.v > 105) return ['Zu schnell für die Landung! Schub weg.', true];
+  if (dist < GLIDE_LEN + 3000 && Math.abs(p.z) > 40) return [`Die Landebahn ist ${side} – schau aufs Radar`, true];
+  if (dist >= GLIDE_LEN + 3000 && Math.abs(p.hdg) > 25 * DEG) return [`Mallorca liegt ${p.hdg > 0 ? 'links ◀' : 'rechts ▶'}`, false];
   if (dist < 1500 && p.y < 30) return ['Gleich am Boden: Nase ganz leicht hoch ▲', false];
   if (dist < GLIDE_LEN + 1500 && p.y > glideAlt(p.x) + 60) return ['Zeit für den Sinkflug! Folge den grünen Punkten ▼', false];
   if (dist < GLIDE_LEN && p.y < glideAlt(p.x) - 60) return ['Zu tief! Etwas höher ▲', true];
@@ -1056,6 +1090,13 @@ function drawHUD() {
   drawButton(bs.gear, p.gearDown ? '⚙️ raus' : '⚙️ drin', 'Fahrwerk', false, p.gearDown ? '#7dff9a' : '#ffd34d');
   drawButton(bs.brake, '🛑', 'Bremse', held('brake'));
   drawButton(bs.view, '👁️', view === 'cockpit' ? 'Außen' : 'Cockpit', false);
+  drawButton(bs.left, '◀', 'links', held('left'));
+  drawButton(bs.right, '▶', 'rechts', held('right'));
+  // Radar links über den Knöpfen
+  const leftTop = Math.min(...[bs.thrUp, bs.gear].filter(r => r.x < W() * 0.3).map(r => r.y)) - 10;
+  const radarTop = view === 'cockpit' ? my + mh + 8 : hy + hs * 2 + 8;
+  const R = Math.min(130 * u, leftTop - radarTop);
+  if (R >= 60 && view !== 'cockpit') drawRadar(m, leftTop - R, R);
   // Schubanzeige
   const bx = bs.thrUp.x + bs.thrUp.w + 8, by = bs.thrUp.y, bh = bs.thrDn.y + bs.thrDn.h - by, bw = 12 * u;
   panel(bx, by, bw, bh);
@@ -1065,6 +1106,31 @@ function drawHUD() {
   ctx.fillStyle = g;
   ctx.fillRect(bx + 3, by + bh - 3 - fh, bw - 6, fh);
   txt(`${Math.round(p.throttle * 100)}%`, bx + bw + 4, by + bh - 3 - fh, 11 * u, '#fff', 'left', 'rgba(0,0,0,0.6)');
+}
+
+function drawRadar(x, y, R, RH = R) {
+  // Karte von oben: oben ist Richtung Mallorca, das Flugzeug in der Mitte
+  panel(x, y, R, RH);
+  ctx.save();
+  ctx.beginPath(); ctx.roundRect(x, y, R, RH, 10); ctx.clip();
+  const cxr = x + R / 2, cyr = y + RH * 0.6;
+  const range = clamp(Math.abs(DEST - p.x) * 1.1, 600, 9000);
+  const k = R * 0.5 / range;
+  // zur Seite viermal so groß, damit man auch kleine Abweichungen sieht
+  const mp = (wx, wz) => [cxr + (wz - p.z) * k * 4, cyr - (wx - p.x) * k];
+  ctx.strokeStyle = 'rgba(60,255,120,0.75)'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]);
+  ctx.beginPath(); ctx.moveTo(...mp(DEST - GLIDE_LEN, 0)); ctx.lineTo(...mp(DEST, 0)); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.strokeStyle = '#e8e8e8'; ctx.lineCap = 'butt';
+  for (const r of [RWY_A, RWY_B]) {
+    ctx.lineWidth = Math.max(3, 60 * k);
+    ctx.beginPath(); ctx.moveTo(...mp(r.x0, 0)); ctx.lineTo(...mp(r.x1, 0)); ctx.stroke();
+  }
+  ctx.translate(cxr, cyr); ctx.rotate(Math.atan(Math.tan(p.hdg) * 4));
+  ctx.fillStyle = '#ffd34d';
+  ctx.beginPath(); ctx.moveTo(0, -9); ctx.lineTo(7, 7); ctx.lineTo(0, 3); ctx.lineTo(-7, 7); ctx.closePath(); ctx.fill();
+  ctx.restore();
+  txt('Radar', x + R / 2, y + 9, 10, 'rgba(255,255,255,0.7)');
 }
 
 function drawResult() {
@@ -1149,8 +1215,8 @@ function drawMenu(dt) {
 
   const hs = 12 * u;
   let y = menuBtn.y + bh + 22 * u;
-  for (const l of ['Knöpfe: Schub + / −, Nase ▲ ▼, Fahrwerk, Bremse, 👁️ Cockpit',
-                   'Tastatur: ← → Schub · ↑ ↓ Nase · G Fahrwerk · Leertaste Bremse · C Cockpit']) {
+  for (const l of ['Knöpfe: Schub + / −, Nase ▲ ▼, Kurve ◀ ▶, Fahrwerk, Bremse, 👁️ Cockpit',
+                   'Tastatur: W S Schub · ↑ ↓ Nase · ← → Kurve · G Fahrwerk · Leertaste Bremse · C Cockpit']) {
     for (const w of wrap(l, W() - 32, hs)) { txt(w, W() / 2, y, hs, 'rgba(20,40,90,0.85)'); y += hs * 1.4; }
   }
   if (H() > W()) txt('📱 Tipp: Handy quer halten!', W() / 2, y + hs, hs * 1.2, '#1f2f4a');
@@ -1181,19 +1247,43 @@ function drawCockpit() {
   const w = W(), h = H();
   const f = Math.max(w, h) * 0.7;
   const pc = Math.cos(p.pitch * DEG), ps = Math.sin(p.pitch * DEG);
-  const eyeX = p.x + 36 * pc;
+  const ch = Math.cos(p.hdg), sh = Math.sin(p.hdg);
+  const eyeX = p.x + 36 * pc * ch, eyeZ = p.z + 36 * pc * sh;
   const eye = p.y + 7 + 36 * ps;
   const vib = p.onGround ? (Math.random() - 0.5) * p.v * 0.03 : 0;
   const cx = w / 2 + shX, cy = h * 0.36 + shY + vib;
   const hy = cy + f * Math.tan(p.pitch * DEG);
   const near = 8, DMAX = 25000;
-  const P = (d, z, a) => [cx + f * z / d, hy + f * (eye - a) / d];
-  const poly = (pts, color) => {
+  // Weltpunkt -> Blickrichtung: d nach vorne, l zur Seite
+  const cam = (x, z) => { const dx = x - eyeX, dz = z - eyeZ; return [dx * ch + dz * sh, -dx * sh + dz * ch]; };
+  const scr = (d, l, a) => [cx + f * l / d, hy + f * (eye - a) / d];
+  // Vielecke werden vorne abgeschnitten, damit nichts hinter dir gezeichnet wird
+  const polyW = (pts, color) => {
+    const cp = pts.map(([x, z, a]) => [...cam(x, z), a]);
+    const out = [];
+    for (let i = 0; i < cp.length; i++) {
+      const A = cp[i], B = cp[(i + 1) % cp.length];
+      if (A[0] >= near) out.push(A);
+      if ((A[0] >= near) !== (B[0] >= near)) {
+        const t = (near - A[0]) / (B[0] - A[0]);
+        out.push([near, A[1] + (B[1] - A[1]) * t, A[2] + (B[2] - A[2]) * t]);
+      }
+    }
+    if (out.length < 3) return;
     ctx.fillStyle = color;
     ctx.beginPath();
-    pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+    out.forEach((q, i) => { const [X, Y] = scr(q[0], q[1], q[2]); i ? ctx.lineTo(X, Y) : ctx.moveTo(X, Y); });
     ctx.closePath(); ctx.fill();
   };
+  const quad = (x0, x1, z0, z1, a, color) => polyW([[x0, z0, a], [x1, z0, a], [x1, z1, a], [x0, z1, a]], color);
+  const hazeAt = d => Math.pow(clamp(d / 18000, 0, 1), 0.6);
+  const tanView = Math.hypot(w, h) / 2 / f;
+  const visible = (d, l, pad) => d > near && Math.abs(l) < d * tanView + pad;
+
+  // in der Kurve kippt die ganze Welt
+  ctx.save();
+  ctx.translate(cx, cy); ctx.rotate(-p.roll * DEG); ctx.translate(-cx, -cy);
+  const big = Math.max(w, h) * 2;
 
   // Himmel und Sonne
   const t = clamp(p.y / 1100, 0, 1);
@@ -1202,34 +1292,28 @@ function drawCockpit() {
   g.addColorStop(0, mix('#4a9be6', '#0b2a66', t));
   g.addColorStop(1, rgb(lowA));
   ctx.fillStyle = g;
-  ctx.fillRect(0, 0, w, h);
-  const sxp = cx + w * 0.3, syp = hy - f * 0.5;
-  const sg = ctx.createRadialGradient(sxp, syp, 0, sxp, syp, 110);
-  sg.addColorStop(0, 'rgba(255,250,220,0.95)');
-  sg.addColorStop(0.25, 'rgba(255,240,180,0.6)');
-  sg.addColorStop(1, 'rgba(255,240,180,0)');
-  ctx.fillStyle = sg;
-  ctx.beginPath(); ctx.arc(sxp, syp, 110, 0, Math.PI * 2); ctx.fill();
+  ctx.fillRect(cx - big, cy - big, 2 * big, 2 * big);
+  const sunA = 20 * DEG - p.hdg;
+  const sxp = cx + f * Math.tan(sunA), syp = hy - f * 0.5;
+  if (Math.abs(sunA) < 70 * DEG) {
+    const sg = ctx.createRadialGradient(sxp, syp, 0, sxp, syp, 110);
+    sg.addColorStop(0, 'rgba(255,250,220,0.95)');
+    sg.addColorStop(0.25, 'rgba(255,240,180,0.6)');
+    sg.addColorStop(1, 'rgba(255,240,180,0)');
+    ctx.fillStyle = sg;
+    ctx.beginPath(); ctx.arc(sxp, syp, 110, 0, Math.PI * 2); ctx.fill();
+  }
 
-  // Boden in Streifen, die auf dich zukommen; weit weg wird alles dunstig
-  if (hy < h) {
-    ctx.fillStyle = rgb(lowA);
-    ctx.fillRect(0, hy, w, h - hy);
-    const yAt = d => hy + f * eye / d;
-    let d = DMAX;
-    const dBottom = Math.max(near, f * eye / Math.max(1, h - hy));
-    while (d > dBottom) {
-      const step = d <= 1500 ? 100 : d <= 6000 ? 400 : 2000;
-      const xa = Math.ceil((eyeX + d) / step - 1) * step;
-      const d2 = Math.max(dBottom, xa - eyeX);
-      const odd = Math.floor(xa / step) & 1;
-      const col = lerpRGB(groundColor(eyeX + (d + d2) / 2, odd), lowA, Math.pow(clamp(d / 18000, 0, 1), 0.6));
-      ctx.fillStyle = rgb(col);
-      const y1 = yAt(d), y2 = Math.min(h, yAt(d2));
-      ctx.fillRect(0, y1 - 0.5, w, y2 - y1 + 1);
-      if (d2 >= d) break;
-      d = d2;
-    }
+  // Boden in Streifen; weit weg wird alles dunstig
+  ctx.fillStyle = rgb(lowA);
+  ctx.fillRect(cx - big, hy, 2 * big, big);
+  for (let x = Math.floor((eyeX - 3000) / 100) * 100; x < eyeX + DMAX;) {
+    const dist = Math.abs(x - eyeX);
+    const step = dist < 1500 ? 100 : dist < 6000 ? 400 : 2000;
+    const nx = (Math.floor(x / step) + 1) * step;
+    const odd = Math.floor(x / step) & 1;
+    quad(x, nx, eyeZ - 60000, eyeZ + 60000, 0, rgb(lerpRGB(groundColor((x + nx) / 2, odd), lowA, hazeAt(Math.max(0, x - eyeX)))));
+    x = nx;
   }
 
   // Berge am Horizont: flache Hügel bei Frankfurt, hohe Berge auf Mallorca
@@ -1242,106 +1326,94 @@ function drawCockpit() {
     const pts = [];
     for (let z = z0; z <= z1; z += (z1 - z0) / 60) {
       const env = Math.sin(Math.PI * (z - z0) / (z1 - z0));
-      const ht = mh * env * (0.55 + 0.3 * Math.sin(z / 900) + 0.15 * Math.sin(z / 330 + 1));
-      pts.push(P(dm, z, ht));
+      pts.push([mx, z, mh * env * (0.55 + 0.3 * Math.sin(z / 900) + 0.15 * Math.sin(z / 330 + 1))]);
     }
-    pts.push(P(dm, z1, 0), P(dm, z0, 0));
-    const haze = Math.pow(clamp(dm / 40000, 0, 1), 0.5) * 0.55;
-    poly(pts, rgb(lerpRGB(hex2rgb(col), lowA, haze)));
+    pts.push([mx, z1, 0], [mx, z0, 0]);
+    polyW(pts, rgb(lerpRGB(hex2rgb(col), lowA, Math.pow(clamp(dm / 40000, 0, 1), 0.5) * 0.55)));
   }
 
-  // Felder wie ein Flickenteppich, nah am Boden
-  if (hy < h) {
-    const FW = 250;
-    const dBot = Math.max(near, f * eye / Math.max(1, h - hy));
-    for (let row = Math.floor((eyeX + fieldMax) / FW); row * FW + FW > eyeX + dBot; row--) {
-      const x0 = row * FW, d0 = Math.max(dBot, x0 - eyeX), d1 = x0 + FW - eyeX;
-      if (d1 <= d0) continue;
-      const xm = x0 + FW / 2;
-      if (landFactor(x0) < 1 || landFactor(x0 + FW) < 1) continue;
-      const pal = xm > SEA_TO ? FIELDS_ISLE : FIELDS;
-      const zMax = (w / 2 + 40) * d1 / f, off = rand(row + 0.42) * FW;
-      const haze = Math.pow(clamp(d0 / 18000, 0, 1), 0.6);
-      const airport = (xm > -800 && xm < RWY_A.x1 + 600) || (xm > RWY_B.x0 - 600 && xm < RWY_B.x1 + 600);
-      for (let c = Math.floor((-zMax - off) / FW); c * FW + off < zMax; c++) {
-        const za = c * FW + off, zb = za + FW;
-        const base = airport && Math.abs(za + FW / 2) < 600 ? '#6aae55' : pal[Math.floor(rand(row * 7.3 + c * 1.7) * pal.length)];
-        poly([P(d0, za, 0), P(d1, za, 0), P(d1, zb, 0), P(d0, zb, 0)], rgb(lerpRGB(hex2rgb(base), lowA, haze)));
-      }
+  // Felder wie ein Flickenteppich
+  const FW = 250;
+  for (let row = Math.floor((eyeX - 1500) / FW); row * FW < eyeX + fieldMax; row++) {
+    const x0 = row * FW, x1 = x0 + FW, xm = x0 + FW / 2;
+    if (landFactor(x0) < 1 || landFactor(x1) < 1) continue;
+    const pal = xm > SEA_TO ? FIELDS_ISLE : FIELDS;
+    const off = rand(row + 0.42) * FW;
+    const airport = (xm > -800 && xm < RWY_A.x1 + 600) || (xm > RWY_B.x0 - 600 && xm < RWY_B.x1 + 600);
+    for (let c = Math.floor((eyeZ - 6000 - off) / FW); c * FW + off < eyeZ + 6000; c++) {
+      const za = c * FW + off, zb = za + FW;
+      const [d, l] = cam(xm, za + FW / 2);
+      if (d > fieldMax + 400 || !visible(Math.max(d + FW, near + 1), l, FW * 1.5)) continue;
+      const base = airport && Math.abs(za + FW / 2) < 600 ? '#6aae55' : pal[Math.floor(rand(row * 7.3 + c * 1.7) * pal.length)];
+      quad(x0, x1, za, zb, 0, rgb(lerpRGB(hex2rgb(base), lowA, hazeAt(Math.max(0, d)))));
     }
-    // Landstraßen
-    for (const z of [-900, 1400]) {
-      for (let x = Math.floor((eyeX + dBot) / FW) * FW; x < eyeX + fieldMax; x += FW) {
-        if (landFactor(x) < 1 || landFactor(x + FW) < 1) continue;
-        if (x > RWY_B.x0 - 1500 && x < RWY_B.x1 + 800 && z > 0) continue;
-        const d0 = Math.max(dBot, x - eyeX), d1 = x + FW - eyeX;
-        poly([P(d0, z - 4, 0), P(d1, z - 4, 0), P(d1, z + 4, 0), P(d0, z + 4, 0)], rgb(lerpRGB([140, 140, 135], lowA, Math.pow(clamp(d0 / 18000, 0, 1), 0.6))));
-      }
+  }
+  // Landstraßen
+  for (const z of [-900, 1400]) {
+    for (let x = Math.floor((eyeX - 1500) / FW) * FW; x < eyeX + fieldMax; x += FW) {
+      if (landFactor(x) < 1 || landFactor(x + FW) < 1) continue;
+      if (x > RWY_B.x0 - 1500 && x < RWY_B.x1 + 800 && z > 0) continue;
+      quad(x, x + FW, z - 4, z + 4, 0, rgb(lerpRGB([140, 140, 135], lowA, hazeAt(Math.max(0, x - eyeX)))));
     }
-    // Glitzern der Sonne auf dem Meer, unter der Sonne
-    for (let i = 0; i < 90; i++) {
-      const yy = hy + 2 + Math.pow(rand(i * 1.3), 2) * (h - hy);
-      const dd = f * eye / Math.max(1, yy - hy);
-      if (!(eyeX + dd > SEA_FROM && eyeX + dd < SEA_TO)) continue;
-      if (rand(i * 2.1 + Math.floor(time * 7) * 0.13) < 0.45) continue;
-      const spread = 20 + (yy - hy) * 0.5;
-      const xx = sxp + (rand(i * 4.7 + Math.floor(time * 3)) - 0.5) * spread * 2;
-      ctx.fillStyle = 'rgba(255,255,235,0.9)';
-      ctx.fillRect(xx, yy, 2 + (yy - hy) * 0.02, 1 + (yy - hy) * 0.008);
-    }
+  }
+  // Glitzern der Sonne auf dem Meer
+  for (let i = 0; i < 90; i++) {
+    const yy = hy + 2 + Math.pow(rand(i * 1.3), 2) * h;
+    const dd = f * eye / Math.max(1, yy - hy);
+    const xw = eyeX + dd * ch;
+    if (!(xw > SEA_FROM && xw < SEA_TO)) continue;
+    if (rand(i * 2.1 + Math.floor(time * 7) * 0.13) < 0.45) continue;
+    const spread = 20 + (yy - hy) * 0.5;
+    const xx = sxp + (rand(i * 4.7 + Math.floor(time * 3)) - 0.5) * spread * 2;
+    ctx.fillStyle = 'rgba(255,255,235,0.9)';
+    ctx.fillRect(xx, yy, 2 + (yy - hy) * 0.02, 1 + (yy - hy) * 0.008);
   }
 
   // Landebahnen
+  const light = (x, z, a, r, color) => {
+    const [d, l] = cam(x, z);
+    if (!visible(d, l, 20) || d > 9000) return;
+    const [X, Y] = scr(d, l, a);
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(X, Y, Math.max(1, f * r / d), 0, Math.PI * 2); ctx.fill();
+  };
   for (const r of [RWY_A, RWY_B]) {
-    const d1 = r.x1 - eyeX;
-    let d0 = r.x0 - eyeX;
-    if (d1 < near || d0 > DMAX) continue;
-    d0 = Math.max(d0, near);
-    poly([P(d0, -30, 0), P(d1, -30, 0), P(d1, 30, 0), P(d0, 30, 0)], '#3b3f45');
+    if (r.x1 < eyeX - 3000 || r.x0 > eyeX + DMAX) continue;
+    quad(r.x0, r.x1, -30, 30, 0, '#3b3f45');
     for (const e of [r.x0 + 10, r.x1 - 50]) {
-      const a = Math.max(near, e - eyeX), b = e + 40 - eyeX;
-      if (b < near) continue;
-      for (const z of [-26, -20, -14, -8, 5, 11, 17, 23]) poly([P(a, z, 0), P(b, z, 0), P(b, z + 3, 0), P(a, z + 3, 0)], '#ffffff');
+      for (const z of [-26, -20, -14, -8, 5, 11, 17, 23]) quad(e, e + 40, z, z + 3, 0, '#ffffff');
     }
     for (let x = r.x0 + 120; x < r.x1 - 120; x += 70) {
-      const a = Math.max(near, x - eyeX), b = x + 35 - eyeX;
-      if (b < near || a > 6000) continue;
-      poly([P(a, -0.7, 0), P(b, -0.7, 0), P(b, 0.7, 0), P(a, 0.7, 0)], '#ffffff');
+      if (x + 35 < eyeX - 200 || x > eyeX + 6000) continue;
+      quad(x, x + 35, -0.7, 0.7, 0, '#ffffff');
     }
     for (let x = r.x0; x <= r.x1; x += 60) {
-      const dd = x - eyeX;
-      if (dd < near || dd > 9000) continue;
-      ctx.fillStyle = x === r.x0 ? '#3f3' : x + 60 > r.x1 ? '#f33' : '#fff7d0';
-      for (const z of [-31, 31]) {
-        const [X, Y] = P(dd, z, 0.5);
-        ctx.beginPath(); ctx.arc(X, Y, Math.max(1, f * 0.5 / dd), 0, Math.PI * 2); ctx.fill();
-      }
+      const color = x === r.x0 ? '#3f3' : x + 60 > r.x1 ? '#f33' : '#fff7d0';
+      light(x, -31, 0.5, 0.5, color);
+      light(x, 31, 0.5, 0.5, color);
     }
   }
   // Anflugbefeuerung mit Lauflicht
   const run = Math.floor((time * 2) % 1 * 15);
   for (let i = 0; i < 15; i++) {
-    const dd = DEST - 60 - (14 - i) * 60 - eyeX;
-    if (dd < near || dd > 9000) continue;
-    const zs = i % 5 === 0 ? [-12, -6, 0, 6, 12] : [0];
-    for (const z of zs) {
-      const [X, Y] = P(dd, z, 4);
-      ctx.fillStyle = i === run ? '#ffffff' : '#ffe98a';
-      ctx.beginPath(); ctx.arc(X, Y, Math.max(1.2, f * (i === run ? 1.4 : 0.8) / dd), 0, Math.PI * 2); ctx.fill();
+    for (const z of i % 5 === 0 ? [-12, -6, 0, 6, 12] : [0]) {
+      light(DEST - 60 - (14 - i) * 60, z, 4, i === run ? 1.4 : 0.8, i === run ? '#ffffff' : '#ffe98a');
     }
   }
 
   // Alles, was in die Höhe ragt, von hinten nach vorne zeichnen
   const things = [];
-  const box = (x0, x1, z0, z1, a0, a1, front, side, top) => things.push({ d: x0 - eyeX, draw() {
-    const d1 = x1 - eyeX;
-    if (d1 < near) return;
-    const d0 = Math.max(near, x0 - eyeX);
-    const zs = Math.abs(z0) < Math.abs(z1) ? z0 : z1;
-    poly([P(d0, zs, a0), P(d1, zs, a0), P(d1, zs, a1), P(d0, zs, a1)], side);
-    if (eye > a1) poly([P(d0, z0, a1), P(d1, z0, a1), P(d1, z1, a1), P(d0, z1, a1)], top);
-    if (x0 - eyeX >= near) poly([P(d0, z0, a0), P(d0, z1, a0), P(d0, z1, a1), P(d0, z0, a1)], front);
-  } });
+  const box = (x0, x1, z0, z1, a0, a1, front, side, top) => {
+    const [d] = cam((x0 + x1) / 2, (z0 + z1) / 2);
+    if (d < -200 || d > DMAX) return;
+    things.push({ d, draw() {
+      if (eyeZ < z0) polyW([[x0, z0, a0], [x1, z0, a0], [x1, z0, a1], [x0, z0, a1]], side);
+      if (eyeZ > z1) polyW([[x0, z1, a0], [x1, z1, a0], [x1, z1, a1], [x0, z1, a1]], side);
+      if (eyeX < x0) polyW([[x0, z0, a0], [x0, z1, a0], [x0, z1, a1], [x0, z0, a1]], front);
+      if (eyeX > x1) polyW([[x1, z0, a0], [x1, z1, a0], [x1, z1, a1], [x1, z0, a1]], front);
+      if (eye > a1) polyW([[x0, z0, a1], [x1, z0, a1], [x1, z1, a1], [x0, z1, a1]], top);
+    } });
+  };
   const tower = (x, z) => {
     box(x, x + 6, z, z + 6, 0, 55, '#e3e7ec', '#cdd3da', '#f0f2f5');
     box(x - 6, x + 12, z - 6, z + 12, 55, 66, '#7fd4c9', '#6cc2b7', '#d8dde3');
@@ -1356,7 +1428,7 @@ function drawCockpit() {
     tower(DEST + 1300, -130);
   }
   // Dörfer mit roten Dächern
-  for (let k = Math.floor((eyeX + near) / 2500); k <= (eyeX + 5000) / 2500; k++) {
+  for (let k = Math.floor((eyeX - 2500) / 2500); k <= (eyeX + 5000) / 2500; k++) {
     const vx = k * 2500 + 800;
     if (rand(k + 0.33) > 0.65 || landFactor(vx - 200) < 1 || landFactor(vx + 600) < 1) continue;
     if ((vx > -1500 && vx < RWY_A.x1 + 1500) || (vx > RWY_B.x0 - 2500 && vx < RWY_B.x1 + 1500)) continue;
@@ -1368,16 +1440,18 @@ function drawCockpit() {
     }
   }
   // Bäume und Palmen
-  for (let c = Math.floor((eyeX + near) / 50); c <= (eyeX + 4000) / 50; c++) {
-    for (let k = 0; k < 2; k++) {
-      const n = c * 2 + k;
+  for (let c = Math.floor((eyeX - 1000) / 50); c <= (eyeX + 4000) / 50; c++) {
+    for (let k = 0; k < 3; k++) {
+      const n = c * 3 + k;
       const x = c * 50 + rand(n + 0.1) * 50;
-      const z = (rand(n + 0.6) - 0.5) * 3000;
+      const z = (rand(n + 0.6) - 0.5) * 5000;
       if (landFactor(x) < 1 || Math.abs(z) < 60) continue;
       if (Math.abs(z) < 320 && ((x > -1000 && x < RWY_A.x1 + 300) || (x > RWY_B.x0 - 1200 && x < RWY_B.x1 + 300))) continue;
-      const d = x - eyeX, ht = 12 + rand(n + 0.3) * 10;
+      const [d, l] = cam(x, z);
+      if (!visible(d, l, 30)) continue;
+      const ht = 12 + rand(n + 0.3) * 10;
       things.push({ d, draw() {
-        const [X, Y] = P(d, z, 0), s = f / d;
+        const [X, Y] = scr(d, l, 0), s = f / d;
         if (ht * s < 1.5) return;
         const save = S; S = s;
         drawTree(X, Y, ht * s, x > SEA_TO);
@@ -1387,23 +1461,28 @@ function drawCockpit() {
   }
   // Wolken
   const cell = 110;
-  for (let c = Math.floor((eyeX + 20) / cell); c <= (eyeX + DMAX * 0.6) / cell; c++) {
-    if (rand(c) > 0.5) continue;
-    const x = c * cell + rand(c + 0.2) * 60, d = x - eyeX;
-    if (d < 20) continue;
-    const alt = 70 + rand(c + 0.3) * 1250, z = (rand(c + 0.55) - 0.5) * 2400;
-    const R = (14 + rand(c + 0.7) * 26) * 3;
-    things.push({ d, draw() {
-      const [X, Y] = P(d, z, alt), r = f * R / d;
-      if (X < -r * 3 || X > w + r * 3 || Y < -r * 2 || Y > h + r * 2) return;
-      cloud(X, Y, r, clamp((d - 20) / 250, 0, 1) * 0.9);
-    } });
+  for (let c = Math.floor((eyeX - 3000) / cell); c <= (eyeX + DMAX * 0.6) / cell; c++) {
+    for (let k = 0; k < 2; k++) {
+      const n = c + k * 0.5;
+      if (rand(n) > 0.5) continue;
+      const x = c * cell + rand(n + 0.2) * 60;
+      const alt = 70 + rand(n + 0.3) * 1250, z = (rand(n + 0.55) - 0.5) * 8000;
+      const R = (14 + rand(n + 0.7) * 26) * 3;
+      const [d, l] = cam(x, z);
+      if (d < 20 || !visible(d, l, R * 3)) continue;
+      things.push({ d, draw() {
+        const [X, Y] = scr(d, l, alt), r = f * R / d;
+        if (Y < -r * 2 - h || Y > 2 * h + r * 2) return;
+        cloud(X, Y, r, clamp((d - 20) / 250, 0, 1) * 0.9);
+      } });
+    }
   }
   // grüne Ringe der Landehilfe
-  for (let x = Math.max(DEST - GLIDE_LEN, Math.ceil((eyeX + near) / 120) * 120); x <= Math.min(DEST, eyeX + 5000); x += 120) {
-    const d = x - eyeX;
+  for (let x = DEST - GLIDE_LEN; x <= DEST; x += 120) {
+    const [d, l] = cam(x, 0);
+    if (!visible(d, l, 50) || d > 5000) continue;
     things.push({ d, draw() {
-      const [X, Y] = P(d, 0, glideAlt(x) + 7), r = Math.max(2, f * 4 / d);
+      const [X, Y] = scr(d, l, glideAlt(x) + 7), r = Math.max(2, f * 4 / d);
       // nahe Ringe werden durchsichtig, damit man die Landebahn dahinter sieht
       ctx.strokeStyle = `rgba(60,255,120,${0.85 * clamp((d - 100) / 300, 0, 1)})`; ctx.lineWidth = Math.max(1.5, r * 0.15);
       ctx.beginPath(); ctx.arc(X, Y, r, 0, Math.PI * 2); ctx.stroke();
@@ -1413,13 +1492,14 @@ function drawCockpit() {
   for (const o of things) o.draw();
 
   // Blendenflecken, wenn die Sonne zu sehen ist
-  if (syp > 0 && syp < h * 0.6) {
+  if (Math.abs(sunA) < 40 * DEG && syp > 0 && syp < h * 0.6) {
     const vx = cx - sxp, vy = cy - syp;
     for (const [k, r, a, c] of [[0.5, 18, 0.12, '255,220,150'], [0.9, 8, 0.18, '180,220,255'], [1.3, 26, 0.08, '255,180,120'], [1.7, 12, 0.12, '160,255,200']]) {
       ctx.fillStyle = `rgba(${c},${a})`;
       ctx.beginPath(); ctx.arc(sxp + vx * k, syp + vy * k, r, 0, Math.PI * 2); ctx.fill();
     }
   }
+  ctx.restore();
 
   drawCockpitFrame();
 }
@@ -1465,16 +1545,16 @@ function drawCockpitFrame() {
   const bs = buttons();
   const sy0 = bot + 12, sh = h - sy0 - 12;
   const l0 = bs.thrUp.x + bs.thrUp.w + 64, l1 = bs.gear.x - 12;
-  const r0 = bs.brake.x + bs.brake.w + 12, r1 = bs.up.x - 12;
+  const r0 = bs.brake.x + bs.brake.w + 12, r1 = bs.left.x - 12;
   if (l1 - l0 > 90 && sh > 50) {
     drawPFD(l0, sy0, l1 - l0, sh);
-    if (r1 - r0 > 90) drawStatus(r0, sy0, r1 - r0, sh);
+    if (r1 - r0 > 70) drawRadar(r0, sy0, Math.min(r1 - r0, sh), Math.min(r1 - r0, sh));
   } else {
     // Hochformat: Bildschirme über den Knöpfen
-    const y1 = Math.min(bs.thrUp.y, bs.view.y) - 14, hh = y1 - sy0, half = (w - 28 - 12) / 2;
+    const y1 = Math.min(bs.gear.y, bs.view.y) - 14, hh = y1 - sy0, half = (w - 28 - 12) / 2;
     if (hh > 60) {
       drawPFD(14, sy0, half, hh);
-      drawStatus(14 + half + 12, sy0, half, hh);
+      drawRadar(14 + half + 12, sy0, half, hh);
     }
   }
 }
@@ -1491,16 +1571,19 @@ function drawPFD(x, y, w, h) {
   screen(x, y, w, h);
   ctx.save();
   ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
-  const k = h / 40, mx = x + w / 2, my = y + h / 2 + p.pitch * k;
+  const k = h / 40, mx = x + w / 2, off = p.pitch * k;
   ctx.fillStyle = '#2f7fd6'; ctx.fillRect(x, y, w, h);
-  ctx.fillStyle = '#8a5a2b'; ctx.fillRect(x, my, w, y + h - my + 1);
+  ctx.save();
+  ctx.translate(mx, y + h / 2); ctx.rotate(-p.roll * DEG);
+  ctx.fillStyle = '#8a5a2b'; ctx.fillRect(-w * 2, off, w * 4, h * 2);
   ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.moveTo(x, my); ctx.lineTo(x + w, my); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-w * 2, off); ctx.lineTo(w * 2, off); ctx.stroke();
   for (let a = -20; a <= 20; a += 5) {
     if (!a) continue;
-    const yy = my - a * k, len = a % 10 ? w * 0.08 : w * 0.16;
-    ctx.beginPath(); ctx.moveTo(mx - len, yy); ctx.lineTo(mx + len, yy); ctx.stroke();
+    const yy = off - a * k, len = a % 10 ? w * 0.08 : w * 0.16;
+    ctx.beginPath(); ctx.moveTo(-len, yy); ctx.lineTo(len, yy); ctx.stroke();
   }
+  ctx.restore();
   ctx.strokeStyle = '#ffd34d'; ctx.lineWidth = 3;
   ctx.beginPath();
   ctx.moveTo(mx - w * 0.22, y + h / 2); ctx.lineTo(mx - w * 0.07, y + h / 2); ctx.lineTo(mx, y + h / 2 + 6); ctx.lineTo(mx + w * 0.07, y + h / 2); ctx.lineTo(mx + w * 0.22, y + h / 2);
@@ -1516,20 +1599,6 @@ function drawPFD(x, y, w, h) {
   }
   txt('km/h', x + 4, y + h / 2 + fs * 1.4, fs * 0.65, '#7dff9a', 'left');
   txt('m', x + w - 4, y + h / 2 + fs * 1.4, fs * 0.65, '#7dff9a', 'right');
-}
-
-function drawStatus(x, y, w, h) {
-  screen(x, y, w, h);
-  const fs = clamp(h * 0.14, 9, 14);
-  txt('FAHRWERK', x + w / 2, y + fs * 1.1, fs, '#9fb3c8');
-  const col = p.gear > 0.95 ? '#3f3' : p.gear > 0.05 ? '#f33' : '#2a2f38';
-  for (let i = -1; i <= 1; i++) {
-    ctx.fillStyle = col;
-    ctx.beginPath(); ctx.arc(x + w / 2 + i * fs * 1.8, y + fs * 2.6, fs * 0.6, 0, Math.PI * 2); ctx.fill();
-  }
-  const brk = held('brake') && p.onGround;
-  txt('BREMSE', x + w / 2, y + fs * 4.3, fs, brk ? '#ff8a1f' : '#3a414d');
-  if (h > fs * 6.5) txt(`PMI ${Math.max(0, Math.round((DEST - p.x) * DIST_SCALE / 1000))} km`, x + w / 2, y + fs * 6, fs, '#7dd3ff');
 }
 
 // ── Spielschleife ──────────────────────────────────────────────────
