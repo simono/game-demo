@@ -22,11 +22,25 @@
     width: 100%;
     height: 100%;
   }
+  #home {
+    position: fixed;
+    top: calc(env(safe-area-inset-top) + 10px);
+    left: calc(env(safe-area-inset-left) + 10px);
+    width: 44px; height: 44px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px; text-decoration: none;
+    background: rgba(0, 0, 0, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 12px;
+  }
+  #home[hidden] { display: none; }
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
+<a id="home" href="index.html" aria-label="Zur Spielauswahl">🏠</a>
 <script>
+const homeBtn = document.getElementById('home');
 // ── Setup ──────────────────────────────────────────────────────────
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -878,6 +892,7 @@ function loop() {
   if (resizeFrames < 60) { resize(); resizeFrames++; }
   if (state === 'playing') update();
   draw();
+  homeBtn.hidden = state !== 'menu';
   requestAnimationFrame(loop);
 }
 
