@@ -463,13 +463,32 @@ function wrap(str, maxW, size) {
   lines.push(line);
   return lines;
 }
-function cloud(x, y, r, alpha) {
-  ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+const PUFFS = [[0, 0, 1], [-0.9, 0.25, 0.7], [0.95, 0.2, 0.75], [0.35, -0.45, 0.65], [-1.6, 0.45, 0.45], [1.7, 0.45, 0.45]];
+function puffs(x, y, r, k) {
   ctx.beginPath();
-  for (const [dx, dy, k] of [[0, 0, 1], [-0.9, 0.25, 0.7], [0.95, 0.2, 0.75], [0.35, -0.45, 0.65], [-1.6, 0.45, 0.45], [1.7, 0.45, 0.45]]) {
-    ctx.moveTo(x + dx * r + k * r, y + dy * r);
-    ctx.arc(x + dx * r, y + dy * r, k * r, 0, Math.PI * 2);
+  for (const [dx, dy, s] of PUFFS) {
+    ctx.moveTo(x + dx * r + s * r * k, y + dy * r);
+    ctx.arc(x + dx * r, y + dy * r, s * r * k, 0, Math.PI * 2);
   }
+}
+function cloud(x, y, r, alpha) {
+  if (r < 4) {
+    ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+    puffs(x, y, r, 1); ctx.fill();
+    return;
+  }
+  // grauer Bauch unten, heller Körper, Sonnenlicht oben
+  ctx.fillStyle = `rgba(178,192,215,${alpha})`;
+  puffs(x, y + r * 0.14, r, 1); ctx.fill();
+  const g = ctx.createLinearGradient(0, y - r * 1.1, 0, y + r * 0.9);
+  g.addColorStop(0, `rgba(255,255,255,${alpha})`);
+  g.addColorStop(1, `rgba(222,230,243,${alpha})`);
+  ctx.fillStyle = g;
+  puffs(x, y, r, 0.95); ctx.fill();
+  ctx.fillStyle = `rgba(255,255,255,${alpha * 0.8})`;
+  ctx.beginPath();
+  ctx.moveTo(x + r * 0.62, y - r * 0.55); ctx.arc(x + r * 0.27, y - r * 0.55, r * 0.35, 0, Math.PI * 2);
+  ctx.moveTo(x - r * 0.25, y - r * 0.15); ctx.arc(x - r * 0.55, y - r * 0.15, r * 0.3, 0, Math.PI * 2);
   ctx.fill();
 }
 
@@ -619,6 +638,9 @@ function drawA380(gear, lights) {
 }
 
 // ── Zeichnen: Welt ─────────────────────────────────────────────────
+const FIELDS = ['#5da84a', '#6bb04f', '#4f9a3f', '#8fbf5a', '#c9b85a', '#a8c060', '#7a9a3a', '#b98f5a'];
+const FIELDS_ISLE = ['#9bae5a', '#b5a45e', '#7f9a4a', '#c7a86a', '#8aa050', '#a9b86a'];
+
 function landFactor(x) {
   if (x < SEA_FROM) return clamp((SEA_FROM - x) / 1500, 0, 1);
   if (x > SEA_TO) return clamp((x - SEA_TO) / 1500, 0, 1);
@@ -696,11 +718,23 @@ function drawSkyline(gy) {
 function drawGround(gy) {
   if (gy > H()) return;
   const x0 = p.x - (W() * 0.35) / S, x1 = p.x + (W() * 0.65) / S;
-  // Wiese
+  // Wiese mit Feldern in drei Reihen, die nach vorne größer werden
   ctx.fillStyle = '#5da84a';
   ctx.fillRect(0, gy, W(), H() - gy);
-  ctx.fillStyle = 'rgba(0,0,0,0.06)';
-  for (let x = Math.floor(x0 / 40) * 40; x < x1; x += 80) ctx.fillRect(sx(x), gy, 40 * S, H() - gy);
+  const rows = [[0, 0.16, 90], [0.16, 0.42, 140], [0.42, 1, 220]];
+  rows.forEach(([a, b, cw], ri) => {
+    const ya = gy + (H() - gy) * a, yb = gy + (H() - gy) * b;
+    const off = rand(ri + 0.5) * cw;
+    for (let c = Math.floor((x0 - off) / cw); c * cw + off < x1; c++) {
+      const cx0 = c * cw + off;
+      if (landFactor(cx0) < 1 || landFactor(cx0 + cw) < 1) continue;
+      const pal = cx0 > SEA_TO ? FIELDS_ISLE : FIELDS;
+      ctx.fillStyle = pal[Math.floor(rand(c * 3.1 + ri * 17) * pal.length)];
+      ctx.fillRect(sx(cx0), ya, cw * S + 1, yb - ya + 1);
+    }
+    ctx.fillStyle = 'rgba(0,0,0,0.08)';
+    ctx.fillRect(0, yb - 1, W(), 2);
+  });
   // Strand und Meer
   const beach = 250;
   const s0 = Math.max(x0, SEA_FROM - beach), s1 = Math.min(x1, SEA_TO + beach);
@@ -719,6 +753,13 @@ function drawGround(gy) {
         const xx = sx(x + ((time * 8 + row * 17) % 50));
         ctx.beginPath(); ctx.moveTo(xx, yy); ctx.quadraticCurveTo(xx + 4, yy - 3, xx + 8, yy); ctx.stroke();
       }
+    }
+    // Glitzern der Sonne
+    ctx.fillStyle = 'rgba(255,255,240,0.85)';
+    for (let i = 0; i < 40; i++) {
+      const xw = m0 + rand(i * 3.7 + Math.floor(time * 3)) * (m1 - m0);
+      const yy = gy + 4 + rand(i * 5.3) * (H() - gy);
+      if (rand(i + Math.floor(time * 8) * 0.37) < 0.5) ctx.fillRect(sx(xw), yy, 3, 1.5);
     }
     // Segelboot
     const bx = sx(30000);
@@ -898,6 +939,15 @@ function drawParticles() {
     ctx.fillStyle = `rgba(${q.color},${0.8 * f})`;
     ctx.beginPath(); ctx.arc(sx(q.x), sy(q.a), q.r * S, 0, Math.PI * 2); ctx.fill();
   }
+}
+
+function drawShadow() {
+  if (p.y > 250 || state === 'crashed' || p.x > SEA_FROM && p.x < SEA_TO && p.y > 0) return;
+  const k = 1 - p.y / 250;
+  ctx.fillStyle = `rgba(0,0,0,${0.28 * k})`;
+  ctx.beginPath();
+  ctx.ellipse(sx(p.x + 12), sy(0) + Math.max(8, 9 * S) * 0.3, 38 * S * (0.6 + 0.4 * k), 2.5 * S, 0, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 function drawPlane() {
@@ -1182,6 +1232,65 @@ function drawCockpit() {
     }
   }
 
+  // Berge am Horizont: flache Hügel bei Frankfurt, hohe Berge auf Mallorca
+  const ranges = [[12000, -9000, -800, 60, '#7f9fb0'], [DEST + 9000, -16000, 5000, 320, '#7d9a8c']];
+  let fieldMax = 7000;
+  for (const [mx, z0, z1, mh, col] of ranges) {
+    const dm = mx - eyeX;
+    if (dm < 600 || dm > 60000) continue;
+    fieldMax = Math.min(fieldMax, dm);
+    const pts = [];
+    for (let z = z0; z <= z1; z += (z1 - z0) / 60) {
+      const env = Math.sin(Math.PI * (z - z0) / (z1 - z0));
+      const ht = mh * env * (0.55 + 0.3 * Math.sin(z / 900) + 0.15 * Math.sin(z / 330 + 1));
+      pts.push(P(dm, z, ht));
+    }
+    pts.push(P(dm, z1, 0), P(dm, z0, 0));
+    const haze = Math.pow(clamp(dm / 40000, 0, 1), 0.5) * 0.55;
+    poly(pts, rgb(lerpRGB(hex2rgb(col), lowA, haze)));
+  }
+
+  // Felder wie ein Flickenteppich, nah am Boden
+  if (hy < h) {
+    const FW = 250;
+    const dBot = Math.max(near, f * eye / Math.max(1, h - hy));
+    for (let row = Math.floor((eyeX + fieldMax) / FW); row * FW + FW > eyeX + dBot; row--) {
+      const x0 = row * FW, d0 = Math.max(dBot, x0 - eyeX), d1 = x0 + FW - eyeX;
+      if (d1 <= d0) continue;
+      const xm = x0 + FW / 2;
+      if (landFactor(x0) < 1 || landFactor(x0 + FW) < 1) continue;
+      const pal = xm > SEA_TO ? FIELDS_ISLE : FIELDS;
+      const zMax = (w / 2 + 40) * d1 / f, off = rand(row + 0.42) * FW;
+      const haze = Math.pow(clamp(d0 / 18000, 0, 1), 0.6);
+      const airport = (xm > -800 && xm < RWY_A.x1 + 600) || (xm > RWY_B.x0 - 600 && xm < RWY_B.x1 + 600);
+      for (let c = Math.floor((-zMax - off) / FW); c * FW + off < zMax; c++) {
+        const za = c * FW + off, zb = za + FW;
+        const base = airport && Math.abs(za + FW / 2) < 600 ? '#6aae55' : pal[Math.floor(rand(row * 7.3 + c * 1.7) * pal.length)];
+        poly([P(d0, za, 0), P(d1, za, 0), P(d1, zb, 0), P(d0, zb, 0)], rgb(lerpRGB(hex2rgb(base), lowA, haze)));
+      }
+    }
+    // Landstraßen
+    for (const z of [-900, 1400]) {
+      for (let x = Math.floor((eyeX + dBot) / FW) * FW; x < eyeX + fieldMax; x += FW) {
+        if (landFactor(x) < 1 || landFactor(x + FW) < 1) continue;
+        if (x > RWY_B.x0 - 1500 && x < RWY_B.x1 + 800 && z > 0) continue;
+        const d0 = Math.max(dBot, x - eyeX), d1 = x + FW - eyeX;
+        poly([P(d0, z - 4, 0), P(d1, z - 4, 0), P(d1, z + 4, 0), P(d0, z + 4, 0)], rgb(lerpRGB([140, 140, 135], lowA, Math.pow(clamp(d0 / 18000, 0, 1), 0.6))));
+      }
+    }
+    // Glitzern der Sonne auf dem Meer, unter der Sonne
+    for (let i = 0; i < 90; i++) {
+      const yy = hy + 2 + Math.pow(rand(i * 1.3), 2) * (h - hy);
+      const dd = f * eye / Math.max(1, yy - hy);
+      if (!(eyeX + dd > SEA_FROM && eyeX + dd < SEA_TO)) continue;
+      if (rand(i * 2.1 + Math.floor(time * 7) * 0.13) < 0.45) continue;
+      const spread = 20 + (yy - hy) * 0.5;
+      const xx = sxp + (rand(i * 4.7 + Math.floor(time * 3)) - 0.5) * spread * 2;
+      ctx.fillStyle = 'rgba(255,255,235,0.9)';
+      ctx.fillRect(xx, yy, 2 + (yy - hy) * 0.02, 1 + (yy - hy) * 0.008);
+    }
+  }
+
   // Landebahnen
   for (const r of [RWY_A, RWY_B]) {
     const d1 = r.x1 - eyeX;
@@ -1246,6 +1355,18 @@ function drawCockpit() {
     box(DEST + 600, DEST + 980, -260, -180, 0, 18, '#e9dcc2', '#d9cbb0', '#f3eadb');
     tower(DEST + 1300, -130);
   }
+  // Dörfer mit roten Dächern
+  for (let k = Math.floor((eyeX + near) / 2500); k <= (eyeX + 5000) / 2500; k++) {
+    const vx = k * 2500 + 800;
+    if (rand(k + 0.33) > 0.65 || landFactor(vx - 200) < 1 || landFactor(vx + 600) < 1) continue;
+    if ((vx > -1500 && vx < RWY_A.x1 + 1500) || (vx > RWY_B.x0 - 2500 && vx < RWY_B.x1 + 1500)) continue;
+    const zc = (rand(k + 0.77) < 0.5 ? -1 : 1) * (400 + rand(k + 0.9) * 1200);
+    const isle = vx > SEA_TO;
+    for (let i = 0; i < 9; i++) {
+      const hx = vx + rand(k * 9 + i) * 320, hz = zc + rand(k * 9 + i + 0.5) * 260;
+      box(hx, hx + 12, hz, hz + 10, 0, 6 + rand(k + i) * 3, isle ? '#f4efe4' : '#eadfcb', isle ? '#e2dccf' : '#d8ccb6', i % 3 ? '#c0503a' : '#a8443a');
+    }
+  }
   // Bäume und Palmen
   for (let c = Math.floor((eyeX + near) / 50); c <= (eyeX + 4000) / 50; c++) {
     for (let k = 0; k < 2; k++) {
@@ -1291,6 +1412,15 @@ function drawCockpit() {
   things.sort((a, b) => b.d - a.d);
   for (const o of things) o.draw();
 
+  // Blendenflecken, wenn die Sonne zu sehen ist
+  if (syp > 0 && syp < h * 0.6) {
+    const vx = cx - sxp, vy = cy - syp;
+    for (const [k, r, a, c] of [[0.5, 18, 0.12, '255,220,150'], [0.9, 8, 0.18, '180,220,255'], [1.3, 26, 0.08, '255,180,120'], [1.7, 12, 0.12, '160,255,200']]) {
+      ctx.fillStyle = `rgba(${c},${a})`;
+      ctx.beginPath(); ctx.arc(sxp + vx * k, syp + vy * k, r, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
   drawCockpitFrame();
 }
 
@@ -1308,6 +1438,23 @@ function drawCockpitFrame() {
   ctx.fill('evenodd');
   ctx.strokeStyle = 'rgba(255,255,255,0.15)'; ctx.lineWidth = 2;
   ctx.stroke();
+  // Spiegelung in der Scheibe
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(w * 0.02, top + h * 0.1); ctx.lineTo(w * 0.1, top); ctx.lineTo(w * 0.9, top); ctx.lineTo(w * 0.98, top + h * 0.1);
+  ctx.lineTo(w * 0.95, bot); ctx.lineTo(w * 0.05, bot); ctx.closePath();
+  ctx.clip();
+  const rg = ctx.createLinearGradient(w * 0.15, top, w * 0.45, bot);
+  rg.addColorStop(0, 'rgba(255,255,255,0)'); rg.addColorStop(0.45, 'rgba(255,255,255,0.07)');
+  rg.addColorStop(0.55, 'rgba(255,255,255,0.07)'); rg.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = rg; ctx.fillRect(0, 0, w, h);
+  ctx.restore();
+  // Schrauben im Rahmen
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';
+  for (let i = 0; i <= 12; i++) {
+    const x = w * 0.1 + (w * 0.8) * i / 12;
+    ctx.beginPath(); ctx.arc(x, top - 5, 1.5, 0, Math.PI * 2); ctx.fill();
+  }
   // Blendschutz über dem Armaturenbrett
   ctx.fillStyle = '#1a1d23';
   ctx.beginPath();
@@ -1428,6 +1575,7 @@ function loop(ts) {
       worldClouds(false);
       drawGlidePath();
       drawContrails();
+      drawShadow();
       drawPlane();
       drawParticles();
       worldClouds(true);
