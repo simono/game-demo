@@ -2099,7 +2099,7 @@ function stopRain() {
 
 // Zeitlupe: die letzten Sekunden werden mitgeschnitten und nach dem Tor langsam abgespielt
 const REPLAY_KEEP_MS = 2600, REPLAY_SPEED = 0.35, REPLAY_HOLD_MS = 400;
-const REPLAY_AUTO_MS = 2500;   // so lange jubelt der Tor-Bildschirm, dann kommt die Zeitlupe
+const REPLAY_AUTO_MS = 4500;   // so lange dauert der Torjubel, dann kommt die Zeitlupe
 let replayBuf = [], replay = null, goalShownAt = 0;
 const snapshot = () => ({ ps: allPlayers.map(p => [p.x, p.y, p.diveAngle || 0]), b: [ball.x, ball.y, ballLift] });
 function applySnapshot(s) {
@@ -2122,6 +2122,8 @@ function recordReplay() {
 }
 
 function startReplay() {
+  clearCelebration();
+  resetPositions();
   const fr = replayBuf;
   replayBuf = [];
   if (fr.length < 10) { gameState = 'playing'; lastFrameMs = 0; return; }
@@ -3134,8 +3136,7 @@ function updatePenalty() {
         goalTeam = pn.taker.team; halfTimeLeft += 10;
         k.diveAngle = 0;
         penalty = null; setPiece = null;
-        gameState = 'goal';
-        resetPositions();
+        startCelebration();
         return;
       }
       pn.phase = 'result'; pn.t0 = now;
@@ -3227,9 +3228,74 @@ function getActionBtns() {
 function hitDpad(tx,ty,b) { return Math.abs(tx-b.x)<b.s*0.6 && Math.abs(ty-b.y)<b.s*0.6; }
 function hitBtn(tx,ty,b)  { const dx=tx-b.x,dy=ty-b.y; return dx*dx+dy*dy<b.r*b.r*1.8; }
 
+// ── Torjubel: der Schütze läuft zur Eckfahne und jubelt, die Mitspieler kommen dazu ──
+const CELEBRATIONS = [
+  { type:'knee',     label:'Knierutscher!',   say:'Was für ein Knierutscher!' },
+  { type:'salto',    label:'Salto!',          say:'Ein Salto! Unglaublich!' },
+  { type:'airplane', label:'Flieger!',        say:'Er fliegt wie ein Flugzeug über den Rasen!' },
+  { type:'jump',     label:'Freudensprünge!', say:'Er springt vor Freude in die Luft!' },
+];
+const SIU = { type:'siu', label:'SIUUU!', say:'Siuuuu!' };
+const CEL_RUN = 1.1;      // Sekunden bis zur Eckfahne
+let celebration = null;   // { scorer, type, label, say, t0, fromX, fromY, toX, toY, mates, said }
+
+function startCelebration() {
+  gameState = 'goal'; goalShownAt = 0;
+  ball.vx = 0; ball.vy = 0; ballOwner = null;
+  const team = goalTeam === 'red' ? redTeam : blueTeam, side = goalTeam === 'red' ? 1 : -1;
+  const scorer = goalScorer && goalScorer.team === goalTeam && !goalScorer.isKeeper && !goalScorer.sentOff ? goalScorer : activeOf(team)[0];
+  const club = goalTeam === playerTeam ? playerClub : opponentClub;
+  const kind = club.names && club.names[team.indexOf(scorer)] === 'Ronaldo' ? SIU : pick(CELEBRATIONS);
+  const toX = side > 0 ? FR : FL, toY = scorer.y < 0.5 ? FT + 0.04 : FB - 0.04, inward = toY < 0.5 ? 1 : -1;
+  const mates = activeOf(team).filter(p => p !== scorer).map((p, i) => ({ p, fromX: p.x, fromY: p.y,
+    toX: toX - side * (0.06 + 0.04 * i), toY: toY + inward * (0.05 + 0.05 * i) }));
+  celebration = { scorer, ...kind, t0: Date.now(), fromX: scorer.x, fromY: scorer.y, toX, toY, inward, side, mates, said: false };
+}
+
+function clearCelebration() {
+  for (const p of allPlayers) { p.celRot = 0; p.celLift = 0; }
+  celebration = null;
+}
+
+function updateCelebration() {
+  const c = celebration;
+  if (!c) return;
+  const el = (Date.now() - c.t0) / 1000, s = c.scorer, side = c.side;
+  const run = easeOut(Math.min(1, el / CEL_RUN));
+  s.x = c.fromX + (c.toX - c.fromX) * run; s.y = c.fromY + (c.toY - c.fromY) * run;
+  s.celRot = 0; s.celLift = 0;
+  c.mates.forEach((m, i) => {
+    const k = easeOut(Math.max(0, Math.min(1, (el - 0.4) / 1.6)));
+    m.p.x = m.fromX + (m.toX - m.fromX) * k; m.p.y = m.fromY + (m.toY - m.fromY) * k;
+    m.p.celLift = k >= 1 ? Math.abs(Math.sin(el * 6 + i)) * 0.3 : 0;
+  });
+  const t = el - CEL_RUN;   // Zeit seit der Ankunft an der Eckfahne
+  if (c.type === 'knee') {
+    // Auf den Knien zur Fahne rutschen, Oberkörper nach hinten
+    if (el > CEL_RUN * 0.5) { s.celRot = -side * 0.55; s.celLift = -0.25; }
+  } else if (t > 0 && c.type === 'salto') {
+    const tt = t % 1.1;
+    if (tt < 0.7) { s.celLift = Math.sin(Math.PI * tt / 0.7) * 1.3; s.celRot = side * Math.PI * 2 * tt / 0.7; }
+  } else if (t > 0 && c.type === 'siu') {
+    // Hochspringen, in der Luft umdrehen, breitbeinig landen
+    const tt = t % 1.6;
+    if (tt < 0.6) s.celLift = Math.sin(Math.PI * tt / 0.6) * 1.1;
+    s._face = tt < 0.3 ? side : -side;
+  } else if (t > 0 && c.type === 'airplane') {
+    const a = t * 2.2;
+    s.x = c.toX - side * 0.05 + side * 0.05 * Math.cos(a);
+    s.y = c.toY + c.inward * 0.07 * Math.sin(a);
+    s.celRot = Math.sin(a) * 0.35;
+  } else if (t > 0 && c.type === 'jump') {
+    s.celLift = Math.abs(Math.sin(t * 7)) * 0.6;
+  }
+  if (!c.said && t > 0) { c.said = true; say(c.say, 4); }
+}
+
 function startMatch() {
   for (const p of allPlayers) { p.sentOff = false; p.yellow = 0; }
   setPiece = null; penalty = null; protectUntil = 0; stamina = 1; tired = false;
+  clearCelebration();
   rollWeather();
   controlledIdx=0; ballOwner=playerTeam==='red'?redP:blueP;
   currentHalf=1; halfTimeLeft=halfSecs; breakTimeLeft=BREAK_SECS; lastFrameMs=0;
@@ -4038,6 +4104,7 @@ function update() {
   }
   if (gameState === 'penalty') { updatePenalty(); return; }
   if (gameState === 'shootout') { updateShootout(); return; }
+  if (gameState === 'goal') { updateCelebration(); return; }
 
   if (gameState !== 'playing') return;
 
@@ -4097,11 +4164,11 @@ function update() {
     if (ball.y > 1-FPADY-bRy) { ball.y=1-FPADY-bRy; ball.vy*=-0.7; }
     // Links/Rechts: Tor oder Abprall
     if (ball.x < FPADX+bRx) {
-      if (ball.y>GOAL_T && ball.y<GOAL_B) { score.blue++; goalTeam='blue'; halfTimeLeft+=10; gameState='goal'; resetPositions(); return; }
+      if (ball.y>GOAL_T && ball.y<GOAL_B) { score.blue++; goalTeam='blue'; halfTimeLeft+=10; startCelebration(); return; }
       ball.x=FPADX+bRx; ball.vx*=-0.7;
     }
     if (ball.x > 1-FPADX-bRx) {
-      if (ball.y>GOAL_T && ball.y<GOAL_B) { score.red++; goalTeam='red'; halfTimeLeft+=10; gameState='goal'; resetPositions(); return; }
+      if (ball.y>GOAL_T && ball.y<GOAL_B) { score.red++; goalTeam='red'; halfTimeLeft+=10; startCelebration(); return; }
       ball.x=1-FPADX-bRx; ball.vx*=-0.7;
     }
     for (const p of allPlayers) {
@@ -4718,16 +4785,18 @@ function drawUI() {
   if (gameState === 'goal') {
     const team = goalTeam===playerTeam ? playerClub : opponentClub;
     ctx.save();
-    ctx.fillStyle='rgba(0,0,0,0.55)'; ctx.fillRect(0,0,w,h);
+    const fade=ctx.createLinearGradient(0, 0, 0, h*0.42);
+    fade.addColorStop(0, 'rgba(0,0,0,0.7)'); fade.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle=fade; ctx.fillRect(0, 0, w, h*0.42);
     ctx.fillStyle=team.light;
-    ctx.font=`bold ${Math.min(w*0.18,90)}px system-ui`;
+    ctx.font=`bold ${Math.min(w*0.13,64)}px system-ui`;
     ctx.textAlign='center'; ctx.textBaseline='middle';
     ctx.shadowColor=team.light; ctx.shadowBlur=40;
-    ctx.fillText('TOR! ⚽', w/2, h*0.38);
+    ctx.fillText('TOR! ⚽', w/2, h*0.13);
     ctx.shadowBlur=0;
     ctx.fillStyle='#fff';
     ctx.font=`bold ${Math.min(w*0.06,26)}px system-ui`;
-    ctx.fillText(`Tor für ${team.name}!`, w/2, h*0.5);
+    ctx.fillText(`Tor für ${team.name}!`, w/2, h*0.24);
     if (goalScorer) {
       const sTeam = goalScorer.team==='red' ? redTeam : blueTeam;
       const sClub = goalScorer.team===playerTeam ? playerClub : opponentClub;
@@ -4735,13 +4804,20 @@ function drawUI() {
       const sName = sClub.names ? ' ' + sClub.names[sTeam.indexOf(goalScorer)] : '';
       ctx.font=`${Math.min(w*0.048,20)}px system-ui`;
       ctx.fillStyle='rgba(255,255,255,0.85)';
-      ctx.fillText(`Torschütze: Nr. ${sNum}${sName}`, w/2, h*0.59);
+      ctx.fillText(`Torschütze: Nr. ${sNum}${sName}`, w/2, h*0.31);
+    }
+    if (celebration && (Date.now() - celebration.t0) / 1000 > CEL_RUN) {
+      ctx.fillStyle='#feca57';
+      ctx.font=`900 ${Math.min(w*0.07,34)}px system-ui`;
+      ctx.shadowColor='rgba(0,0,0,0.8)'; ctx.shadowBlur=10;
+      ctx.fillText(`🎉 ${celebration.label}`, w/2, h*0.42);
+      ctx.shadowBlur=0;
     }
     const blink = Math.sin(Date.now()*0.004) > 0;
     if (blink) {
       ctx.fillStyle='#feca57';
       ctx.font=`bold ${Math.min(w*0.05,22)}px system-ui`;
-      ctx.fillText('Gleich kommt die Zeitlupe … 🎬', w/2, h*0.63);
+      ctx.fillText('Gleich kommt die Zeitlupe … 🎬', w/2, h*0.5);
     }
     ctx.restore();
   }
@@ -4762,6 +4838,7 @@ let camZoom = 1, camFocusX = 0;
 // Liegender Gefoulter, hechtender Torwart
 function poseAngle(p) {
   if (p.diveAngle) return p.diveAngle;
+  if (p.celRot) return p.celRot;
   if (gameState === 'foul' && setPiece && p === setPiece.victim) {
     const el = (Date.now() - setPiece.t0) / 1000;
     const fall = Math.min(1, el / 0.25);
@@ -5041,7 +5118,7 @@ function loop() {
   for (const p of allPlayers) {
     if (p.sentOff) continue;
     const cel = gameState==='goal' && goalTeam===p.team;
-    const px=p.x*w, py=p.y*h-ps*1.5;
+    const px=p.x*w, py=p.y*h-ps*1.5-(p.celLift||0)*ps;
     const rot = poseAngle(p);
     if (rot) { ctx.save(); ctx.translate(px, py+ps*0.9); ctx.rotate(rot); ctx.translate(-px, -(py+ps*0.9)); }
     const mdx=p.x-(p._lx ?? p.x), mdy=p.y-(p._ly ?? p.y);
