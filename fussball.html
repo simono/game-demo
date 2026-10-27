@@ -3045,9 +3045,7 @@ function drawUI() {
     function drawClubCard(c, opts={}) {
       const { x, y, w:cw, h:ch, entry } = c;
       const club = entry.club;
-      const lift = opts.float ? Math.sin(t*2 + x*0.01)*3 : 0;
       ctx.save();
-      ctx.translate(0, lift);
       ctx.shadowColor = opts.glow ? club.light : 'rgba(0,0,0,0.6)';
       ctx.shadowBlur = opts.glow ? 30 : 16;
       ctx.shadowOffsetY = opts.glow ? 0 : 6;
@@ -3123,7 +3121,7 @@ function drawUI() {
     if (!teamChosen) {
       heading('Wähle deinen Verein');
       leagueTabs();
-      clubCardLayout(menuClubs()).forEach(c => drawClubCard(c, { float:true }));
+      clubCardLayout(menuClubs()).forEach(c => drawClubCard(c));
 
     } else if (!opponentChosen) {
       heading('Gegen wen spielst du?');
@@ -3137,7 +3135,7 @@ function drawUI() {
       ctx.fillStyle='#fff';
       ctx.font=`bold ${chipH*0.42}px system-ui`;
       ctx.fillText(`Du: ${me.label}`, 12+chipW/2+chipH*0.3, 12+chipH/2, chipW-chipH*1.4);
-      clubCardLayout(menuClubs()).forEach(c => drawClubCard(c, { float:true }));
+      clubCardLayout(menuClubs()).forEach(c => drawClubCard(c));
 
     } else {
       heading('Anpfiff!', `im ${playerClub.stadium} · Halbzeit ${halfSecs/60} Min · ${difficulty.name}`);
