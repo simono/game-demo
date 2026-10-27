@@ -1902,7 +1902,8 @@ function updateCommentary() {
 
 // Zeitlupe: die letzten Sekunden werden mitgeschnitten und nach dem Tor langsam abgespielt
 const REPLAY_KEEP_MS = 2600, REPLAY_SPEED = 0.35, REPLAY_HOLD_MS = 400;
-let replayBuf = [], replay = null;
+const REPLAY_AUTO_MS = 2500;   // so lange jubelt der Tor-Bildschirm, dann kommt die Zeitlupe
+let replayBuf = [], replay = null, goalShownAt = 0;
 const snapshot = () => ({ ps: allPlayers.map(p => [p.x, p.y, p.diveAngle || 0]), b: [ball.x, ball.y, ballLift] });
 function applySnapshot(s) {
   allPlayers.forEach((p, i) => { [p.x, p.y, p.diveAngle] = s.ps[i]; });
@@ -1910,7 +1911,13 @@ function applySnapshot(s) {
 }
 
 function recordReplay() {
-  if (gameState === 'goal') return;
+  if (gameState === 'goal') {
+    const now = Date.now();
+    if (!goalShownAt) goalShownAt = now;
+    else if (now - goalShownAt > REPLAY_AUTO_MS) startReplay();
+    return;
+  }
+  goalShownAt = 0;
   if (gameState !== 'playing' && gameState !== 'penalty') { replayBuf.length = 0; return; }
   const now = Date.now();
   replayBuf.push({ t: now, ...snapshot(), vx: ball.vx, vy: ball.vy });
@@ -3778,7 +3785,7 @@ function drawUI() {
     if (blink) {
       ctx.fillStyle='#feca57';
       ctx.font=`bold ${Math.min(w*0.05,22)}px system-ui`;
-      ctx.fillText('Drückt eine Taste zum Weiterspielen', w/2, h*0.63);
+      ctx.fillText('Gleich kommt die Zeitlupe … 🎬', w/2, h*0.63);
     }
     ctx.restore();
   }
