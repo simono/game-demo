@@ -3499,14 +3499,83 @@ function updatePenalty() {
 }
 
 // ── Aktionen ────────────────────────────────────────────────────────
+// ── Spezialschüsse: Feuerschuss (volle Sprint-Leiste), Kurvenschuss (↑/↓ halten),
+//    Fallrückzieher (vor dem Tor vom Tor weg laufen) ──
+const SPECIALS = { fire:'🔥 FEUERSCHUSS!', curve:'🌀 KURVENSCHUSS!', bicycle:'🤸 FALLRÜCKZIEHER!' };
+const SPECIAL_SAY = { fire:'Ein Feuerschuss! Den hält keiner!', curve:'Was für eine Kurve!', bicycle:'Fallrückzieher! Spektakulär!' };
+let specialBanner = { text:'', until:0 };
+const KICK_FLIP_MS = 500;
+
+// Den Feuerschuss kann kein Gegner annehmen, auch nicht der Torwart
+const canPickUp = p => !p.sentOff && !(ball.special === 'fire' && goalScorer && p.team !== goalScorer.team);
+
+// Kurve, mit der der Ball an der Torlinie genau bei targetY ankommt (Suche per Halbierung)
+function curveFor(lineX, targetY) {
+  const landY = c => {
+    let x = ball.x, y = ball.y, vx = ball.vx, vy = ball.vy;
+    const fr = ballFriction();
+    for (let i = 0; i < 200; i++) {
+      x += vx; y += vy; vx *= fr; vy *= fr; vy += c;
+      if ((lineX - x) * Math.sign(ball.vx) <= 0) return y;
+    }
+    return null;
+  };
+  let lo = -0.01, hi = 0.01;
+  for (let i = 0; i < 30; i++) {
+    const mid = (lo + hi) / 2, y = landY(mid);
+    if (y === null) return 0;
+    if (y < targetY) lo = mid; else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
 function doShoot() {
   if (gameState === 'penalty') { if (penalty.mine && penalty.phase === 'aim') startRunUp(); return; }
   const cp = getCP();
   if (ballOwner !== cp) return;
-  const goalX = playerTeam === 'red' ? FR : FL;
-  const dy=0.5-ball.y, dx=goalX-ball.x, len=Math.sqrt(dx*dx+dy*dy)||1;
-  ball.vx=(dx/len)*KICK_SPD; ball.vy=(dy/len)*KICK_SPD+(Math.random()-0.5)*0.006;
-  goalScorer=cp; ballOwner=null;
+  const side = playerTeam === 'red' ? 1 : -1, goalX = side > 0 ? FR : FL, lineX = side > 0 ? 1 - FPADX - 0.01 : FPADX + 0.01;
+  const held = penaltyInput();   // -1 oben, 1 unten
+  let speed = KICK_SPD, aimY = 0.5, special = null;
+  if (stamina >= 0.99) { special = 'fire'; speed = KICK_SPD * 1.6; stamina = 0; tired = true; }
+  else if (Math.abs(goalX - ball.x) < 0.3 && cp.vx * side < -0.001) {
+    special = 'bicycle'; speed = KICK_SPD * 1.25; aimY = 0.5 + (Math.random() < 0.5 ? -1 : 1) * 0.05; cp.kickFlip = Date.now();
+  } else if (held) { special = 'curve'; aimY = 0.5 + held * 0.06; }
+  const dy = aimY - ball.y, dx = goalX - ball.x, len = Math.hypot(dx, dy) || 1;
+  ball.vx = dx / len * speed; ball.vy = dy / len * speed + (special ? 0 : (Math.random() - 0.5) * 0.006);
+  ball.curve = 0;
+  if (special === 'curve') {
+    // Erst nach außen, dann dreht der Ball zurück ins Eck
+    ball.vy += held * speed * 0.4;
+    ball.curve = curveFor(lineX, aimY);
+  }
+  ball.special = special;
+  if (special) {
+    specialBanner = { text: SPECIALS[special], until: Date.now() + 1300 };
+    say(SPECIAL_SAY[special], 3);
+  }
+  goalScorer = cp; ballOwner = null;
+}
+
+function updateKickFlips() {
+  const now = Date.now();
+  for (const p of allPlayers) {
+    if (!p.kickFlip) continue;
+    const prog = (now - p.kickFlip) / KICK_FLIP_MS, side = p.team === 'red' ? 1 : -1;
+    if (prog >= 1) { p.kickFlip = 0; p.celRot = 0; p.celLift = 0; continue; }
+    p.celRot = -side * Math.PI * 2 * prog;
+    p.celLift = Math.sin(Math.PI * prog) * 0.9;
+  }
+}
+
+function drawFireTrail(w, h, r) {
+  ctx.save();
+  for (let i = 8; i >= 1; i--) {
+    const k = i * 0.9;
+    ctx.globalAlpha = 0.95 * (1 - i / 10);
+    ctx.fillStyle = i < 3 ? '#ffd000' : i < 6 ? '#ff7a00' : '#ff2a00';
+    ctx.beginPath(); ctx.arc((ball.x - ball.vx * k) * w, (ball.y - ball.vy * k) * h, r * (1.4 - i * 0.1), 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
 }
 
 function doPass() {
@@ -3599,7 +3668,7 @@ function startCelebration() {
 }
 
 function clearCelebration() {
-  for (const p of allPlayers) { p.celRot = 0; p.celLift = 0; }
+  for (const p of allPlayers) { p.celRot = 0; p.celLift = 0; p.kickFlip = 0; }
   celebration = null;
 }
 
@@ -4479,6 +4548,7 @@ function update() {
   if (gameState === 'goal') { updateCelebration(); return; }
 
   if (gameState !== 'playing') return;
+  updateKickFlips();
 
   // Timer zählt runter
   halfTimeLeft = Math.max(0, halfTimeLeft - delta);
@@ -4528,6 +4598,8 @@ function update() {
   } else {
     ball.x+=ball.vx; ball.y+=ball.vy;
     const fr=ballFriction(); ball.vx*=fr; ball.vy*=fr;
+    if (ball.curve) ball.vy += ball.curve;
+    if (ball.special && Math.hypot(ball.vx, ball.vy) < KICK_SPD * 0.35) { ball.special = null; ball.curve = 0; }
     // Ball-Radius in normierte Koordinaten
     const bRy = Math.min(W(),H())*0.022 / H();
     const bRx = Math.min(W(),H())*0.022 / W();
@@ -4544,8 +4616,8 @@ function update() {
       ball.x=1-FPADX-bRx; ball.vx*=-0.7;
     }
     for (const p of allPlayers) {
-      if (p.sentOff) continue;
-      if (Math.hypot(p.x-ball.x, p.y-ball.y)<PICKUP_DIST) { ballOwner=p; break; }
+      if (!canPickUp(p)) continue;
+      if (Math.hypot(p.x-ball.x, p.y-ball.y)<PICKUP_DIST) { ballOwner=p; ball.special=null; ball.curve=0; break; }
     }
   }
 }
@@ -4806,8 +4878,9 @@ function drawTitle() {
       ['Zweikampf',        'T oder G',                 'Knopf „Zweikampf“'],
       ['Spieler wechseln', 'X oder Tab',               'Knopf „Wechsel“'],
       ['Sprinten',         'Shift gedrückt halten',    'Knopf „Sprint“ halten'],
+      ['Spezialschüsse',   '🔥 volle Sprint-Leiste',   '🌀 ↑↓ halten · 🤸 rückwärts'],
     ];
-    const fs=Math.min(w*0.032,18), rowH=Math.min(h*0.1,52), top=h*0.27;
+    const fs=Math.min(w*0.032,18), rowH=Math.min(h*0.085,52), top=h*0.27;
     ctx.font=`bold ${fs}px system-ui`;
     ctx.fillStyle='#feca57';
     ctx.fillText('Tastatur', w*0.5, top-rowH*0.8);
@@ -4879,6 +4952,16 @@ function drawUI() {
   if (gameState === 'cup') { drawCupScreen(); return; }
   if (gameState === 'season') { drawSeasonScreen(); return; }
 
+  if ((gameState === 'playing' || gameState === 'goal') && Date.now() < specialBanner.until) {
+    const left = specialBanner.until - Date.now();
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, left / 400);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = `900 ${Math.min(w * 0.08, 44)}px system-ui`;
+    ctx.fillStyle = '#feca57'; ctx.shadowColor = '#ff6b00'; ctx.shadowBlur = 24;
+    ctx.fillText(specialBanner.text, w / 2, h * (gameState === 'goal' ? 0.6 : 0.3));
+    ctx.restore();
+  }
   if (gameState === 'playing' && Date.now() < stadiumBannerUntil) {
     const left=stadiumBannerUntil-Date.now();
     ctx.save();
@@ -5599,6 +5682,7 @@ function loop() {
   if (gameState === 'foul') drawReferee(w, h, ps);
 
   const ballR=Math.min(w,h)*0.022;
+  if (ball.special === 'fire' && !ballOwner) drawFireTrail(w, h, ballR);
   drawBall(ball.x*w, ball.y*h - ballLift*ballR*2.5, ballR*(1+ballLift*0.5));
   if (gameState === 'penalty' && penalty.mine && penalty.phase === 'aim') drawPenaltyAim(w, h);
   if (camOn) ctx.restore();
