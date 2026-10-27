@@ -300,6 +300,195 @@ function drawCityCrest(cx, cy, s) {
   ctx.restore();
 }
 
+function drawArsenalCrest(cx, cy, s) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  const sw=s*0.36, st=-s*0.46, sb=s*0.5;
+  function shield() {
+    ctx.beginPath();
+    ctx.moveTo(-sw, st); ctx.lineTo(sw, st); ctx.lineTo(sw, s*0.1);
+    ctx.quadraticCurveTo(sw, sb*0.85, 0, sb);
+    ctx.quadraticCurveTo(-sw, sb*0.85, -sw, s*0.1);
+    ctx.closePath();
+  }
+  shield();
+  ctx.shadowColor='rgba(0,0,0,0.45)'; ctx.shadowBlur=s*0.12;
+  ctx.fillStyle='#ef0107'; ctx.fill(); ctx.shadowBlur=0;
+  ctx.save(); shield(); ctx.clip();
+  // Oben: dunkelblaues Band mit ARSENAL
+  ctx.fillStyle='#063672';
+  ctx.fillRect(-sw, st, sw*2, s*0.26);
+  ctx.fillStyle='#fff';
+  ctx.font=`900 ${s*0.13}px system-ui`;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('ARSENAL', 0, st+s*0.135, sw*1.8);
+  ctx.restore();
+  // Goldene Kanone nach rechts
+  ctx.fillStyle='#d4a017';
+  ctx.save();
+  ctx.translate(0, s*0.08); ctx.rotate(-0.05);
+  ctx.beginPath();
+  ctx.moveTo(-s*0.24, -s*0.06); ctx.lineTo(s*0.26, -s*0.035);
+  ctx.lineTo(s*0.26, s*0.035); ctx.lineTo(-s*0.24, s*0.06);
+  ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.arc(-s*0.25, 0, s*0.065, 0, Math.PI*2); ctx.fill();
+  ctx.fillRect(s*0.24, -s*0.05, s*0.04, s*0.1);
+  // Rad und Lafette
+  ctx.beginPath(); ctx.arc(-s*0.08, s*0.12, s*0.08, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle='#ef0107';
+  ctx.beginPath(); ctx.arc(-s*0.08, s*0.12, s*0.035, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+  // Goldener Rand
+  shield(); ctx.strokeStyle='#d4a017'; ctx.lineWidth=s*0.035; ctx.stroke();
+  ctx.restore();
+}
+
+function drawLiverpoolCrest(cx, cy, s) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  const sw=s*0.34, st=-s*0.44, sb=s*0.5;
+  function shield() {
+    ctx.beginPath();
+    ctx.moveTo(-sw, st); ctx.quadraticCurveTo(0, st-s*0.08, sw, st);
+    ctx.lineTo(sw, s*0.12);
+    ctx.quadraticCurveTo(sw, sb*0.85, 0, sb);
+    ctx.quadraticCurveTo(-sw, sb*0.85, -sw, s*0.12);
+    ctx.closePath();
+  }
+  shield();
+  ctx.shadowColor='rgba(0,0,0,0.45)'; ctx.shadowBlur=s*0.12;
+  ctx.fillStyle='#c8102e'; ctx.fill(); ctx.shadowBlur=0;
+  // Liver Bird: Vogel mit erhobenen Flügeln und Seetang im Schnabel
+  ctx.fillStyle='#f6eb61';
+  ctx.beginPath(); ctx.ellipse(0, s*0.04, s*0.1, s*0.16, -0.15, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(-s*0.04, -s*0.15, s*0.06, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(-s*0.09, -s*0.16); ctx.lineTo(-s*0.17, -s*0.13); ctx.lineTo(-s*0.09, -s*0.12);
+  ctx.closePath(); ctx.fill();
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(side*s*0.05, -s*0.04);
+    ctx.quadraticCurveTo(side*s*0.24, -s*0.12, side*s*0.22, -s*0.3);
+    ctx.quadraticCurveTo(side*s*0.16, -s*0.12, side*s*0.06, s*0.06);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.strokeStyle='#f6eb61'; ctx.lineWidth=s*0.025;
+  ctx.beginPath(); ctx.moveTo(-s*0.03, s*0.18); ctx.lineTo(-s*0.05, s*0.27); ctx.moveTo(s*0.04, s*0.18); ctx.lineTo(s*0.05, s*0.27); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-s*0.17, -s*0.13); ctx.quadraticCurveTo(-s*0.24, -s*0.05, -s*0.2, s*0.02); ctx.stroke();
+  // L.F.C.
+  ctx.fillStyle='#fff';
+  ctx.font=`900 ${s*0.11}px system-ui`;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('L.F.C.', 0, s*0.37);
+  shield(); ctx.strokeStyle='#f6eb61'; ctx.lineWidth=s*0.03; ctx.stroke();
+  ctx.restore();
+}
+
+function drawChelseaCrest(cx, cy, s) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  const R=s*0.52, inner=s*0.36;
+  ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI*2);
+  ctx.shadowColor='rgba(0,0,0,0.45)'; ctx.shadowBlur=s*0.12;
+  ctx.fillStyle='#034694'; ctx.fill(); ctx.shadowBlur=0;
+  ctx.strokeStyle='#d4a017'; ctx.lineWidth=s*0.025;
+  ctx.beginPath(); ctx.arc(0, 0, R-s*0.02, 0, Math.PI*2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(0, 0, inner, 0, Math.PI*2); ctx.stroke();
+  // Schrift im Bogen
+  ctx.fillStyle='#fff';
+  ctx.font=`900 ${s*0.085}px system-ui`;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  const textR=(R+inner)/2;
+  function arcText(text, mid, spread, bottom) {
+    for (let i=0; i<text.length; i++) {
+      const f=(i+0.5)/text.length;
+      const ang=bottom ? mid+spread/2-spread*f : mid-spread/2+spread*f;
+      ctx.save();
+      ctx.translate(Math.cos(ang)*textR, Math.sin(ang)*textR);
+      ctx.rotate(bottom ? ang-Math.PI/2 : ang+Math.PI/2);
+      ctx.fillText(text[i], 0, 0);
+      ctx.restore();
+    }
+  }
+  arcText('CHELSEA', -Math.PI/2, Math.PI*0.55, false);
+  arcText('FOOTBALL CLUB', Math.PI/2, Math.PI*0.8, true);
+  // Aufrechter Löwe mit Stab, nach links schauend
+  ctx.fillStyle='#fff'; ctx.strokeStyle='#fff';
+  ctx.beginPath(); ctx.ellipse(s*0.02, s*0.04, s*0.08, s*0.15, 0.35, 0, Math.PI*2); ctx.fill();
+  for (let i=0; i<7; i++) {
+    const a=i*Math.PI*2/7;
+    ctx.beginPath(); ctx.arc(-s*0.04+Math.cos(a)*s*0.06, -s*0.13+Math.sin(a)*s*0.06, s*0.045, 0, Math.PI*2); ctx.fill();
+  }
+  ctx.fillStyle='#034694';
+  ctx.beginPath(); ctx.arc(-s*0.07, -s*0.14, s*0.012, 0, Math.PI*2); ctx.fill();
+  ctx.lineCap='round'; ctx.lineWidth=s*0.04;
+  ctx.beginPath();
+  ctx.moveTo(s*0.0, s*0.14); ctx.lineTo(-s*0.06, s*0.27);
+  ctx.moveTo(s*0.07, s*0.12); ctx.lineTo(s*0.1, s*0.27);
+  ctx.moveTo(-s*0.03, -s*0.04); ctx.lineTo(-s*0.14, -s*0.04);
+  ctx.stroke();
+  ctx.lineWidth=s*0.02;
+  ctx.beginPath(); ctx.moveTo(s*0.08, s*0.1); ctx.quadraticCurveTo(s*0.24, s*0.12, s*0.18, -s*0.04); ctx.stroke();
+  // Stab
+  ctx.strokeStyle='#d4a017'; ctx.lineWidth=s*0.025;
+  ctx.beginPath(); ctx.moveTo(-s*0.16, s*0.24); ctx.lineTo(-s*0.16, -s*0.22); ctx.stroke();
+  ctx.fillStyle='#d4a017';
+  ctx.beginPath(); ctx.arc(-s*0.16, -s*0.23, s*0.03, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+}
+
+function drawNewcastleCrest(cx, cy, s) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  const R=s*0.52;
+  ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI*2);
+  ctx.shadowColor='rgba(0,0,0,0.45)'; ctx.shadowBlur=s*0.12;
+  ctx.fillStyle='#111'; ctx.fill(); ctx.shadowBlur=0;
+  ctx.strokeStyle='#fff'; ctx.lineWidth=s*0.02;
+  ctx.beginPath(); ctx.arc(0, 0, R-s*0.03, 0, Math.PI*2); ctx.stroke();
+  // Schild: oben Burg auf Himmelblau, unten Wellen des Tyne
+  const sw=s*0.24, st=-s*0.3, sb=s*0.3;
+  function shield() {
+    ctx.beginPath();
+    ctx.moveTo(-sw, st); ctx.lineTo(sw, st); ctx.lineTo(sw, s*0.05);
+    ctx.quadraticCurveTo(sw, sb*0.8, 0, sb);
+    ctx.quadraticCurveTo(-sw, sb*0.8, -sw, s*0.05);
+    ctx.closePath();
+  }
+  shield(); ctx.fillStyle='#41b6e6'; ctx.fill();
+  ctx.save(); shield(); ctx.clip();
+  ctx.fillStyle='#fff';
+  ctx.fillRect(-sw, s*0.04, sw*2, sb);
+  ctx.strokeStyle='#1d5fa8'; ctx.lineWidth=s*0.035;
+  for (let r=0; r<3; r++) {
+    const y=s*0.1+r*s*0.07;
+    ctx.beginPath();
+    for (let x=-sw; x<=sw; x+=s*0.02) {
+      const yy=y+Math.sin(x/s*30)*s*0.015;
+      if (x===-sw) ctx.moveTo(x, yy); else ctx.lineTo(x, yy);
+    }
+    ctx.stroke();
+  }
+  // Burg mit drei Türmen
+  ctx.fillStyle='#8a8a8a';
+  ctx.fillRect(-s*0.16, -s*0.12, s*0.32, s*0.16);
+  for (const tx of [-s*0.13, 0, s*0.13]) {
+    const th = tx===0 ? s*0.16 : s*0.1;
+    ctx.fillRect(tx-s*0.04, -s*0.12-th, s*0.08, th);
+    for (let k=-1; k<=1; k+=2) ctx.fillRect(tx+k*s*0.025-s*0.012, -s*0.12-th-s*0.03, s*0.024, s*0.03);
+  }
+  ctx.fillStyle='#333';
+  ctx.beginPath(); ctx.arc(0, s*0.01, s*0.035, Math.PI, 0); ctx.lineTo(s*0.035, s*0.04); ctx.lineTo(-s*0.035, s*0.04); ctx.closePath(); ctx.fill();
+  ctx.restore();
+  shield(); ctx.strokeStyle='#fff'; ctx.lineWidth=s*0.025; ctx.stroke();
+  // Schriftband
+  ctx.fillStyle='#fff';
+  ctx.font=`900 ${s*0.075}px system-ui`;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('NEWCASTLE', 0, s*0.38);
+  ctx.restore();
+}
+
 function drawSchalkeCrest(cx, cy, s) {
   ctx.save();
   ctx.translate(cx, cy);
@@ -905,7 +1094,7 @@ function drawPlayer(x, y, size, color, label, celebrate=false, numColor='rgba(25
       hdX = shX + side * s * 0.4;  hdY = y - s * 0.4 + wave;
     }
     ctx.lineWidth = s * 0.15;
-    ctx.strokeStyle = color;
+    ctx.strokeStyle = style.sleeveColor || color;
     ctx.beginPath(); ctx.moveTo(shX, shY); ctx.lineTo(elX, elY);
     if (longSleeves) ctx.lineTo(hdX, hdY);
     ctx.stroke();
@@ -943,6 +1132,9 @@ function drawPlayer(x, y, size, color, label, celebrate=false, numColor='rgba(25
     if (style.pattern === 'pinstripes') {
       ctx.fillStyle = style.patternColor;
       for (let px = -0.3; px <= 0.3; px += 0.1) ctx.fillRect(x + px * s - s * 0.008, y, s * 0.016, s);
+    } else if (style.pattern === 'stripes') {
+      ctx.fillStyle = style.patternColor;
+      for (let px = -0.33; px <= 0.3; px += 0.18) ctx.fillRect(x + px * s, y, s * 0.09, s);
     } else if (style.pattern === 'hoops') {
       ctx.fillStyle = style.patternColor;
       for (let py = 0.3; py < 0.85; py += 0.14) ctx.fillRect(x - s * 0.4, y + py * s, s * 0.8, s * 0.06);
@@ -1212,6 +1404,26 @@ const CHANTS = {
       ['City! City!', 'en-GB', 'i1:4 i2:0 -1 i1:4 i2:0'],
       ['Come on, City!', 'en-GB', 'o1:0 o1:2 i1:4 i2:0 -1 o1:0 o1:2 i1:4 i2:0']],
     goal:['Goal! Man City!', 'en-GB', 'o4:7 -1 a1:4 i1:2 i2:0'] },
+  'ARS': { songs:[
+      ['Arsenal! Arsenal!', 'en-GB', 'a1:4 e1:2 a2:0 -1 a1:4 e1:2 a2:0'],
+      ['Come on you Gunners!', 'en-GB', 'o1:0 o1:2 u1:2 u1:4 e2:0 -1 o1:0 o1:2 u1:2 u1:4 e2:0'],
+      ['We love you Arsenal!', 'en-GB', 'i1:0 o1:2 u1:4 a1:4 e1:2 a2:0']],
+    goal:['Goal! Arsenal!', 'en-GB', 'o4:7 -1 a1:4 e1:2 a2:0'] },
+  'LIV': { songs:[
+      ["You'll never walk alone!", 'en-GB', 'u2:0 e1:2 a1:4 o1:5 o2:4 -1 u2:0 e1:2 a1:4 o1:5 o2:4'],
+      ['Allez, allez, allez!', 'en-GB', 'a1:0 e1:4 a1:0 e1:4 a1:0 e2:7'],
+      ['Liverpool! Liverpool!', 'en-GB', 'i1:4 e1:2 u2:0 -1 i1:4 e1:2 u2:0']],
+    goal:['Goal! Liverpool!', 'en-GB', 'o4:7 -1 i1:4 e1:2 u2:0'] },
+  'CHE': { songs:[
+      ['Chelsea! Chelsea!', 'en-GB', 'e1:4 i2:0 -1 e1:4 i2:0'],
+      ['Blue is the colour!', 'en-GB', 'u1:0 i1:2 e1:4 o1:4 a2:2 -1 u1:0 i1:2 e1:4 o1:4 a2:2'],
+      ['Carefree!', 'en-GB', 'e1:4 i2:0 -1 e1:4 i2:0']],
+    goal:['Goal! Chelsea!', 'en-GB', 'o4:7 -1 e1:4 i2:0'] },
+  'NEW': { songs:[
+      ['Howay the lads!', 'en-GB', 'a1:0 e1:4 e1:2 a2:0 -1 a1:0 e1:4 e1:2 a2:0'],
+      ['Toon Army!', 'en-GB', 'u1:4 a1:2 i2:0 -1 u1:4 a1:2 i2:0'],
+      ['Newcastle! Newcastle!', 'en-GB', 'u1:4 a1:2 e2:0 -1 u1:4 a1:2 e2:0']],
+    goal:['Goal! Newcastle!', 'en-GB', 'o4:7 -1 u1:4 a1:2 e2:0'] },
 };
 let nextChantAt = 0;
 
@@ -1605,7 +1817,7 @@ const BAYERN  = { name: 'FC Bayern München',      short: 'FCB', color: '#dc052d
   keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#c8a060', hairStyle:'short', beard:'stubble' }
 };
 
-const CITY    = { name: 'Manchester City',        short: 'MCI', color: '#6cabdd', light: '#9fd0f5', numColor:'#fff', nums:['9','8','10'], names:['Haaland','Anderson','Cherki'], keeperName:'Donnarumma',
+const CITY    = { name: 'Manchester City',        short: 'MCI', color: '#6cabdd', light: '#9fd0f5', numColor:'#fff', nums:['9','5','10'], names:['Haaland','Anderson','Cherki'], keeperName:'Donnarumma',
   style:{shortsColor:'#ffffff', shortSleeves:true, socksColor:'#6cabdd', socksStripe:'#1c2c5b', trim:'#1c2c5b', shortsStripe:'#6cabdd'},
   appearances:[
     { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#d8c070', hairStyle:'bun', beard:'stubble' },
@@ -1615,9 +1827,54 @@ const CITY    = { name: 'Manchester City',        short: 'MCI', color: '#6cabdd'
   keeperLook:{ skin:'#e8b58e', skinDark:'#c98f68', hair:'#151515', hairStyle:'short', beard:'stubble' }
 };
 
+const ARSENAL = { name: 'Arsenal',                short: 'ARS', color: '#ef0107', light: '#ff4d4d', numColor:'#fff', nums:['14','29','5'], names:['Gyökeres','Havertz','Hincapié'], keeperName:'Raya',
+  style:{shortsColor:'#ffffff', shortSleeves:true, sleeveColor:'#ffffff', socksColor:'#ffffff', socksStripe:'#ef0107', trim:'#ef0107', shortsStripe:'#ef0107'},
+  appearances:[
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#2a1a10', hairStyle:'top', beard:'full' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#6b4a2b', hairStyle:'short', beard:'stubble' },
+    { skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'buzz' },
+  ],
+  keeperLook:{ skin:'#e8b58e', skinDark:'#c98f68', hair:'#151515', hairStyle:'short', beard:'full' }
+};
+
+const LIVERPOOL = { name: 'Liverpool FC',         short: 'LIV', color: '#c8102e', light: '#ff4455', numColor:'#fff', nums:['9','7','33'], names:['Isak','Wirtz','Araujo'], keeperName:'Alisson',
+  style:{shortsColor:'#c8102e', shortSleeves:true, socksColor:'#c8102e', socksStripe:'#ffffff', trim:'#ffffff', shortsStripe:'#ffffff'},
+  appearances:[
+    { skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'top' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#6b4a2b', hairStyle:'top' },
+    { skin:'#c99470', skinDark:'#a06e4c', hair:'#141414', hairStyle:'short', beard:'stubble' },
+  ],
+  keeperLook:{ skin:'#e8b58e', skinDark:'#c98f68', hair:'#2a1a10', hairStyle:'short', beard:'full' }
+};
+
+const CHELSEA = { name: 'Chelsea FC',             short: 'CHE', color: '#034694', light: '#3d7fd9', numColor:'#fff', nums:['9','17','14'], names:['Pedro','Rogers','Henderson'], keeperName:'Martinez',
+  style:{shortsColor:'#034694', shortSleeves:true, socksColor:'#ffffff', socksStripe:'#034694', trim:'#ffffff', shortsStripe:'#ffffff'},
+  appearances:[
+    { skin:'#9a6440', skinDark:'#744627', hair:'#141414', hairStyle:'curly' },
+    { skin:'#9a6440', skinDark:'#744627', hair:'#111111', hairStyle:'top' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#8a6a45', hairStyle:'short', beard:'stubble' },
+  ],
+  keeperLook:{ skin:'#e8b58e', skinDark:'#c98f68', hair:'#2a1a10', hairStyle:'short', beard:'full' }
+};
+
+const NEWCASTLE = { name: 'Newcastle United',     short: 'NEW', color: '#f2f2f2', light: '#ffffff', numColor:'#111', nums:['7','19','11'], names:['Joelinton','Elanga','Barnes'], keeperName:'Pope',
+  style:{shortsColor:'#111111', shortSleeves:true, socksColor:'#111111', socksStripe:'#ffffff', trim:'#111111', pattern:'stripes', patternColor:'#111111', shortsStripe:'#ffffff'},
+  appearances:[
+    { skin:'#9a6440', skinDark:'#744627', hair:'#111111', hairStyle:'top', beard:'full' },
+    { skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'buzz' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#6b4a2b', hairStyle:'short', beard:'stubble' },
+  ],
+  keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#8a6a45', hairStyle:'short' }
+};
+
 // Auswärtstrikots für Vereine mit ähnlicher Farbe (Köln und Bayern sind beide rot)
 KOELN.away  = { color:'#ffffff', numColor:'#e3000f', style:{shortsColor:'#ffffff', shortSleeves:true, socksColor:'#ffffff', socksStripe:'#e3000f', trim:'#e3000f', shortsStripe:'#e3000f'} };
 BAYERN.away = { color:'#f2f2f2', numColor:'#dc052d', style:{shortsColor:'#f2f2f2', shortSleeves:true, socksColor:'#f2f2f2', socksStripe:'#dc052d', trim:'#dc052d', sidePanel:'rgba(220,5,45,0.85)', shortsStripe:'#dc052d'} };
+
+SCHALKE.away   = { color:'#ffffff', numColor:'#004c9f', style:{shortsColor:'#004c9f', shortSleeves:true, socksColor:'#ffffff', socksStripe:'#004c9f', trim:'#004c9f', shortsStripe:'#ffffff'} };
+ARSENAL.away   = { color:'#1b2a4a', numColor:'#d4a017', style:{shortsColor:'#1b2a4a', shortSleeves:true, socksColor:'#1b2a4a', socksStripe:'#d4a017', trim:'#d4a017', shortsStripe:'#d4a017'} };
+LIVERPOOL.away = { color:'#f2f2f2', numColor:'#c8102e', style:{shortsColor:'#f2f2f2', shortSleeves:true, socksColor:'#f2f2f2', socksStripe:'#c8102e', trim:'#c8102e', shortsStripe:'#c8102e'} };
+CHELSEA.away   = { color:'#f2f2f2', numColor:'#034694', style:{shortsColor:'#f2f2f2', shortSleeves:true, socksColor:'#f2f2f2', socksStripe:'#034694', trim:'#034694', shortsStripe:'#034694'} };
 
 function colorDistance(a, b) {
   const x = parseInt(a.slice(1), 16), y = parseInt(b.slice(1), 16);
@@ -1638,6 +1895,10 @@ const CLUB_LIST = [
   { club:BMG,     team:'red',  crest:drawBMGCrest,     label:'M\'gladbach' },
   { club:BAYERN,  team:'red',  crest:drawBayernCrest,  label:'Bayern' },
   { club:CITY,    team:'blue', crest:drawCityCrest,    label:'Man City' },
+  { club:ARSENAL, team:'red',  crest:drawArsenalCrest, label:'Arsenal' },
+  { club:LIVERPOOL, team:'red', crest:drawLiverpoolCrest, label:'Liverpool' },
+  { club:CHELSEA, team:'blue', crest:drawChelseaCrest, label:'Chelsea' },
+  { club:NEWCASTLE, team:'red', crest:drawNewcastleCrest, label:'Newcastle' },
 ];
 const clubEntry = club => CLUB_LIST.find(e => e.club === club);
 
@@ -1664,6 +1925,10 @@ SCHALKE.stadium = 'Veltins-Arena';       SCHALKE.fans = ['#004c9f', '#ffffff'];
 BMG.stadium     = 'Borussia-Park';       BMG.fans     = ['#111111', '#ffffff', '#00a650'];
 BAYERN.stadium  = 'Allianz Arena';       BAYERN.fans  = ['#dc052d', '#ffffff'];
 CITY.stadium    = 'Etihad Stadium';      CITY.fans    = ['#6cabdd', '#6cabdd', '#ffffff', '#1c2c5b'];
+ARSENAL.stadium = 'Emirates Stadium';    ARSENAL.fans = ['#ef0107', '#ef0107', '#ffffff'];
+LIVERPOOL.stadium = 'Anfield';           LIVERPOOL.fans = ['#c8102e', '#c8102e', '#f6eb61'];
+CHELSEA.stadium = 'Stamford Bridge';     CHELSEA.fans = ['#034694', '#034694', '#ffffff'];
+NEWCASTLE.stadium = "St James' Park";    NEWCASTLE.fans = ['#111111', '#ffffff'];
 let stadiumBannerUntil = 0;
 
 let ball  = { x: 0.5, y: 0.5, vx: 0, vy: 0 };
