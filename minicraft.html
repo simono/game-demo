@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Mini-Craft</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0b1a2e; touch-action: none; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; position: fixed; inset: 0; }
+  #home {
+    position: fixed; top: calc(env(safe-area-inset-top) + 10px); left: calc(env(safe-area-inset-left) + 10px);
+    width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;
+    font-size: 24px; text-decoration: none; background: rgba(0, 0, 0, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 12px; z-index: 2;
+  }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<a id="home" href="index.html" aria-label="Zur Spielauswahl">🏠</a>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = innerWidth * dpr; canvas.height = innerHeight * dpr;
+  canvas.style.width = innerWidth + 'px'; canvas.style.height = innerHeight + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+}
+addEventListener('resize', resize); resize();
+const W = () => innerWidth, H = () => innerHeight;
+const touchUI = matchMedia('(pointer: coarse)').matches;
+
+// ── Blöcke ──────────────────────────────────────────────────────────
+// hard: Sekunden zum Abbauen (0 = unzerstörbar), drop: was man bekommt
+const AIR = 0;
+const BLOCKS = [
+  null,
+  { name:'Gras',     color:'#5aa832', top:'#7fd24a', hard:0.4, drop:2 },
+  { name:'Erde',     color:'#8b5a2b', hard:0.4 },
+  { name:'Stein',    color:'#8a8d91', hard:1.0 },
+  { name:'Holz',     color:'#8a5a2e', hard:0.7, grain:true },
+  { name:'Blätter',  color:'#3e8f2f', hard:0.2, leafy:true },
+  { name:'Kohle',    color:'#8a8d91', ore:'#222', hard:1.3 },
+  { name:'Eisen',    color:'#8a8d91', ore:'#d8a47f', hard:1.6 },
+  { name:'Gold',     color:'#8a8d91', ore:'#ffd23f', hard:1.9 },
+  { name:'Diamant',  color:'#8a8d91', ore:'#5ef2ff', hard:2.6 },
+  { name:'Grundgestein', color:'#2b2b30', hard:0 },
+  { name:'Bretter',  color:'#c08a4a', hard:0.6, planks:true },
+  { name:'Glas',     color:'rgba(200,235,255,0.35)', hard:0.3, glass:true },
+  { name:'Ziegel',   color:'#a84432', hard:1.2, bricks:true },
+  { name:'Sand',     color:'#e3d08a', hard:0.35 },
+];
+const RECIPES = [
+  { from:{ 4:1 },  to:11, n:4, label:'1 Holz → 4 Bretter' },
+  { from:{ 14:2 }, to:12, n:1, label:'2 Sand → 1 Glas' },
+  { from:{ 3:2 },  to:13, n:1, label:'2 Stein → 1 Ziegel' },
+];
+
+// Kleine Pixel-Textur je Block, einmal vorberechnet
+const TEX = 16, texCache = [];
+function rng(seed) { let s = seed >>> 0; return () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296; }
+function makeTexture(id) {
+  const b = BLOCKS[id], c = document.createElement('canvas');
+  c.width = c.height = TEX;
+  const g = c.getContext('2d'), r = rng(id * 7919);
+  g.fillStyle = b.color; g.fillRect(0, 0, TEX, TEX);
+  if (b.glass) {
+    g.strokeStyle = 'rgba(255,255,255,0.8)'; g.strokeRect(0.5, 0.5, TEX - 1, TEX - 1);
+    g.beginPath(); g.moveTo(3, 11); g.lineTo(11, 3); g.stroke();
+    return c;
+  }
+  for (let i = 0; i < 26; i++) {
+    g.fillStyle = r() < 0.5 ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.08)';
+    g.fillRect(Math.floor(r() * TEX), Math.floor(r() * TEX), 2, 2);
+  }
+  if (b.top) { g.fillStyle = b.top; g.fillRect(0, 0, TEX, 4); for (let x = 0; x < TEX; x += 2) if (r() < 0.6) g.fillRect(x, 4, 2, 2); }
+  if (b.ore) for (let i = 0; i < 5; i++) { g.fillStyle = b.ore; g.fillRect(2 + Math.floor(r() * 11), 2 + Math.floor(r() * 11), 3, 3); }
+  if (b.grain) { g.fillStyle = 'rgba(0,0,0,0.25)'; for (let x = 3; x < TEX; x += 5) g.fillRect(x, 0, 1, TEX); }
+  if (b.leafy) for (let i = 0; i < 14; i++) { g.fillStyle = r() < 0.5 ? '#2d6e22' : '#58b043'; g.fillRect(Math.floor(r() * 14), Math.floor(r() * 14), 3, 3); }
+  if (b.planks) { g.fillStyle = 'rgba(0,0,0,0.3)'; for (let y = 3; y < TEX; y += 4) g.fillRect(0, y, TEX, 1); g.fillRect(7, 0, 1, 4); g.fillRect(3, 8, 1, 4); g.fillRect(11, 12, 1, 4); }
+  if (b.bricks) { g.fillStyle = '#d9cbb8'; for (let y = 3; y < TEX; y += 4) g.fillRect(0, y, TEX, 1); for (let y = 0; y < TEX; y += 4) g.fillRect((y % 8) ? 4 : 11, y, 1, 3); }
+  return c;
+}
+for (let i = 1; i < BLOCKS.length; i++) texCache[i] = makeTexture(i);
+
+// ── Welt ────────────────────────────────────────────────────────────
+const WW = 240, WH = 90;
+let seed = 1, tiles = new Uint8Array(WW * WH), surface = new Int16Array(WW);
+const at = (x, y) => (x < 0 || x >= WW || y < 0 || y >= WH) ? 10 : tiles[y * WW + x];
+const setAt = (x, y, id) => { if (x >= 0 && x < WW && y >= 0 && y < WH) tiles[y * WW + x] = id; };
+const solid = id => id !== AIR;
+
+// Weiches Rauschen für Hügel und Höhlen
+function valueNoise(r) {
+  const grid = Array.from({ length: 64 }, () => Array.from({ length: 64 }, r));
+  return (x, y) => {
+    const xi = Math.floor(x), yi = Math.floor(y), fx = x - xi, fy = y - yi;
+    const g = (a, b) => grid[((b % 64) + 64) % 64][((a % 64) + 64) % 64];
+    const s = t => t * t * (3 - 2 * t);
+    const top = g(xi, yi) + (g(xi + 1, yi) - g(xi, yi)) * s(fx);
+    const bot = g(xi, yi + 1) + (g(xi + 1, yi + 1) - g(xi, yi + 1)) * s(fx);
+    return top + (bot - top) * s(fy);
+  };
+}
+function generate(newSeed) {
+  seed = newSeed;
+  const r = rng(seed), hills = valueNoise(r), caves = valueNoise(r), sandy = valueNoise(r);
+  tiles = new Uint8Array(WW * WH);
+  for (let x = 0; x < WW; x++) {
+    const h = Math.round(28 + hills(x / 18, 0.5) * 14 + hills(x / 5, 3.5) * 3);
+    surface[x] = h;
+    const desert = sandy(x / 30, 7.5) > 0.68;
+    for (let y = h; y < WH; y++) {
+      let id = y === h ? (desert ? 14 : 1) : y < h + 4 ? (desert ? 14 : 2) : 3;
+      const d = y - h;
+      if (id === 3) {
+        const o = r();
+        if (d > 42 && o < 0.014) id = 9;
+        else if (d > 32 && o < 0.015) id = 8;
+        else if (d > 14 && o < 0.03) id = 7;
+        else if (d > 4 && o < 0.06) id = 6;
+      }
+      if (d > 6 && y < WH - 3 && caves(x / 9, y / 6) > 0.62) id = AIR;
+      if (y >= WH - 1) id = 10;
+      setAt(x, y, id);
+    }
+  }
+  // Bäume auf Gras, mit Abstand
+  for (let x = 3; x < WW - 3; x++) {
+    if (at(x, surface[x]) !== 1 || r() > 0.09) continue;
+    const top = surface[x] - 4 - Math.floor(r() * 3);
+    for (let y = top; y < surface[x]; y++) setAt(x, y, 4);
+    for (let dx = -2; dx <= 2; dx++) for (let dy = -2; dy <= 1; dy++)
+      if (Math.abs(dx) + Math.abs(dy) < 4 && at(x + dx, top + dy) === AIR) setAt(x + dx, top + dy, 5);
+    x += 4;
+  }
+}
+
+// ── Spieler ─────────────────────────────────────────────────────────
+const PW = 0.7, PH = 1.75, GRAV = 32, JUMP = 12.5, SPEED = 6, REACH = 5;
+const player = { x: WW / 2, y: 0, vx: 0, vy: 0, onGround: false, face: 1, walk: 0 };
+let inv = {}, hotbar = [], selected = 0;
+function spawn() {
+  const x = Math.floor(WW / 2);
+  let y = 0;
+  while (y < WH && !solid(at(x, y))) y++;
+  player.x = x + 0.5; player.y = y - PH - 0.01; player.vx = player.vy = 0;
+}
+function addItem(id, n = 1) {
+  inv[id] = (inv[id] || 0) + n;
+  if (!hotbar.includes(id)) hotbar.push(id);
+}
+function takeItem(id, n = 1) {
+  if ((inv[id] || 0) < n) return false;
+  inv[id] -= n;
+  if (!inv[id]) { delete inv[id]; const i = hotbar.indexOf(id); hotbar.splice(i, 1); if (selected >= hotbar.length) selected = Math.max(0, hotbar.length - 1); }
+  return true;
+}
+function collides(x, y) {
+  for (let ty = Math.floor(y); ty <= Math.floor(y + PH - 0.001); ty++)
+    for (let tx = Math.floor(x - PW / 2); tx <= Math.floor(x + PW / 2 - 0.001); tx++)
+      if (solid(at(tx, ty))) return true;
+  return false;
+}
+function movePlayer(dt) {
+  player.vy = Math.min(player.vy + GRAV * dt, 30);
+  // Erst waagerecht, dann senkrecht, jeweils in kleinen Schritten gegen die Kachelwände
+  let nx = player.x + player.vx * dt;
+  if (collides(nx, player.y)) {
+    // eine Kachel hoch steigen, wenn es frei ist
+    if (player.onGround && !collides(nx, player.y - 1.01) && !collides(player.x, player.y - 1.01)) player.y -= 1.01;
+    else { nx = player.x; player.vx = 0; }
+  }
+  player.x = Math.max(PW / 2, Math.min(WW - PW / 2, nx));
+  let ny = player.y + player.vy * dt;
+  player.onGround = false;
+  if (collides(player.x, ny)) {
+    if (player.vy > 0) { ny = Math.floor(ny + PH) - PH - 0.001; player.onGround = true; }
+    else ny = Math.ceil(ny) + 0.001;
+    player.vy = 0;
+  }
+  player.y = ny;
+  if (player.y > WH) spawn();
+}
+
+// ── Abbauen und Bauen ───────────────────────────────────────────────
+let mining = null;          // { x, y, t }
+let pointer = null;         // { sx, sy, down, place }
+let buildMode = false;      // am Handy: Tippen baut statt abzubauen
+const inReach = (tx, ty) => Math.hypot(tx + 0.5 - player.x, ty + 0.5 - (player.y + PH * 0.4)) <= REACH;
+function screenToTile(sx, sy) { const v = view(); return [Math.floor((sx - v.ox) / v.ts), Math.floor((sy - v.oy) / v.ts)]; }
+function placeBlock(tx, ty) {
+  const id = hotbar[selected];
+  if (!id || at(tx, ty) !== AIR || !inReach(tx, ty)) return false;
+  // nicht in sich selbst bauen
+  if (tx + 1 > player.x - PW / 2 && tx < player.x + PW / 2 && ty + 1 > player.y && ty < player.y + PH) return false;
+  if (!takeItem(id)) return false;
+  setAt(tx, ty, id); dirty = true; return true;
+}
+function updateMining(dt) {
+  if (!pointer || !pointer.down) { mining = null; return; }
+  const [tx, ty] = screenToTile(pointer.sx, pointer.sy);
+  if (pointer.place || (touchUI && buildMode)) { if (!pointer.placed) { placeBlock(tx, ty); pointer.placed = true; } return; }
+  const id = at(tx, ty), b = BLOCKS[id];
+  if (!b || !b.hard || !inReach(tx, ty)) { mining = null; return; }
+  if (!mining || mining.x !== tx || mining.y !== ty) mining = { x: tx, y: ty, t: 0 };
+  mining.t += dt;
+  if (mining.t >= b.hard) {
+    setAt(tx, ty, AIR); addItem(b.drop || id); dirty = true;
+    mining = null;
+  }
+}
+function craft(i) {
+  const rc = RECIPES[i];
+  for (const [id, n] of Object.entries(rc.from)) if ((inv[id] || 0) < n) return false;
+  for (const [id, n] of Object.entries(rc.from)) takeItem(+id, n);
+  addItem(rc.to, rc.n); dirty = true;
+  return true;
+}
+
+// ── Speichern ───────────────────────────────────────────────────────
+const SAVE_KEY = 'minicraft-world';
+let dirty = false, lastSave = 0, dayTime = 0.3;
+function save() {
+  const data = { seed, tiles: String.fromCharCode(...tiles.map(t => 65 + t)), surface: [...surface], inv, hotbar, selected,
+                 px: player.x, py: player.y, dayTime };
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(data)); } catch (e) {}
+  dirty = false; lastSave = Date.now();
+}
+function load() {
+  let d = null;
+  try { d = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch (e) {}
+  if (!d || d.tiles.length !== WW * WH) return false;
+  seed = d.seed; tiles = Uint8Array.from(d.tiles, c => c.charCodeAt(0) - 65); surface = Int16Array.from(d.surface);
+  inv = d.inv; hotbar = d.hotbar; selected = d.selected || 0; dayTime = d.dayTime ?? 0.3;
+  player.x = d.px; player.y = d.py; player.vx = player.vy = 0;
+  return true;
+}
+function newWorld() {
+  generate(Math.floor(Math.random() * 1e9));
+  inv = {}; hotbar = []; selected = 0; dayTime = 0.3;
+  spawn(); save();
+}
+addEventListener('visibilitychange', () => { if (document.hidden && state === 'play') save(); });
+
+// ── Eingabe ─────────────────────────────────────────────────────────
+const keys = {};
+let state = 'title', showCraft = false;
+addEventListener('keydown', e => {
+  keys[e.key.toLowerCase()] = true;
+  if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(e.key.toLowerCase())) e.preventDefault();
+  if (state === 'title') { if (e.key === 'Enter' || e.key === ' ') startGame(false); return; }
+  const n = parseInt(e.key, 10);
+  if (n >= 1 && n <= 9 && hotbar[n - 1]) selected = n - 1;
+  if (e.key === 'e' || e.key === 'E') showCraft = !showCraft;
+  if (showCraft && e.key === 'Escape') showCraft = false;
+});
+addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+addEventListener('wheel', e => { if (hotbar.length) selected = (selected + (e.deltaY > 0 ? 1 : hotbar.length - 1)) % hotbar.length; }, { passive: true });
+addEventListener('contextmenu', e => e.preventDefault());
+
+const touches = new Map();   // Finger auf den Knöpfen
+function buttons() {
+  const w = W(), h = H(), s = Math.min(w, h) * 0.13, m = 14, list = [];
+  if (touchUI) {
+    list.push({ id:'left',  x:m,          y:h - s - m, w:s, h:s, label:'◀' });
+    list.push({ id:'right', x:m * 2 + s,  y:h - s - m, w:s, h:s, label:'▶' });
+    list.push({ id:'jump',  x:w - s - m,  y:h - s - m, w:s, h:s, label:'⬆' });
+    list.push({ id:'mode',  x:w - s * 2 - m * 2, y:h - s - m, w:s, h:s, label: buildMode ? '🧱' : '⛏️' });
+  }
+  list.push({ id:'craft', x:w - 56, y:10, w:46, h:46, label:'🔨' });
+  return list;
+}
+function hotbarSlots() {
+  const w = W(), h = H(), n = Math.max(hotbar.length, 1), s = Math.min(48, (w - 40) / Math.max(n, 6));
+  const x0 = w / 2 - (n * s) / 2, y = touchUI ? 12 : h - s - 12;
+  return hotbar.map((id, i) => ({ id, i, x: x0 + i * s, y, w: s - 4, h: s - 4 }));
+}
+function craftRows() {
+  const w = W(), h = H(), bw = Math.min(w * 0.8, 380), bh = 52, y0 = h / 2 - (RECIPES.length * (bh + 10)) / 2 + 20;
+  return RECIPES.map((rc, i) => ({ i, rc, x: w / 2 - bw / 2, y: y0 + i * (bh + 10), w: bw, h: bh }));
+}
+const hit = (b, x, y) => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+function titleButtons() {
+  const w = W(), h = H(), bw = Math.min(w * 0.6, 320), bh = Math.min(h * 0.1, 56), hasSave = !!localStorage.getItem(SAVE_KEY);
+  const list = [{ id:'play', label: hasSave ? '▶ Weiterspielen' : '▶ Spielen', x: w / 2 - bw / 2, y: h * 0.55, w: bw, h: bh }];
+  if (hasSave) list.push({ id:'new', label:'🌍 Neue Welt', x: w / 2 - bw / 2, y: h * 0.55 + bh * 1.3, w: bw, h: bh });
+  return list;
+}
+canvas.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  const x = e.clientX, y = e.clientY;
+  if (state === 'title') {
+    for (const b of titleButtons()) if (hit(b, x, y)) startGame(b.id === 'new');
+    return;
+  }
+  if (showCraft) {
+    for (const r of craftRows()) if (hit(r, x, y)) { craft(r.i); return; }
+    showCraft = false; return;
+  }
+  for (const b of buttons()) if (hit(b, x, y)) {
+    if (b.id === 'mode') buildMode = !buildMode;
+    else if (b.id === 'craft') showCraft = true;
+    else touches.set(e.pointerId, b.id);
+    return;
+  }
+  for (const s of hotbarSlots()) if (hit(s, x, y)) { selected = s.i; return; }
+  pointer = { id: e.pointerId, sx: x, sy: y, down: true, place: e.button === 2, placed: false };
+}, { passive: false });
+canvas.addEventListener('pointermove', e => { if (pointer && pointer.id === e.pointerId) { pointer.sx = e.clientX; pointer.sy = e.clientY; } else if (!pointer && !touchUI) pointer = { id: e.pointerId, sx: e.clientX, sy: e.clientY, down: false }; else if (pointer && !pointer.down) { pointer.sx = e.clientX; pointer.sy = e.clientY; pointer.id = e.pointerId; } });
+const release = e => { touches.delete(e.pointerId); if (pointer && pointer.id === e.pointerId) { pointer.down = false; if (touchUI) pointer = null; } };
+canvas.addEventListener('pointerup', release);
+canvas.addEventListener('pointercancel', release);
+const held = id => [...touches.values()].includes(id);
+
+function startGame(fresh) {
+  if (fresh || !load()) newWorld();
+  state = 'play';
+}
+
+// ── Spiel-Schleife ──────────────────────────────────────────────────
+function view() {
+  const ts = Math.max(22, Math.min(40, Math.round(H() / 15)));
+  const cx = player.x * ts, cy = (player.y + PH / 2) * ts;
+  const ox = Math.round(Math.max(W() - WW * ts, Math.min(0, W() / 2 - cx)));
+  const oy = Math.round(Math.max(H() - WH * ts, Math.min(0, H() * 0.45 - cy)));
+  return { ts, ox, oy };
+}
+function step(dt) {
+  if (state !== 'play' || showCraft) return;
+  const left = keys['a'] || keys['arrowleft'] || held('left'), right = keys['d'] || keys['arrowright'] || held('right');
+  player.vx = (right ? SPEED : 0) - (left ? SPEED : 0);
+  if (player.vx) { player.face = Math.sign(player.vx); player.walk += dt * 10; }
+  if ((keys['w'] || keys[' '] || keys['arrowup'] || held('jump')) && player.onGround) player.vy = -JUMP;
+  movePlayer(dt);
+  updateMining(dt);
+  dayTime = (dayTime + dt / 240) % 1;
+  if (dirty && Date.now() - lastSave > 5000) save();
+}
+// 0 Mitternacht, 0.5 Mittag
+const daylight = () => Math.max(0, Math.min(1, 0.5 - Math.cos(dayTime * Math.PI * 2) * 0.8));
+
+function drawSky(w, h) {
+  const l = daylight();
+  const mix = (a, b) => `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * l)).join(',')})`;
+  const g = ctx.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, mix([8, 12, 40], [92, 170, 240])); g.addColorStop(1, mix([20, 26, 60], [190, 225, 255]));
+  ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+  // Sonne und Mond auf einem Bogen
+  const a = dayTime * Math.PI * 2;
+  const sx = w / 2 - Math.sin(a) * w * 0.42, sy = h * 0.55 + Math.cos(a) * h * 0.45;
+  ctx.fillStyle = '#ffe066'; ctx.beginPath(); ctx.arc(sx, sy, 22, 0, Math.PI * 2); ctx.fill();
+  const mx = w / 2 + Math.sin(a) * w * 0.42, my = h * 0.55 - Math.cos(a) * h * 0.45;
+  ctx.fillStyle = '#e8ecf5'; ctx.beginPath(); ctx.arc(mx, my, 16, 0, Math.PI * 2); ctx.fill();
+  if (l < 0.5) {
+    ctx.fillStyle = `rgba(255,255,255,${(0.5 - l) * 1.6})`;
+    for (let i = 0; i < 60; i++) ctx.fillRect((i * 137.5) % w, (i * 53.7) % (h * 0.6), 2, 2);
+  }
+}
+function drawWorld(v) {
+  const w = W(), h = H(), { ts, ox, oy } = v;
+  const x0 = Math.max(0, Math.floor(-ox / ts)), x1 = Math.min(WW, Math.ceil((w - ox) / ts));
+  const y0 = Math.max(0, Math.floor(-oy / ts)), y1 = Math.min(WH, Math.ceil((h - oy) / ts));
+  // Hintergrund unter der Erde: dunkle Höhlenwand
+  for (let x = x0; x < x1; x++) {
+    const sy = Math.max(y0, surface[x] + 1);
+    if (sy < y1) { ctx.fillStyle = '#3a2d24'; ctx.fillRect(ox + x * ts, oy + sy * ts, ts + 1, (y1 - sy) * ts); }
+  }
+  for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+    const id = at(x, y);
+    if (id) ctx.drawImage(texCache[id], ox + x * ts, oy + y * ts, ts, ts);
+  }
+  // Tiefer wird es dunkler
+  for (let x = x0; x < x1; x++) {
+    for (let y = Math.max(y0, surface[x] + 3); y < y1; y++) {
+      const d = Math.min(0.75, (y - surface[x] - 3) * 0.02);
+      if (d > 0) { ctx.fillStyle = `rgba(0,0,0,${d})`; ctx.fillRect(ox + x * ts, oy + y * ts, ts + 1, ts + 1); }
+    }
+  }
+}
+function drawPlayer(v) {
+  const { ts, ox, oy } = v, x = ox + player.x * ts, y = oy + player.y * ts, f = player.face;
+  const pw = PW * ts, ph = PH * ts, swing = Math.sin(player.walk) * (player.vx ? 0.35 : 0);
+  ctx.save();
+  ctx.translate(x, y);
+  // Beine
+  ctx.fillStyle = '#2b4c9a';
+  for (const s of [-1, 1]) {
+    ctx.save(); ctx.translate(s * pw * 0.18, ph * 0.62); ctx.rotate(swing * s);
+    ctx.fillRect(-pw * 0.15, 0, pw * 0.3, ph * 0.38); ctx.restore();
+  }
+  // Körper und Arm
+  ctx.fillStyle = '#2fb5a8'; ctx.fillRect(-pw * 0.38, ph * 0.3, pw * 0.76, ph * 0.34);
+  ctx.save(); ctx.translate(f * pw * 0.3, ph * 0.33); ctx.rotate(mining ? Math.sin(Date.now() / 60) * 0.8 - 0.6 * f : -swing);
+  ctx.fillStyle = '#e8b58e'; ctx.fillRect(-pw * 0.12, 0, pw * 0.24, ph * 0.3); ctx.restore();
+  // Kopf mit Haaren und Auge
+  ctx.fillStyle = '#e8b58e'; ctx.fillRect(-pw * 0.42, 0, pw * 0.84, ph * 0.3);
+  ctx.fillStyle = '#5a3a20'; ctx.fillRect(-pw * 0.42, 0, pw * 0.84, ph * 0.08);
+  ctx.fillRect(-f * pw * 0.42 - (f > 0 ? 0 : pw * 0.12), 0, pw * 0.12, ph * 0.18);
+  ctx.fillStyle = '#fff'; ctx.fillRect(f * pw * 0.12 - pw * 0.08, ph * 0.12, pw * 0.16, ph * 0.07);
+  ctx.fillStyle = '#2b4c9a'; ctx.fillRect(f * pw * 0.16 - pw * 0.04, ph * 0.13, pw * 0.08, ph * 0.06);
+  ctx.restore();
+}
+function drawCursor(v) {
+  if (!pointer || (touchUI && !pointer.down)) return;
+  const { ts, ox, oy } = v, [tx, ty] = screenToTile(pointer.sx, pointer.sy);
+  ctx.strokeStyle = inReach(tx, ty) ? 'rgba(255,255,255,0.9)' : 'rgba(255,80,80,0.7)';
+  ctx.lineWidth = 2; ctx.strokeRect(ox + tx * ts + 1, oy + ty * ts + 1, ts - 2, ts - 2);
+  if (mining) {
+    const p = mining.t / BLOCKS[at(mining.x, mining.y)].hard;
+    ctx.fillStyle = `rgba(0,0,0,${0.2 + p * 0.5})`;
+    ctx.fillRect(ox + mining.x * ts, oy + mining.y * ts, ts, ts);
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.beginPath();
+    ctx.moveTo(ox + mining.x * ts + ts * 0.2, oy + mining.y * ts + ts * 0.3); ctx.lineTo(ox + mining.x * ts + ts * (0.2 + p * 0.6), oy + mining.y * ts + ts * (0.3 + p * 0.5));
+    ctx.stroke();
+  }
+}
+function drawUI() {
+  const w = W(), h = H();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (const s of hotbarSlots()) {
+    ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(s.x, s.y, s.w, s.h);
+    ctx.drawImage(texCache[s.id], s.x + 6, s.y + 6, s.w - 12, s.h - 12);
+    ctx.strokeStyle = s.i === selected ? '#ffd23f' : 'rgba(255,255,255,0.4)'; ctx.lineWidth = s.i === selected ? 3 : 1;
+    ctx.strokeRect(s.x, s.y, s.w, s.h);
+    ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(11, s.w * 0.28)}px system-ui`;
+    ctx.textAlign = 'right'; ctx.fillText(inv[s.id], s.x + s.w - 3, s.y + s.h - 8); ctx.textAlign = 'center';
+  }
+  if (!hotbar.length) {
+    ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.font = 'bold 15px system-ui';
+    ctx.fillText(touchUI ? 'Halte den Finger auf einen Block, um ihn abzubauen' : 'Halte die linke Maustaste auf einen Block, um ihn abzubauen', w / 2, touchUI ? 36 : h - 36);
+  } else if (hotbar[selected]) {
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 14px system-ui';
+    ctx.fillText(BLOCKS[hotbar[selected]].name, w / 2, touchUI ? 74 : h - 72);
+  }
+  for (const b of buttons()) {
+    ctx.fillStyle = (b.id === 'mode' && buildMode) || held(b.id) ? 'rgba(255,210,63,0.55)' : 'rgba(0,0,0,0.4)';
+    ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 12); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.font = `${b.h * 0.45}px system-ui`;
+    ctx.fillText(b.label, b.x + b.w / 2, b.y + b.h / 2 + 2);
+  }
+  if (!touchUI) {
+    ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.font = '12px system-ui'; ctx.textAlign = 'left';
+    ctx.fillText('A D laufen · W/Leertaste springen · Linksklick abbauen · Rechtsklick bauen · 1-9 Block · E Craften', 66, 32);
+    ctx.textAlign = 'center';
+  }
+  if (showCraft) {
+    ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 26px system-ui';
+    ctx.fillText('🔨 Craften', w / 2, craftRows()[0].y - 36);
+    for (const r of craftRows()) {
+      const can = Object.entries(r.rc.from).every(([id, n]) => (inv[id] || 0) >= n);
+      ctx.fillStyle = can ? '#2e9e48' : 'rgba(255,255,255,0.12)';
+      ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, 12); ctx.fill();
+      ctx.drawImage(texCache[r.rc.to], r.x + 10, r.y + 10, r.h - 20, r.h - 20);
+      ctx.fillStyle = can ? '#fff' : 'rgba(255,255,255,0.5)'; ctx.font = 'bold 17px system-ui';
+      ctx.fillText(r.rc.label, r.x + r.w / 2 + 16, r.y + r.h / 2);
+    }
+    ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = '13px system-ui';
+    ctx.fillText('Tippe ein Rezept an · daneben tippen oder E schließt', w / 2, craftRows().at(-1).y + 80);
+  }
+}
+function drawTitle() {
+  const w = W(), h = H(), t = Date.now() / 1000;
+  drawSky(w, h);
+  // Ein Streifen Landschaft im Hintergrund
+  const ts = Math.max(24, h / 14);
+  for (let x = 0; x * ts < w; x++) {
+    const hh = Math.round(3 + Math.sin(x * 0.5 + t * 0.2) * 1.2);
+    for (let y = 0; y < hh + 4; y++) ctx.drawImage(texCache[y === 0 ? 1 : y < 3 ? 2 : 3], x * ts, h - (hh + 4 - y) * ts, ts, ts);
+  }
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = `900 ${Math.min(w * 0.12, 72)}px system-ui`;
+  ctx.fillStyle = '#2b2b30'; ctx.fillText('⛏️ MINI-CRAFT', w / 2 + 4, h * 0.3 + 4);
+  ctx.fillStyle = '#7fd24a'; ctx.fillText('⛏️ MINI-CRAFT', w / 2, h * 0.3);
+  ctx.font = `bold ${Math.min(w * 0.04, 20)}px system-ui`; ctx.fillStyle = '#fff';
+  ctx.fillText('Bau ab, sammle, bau deine eigene Welt', w / 2, h * 0.42);
+  for (const b of titleButtons()) {
+    ctx.fillStyle = b.id === 'play' ? '#2e9e48' : 'rgba(0,0,0,0.45)';
+    ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 14); ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.font = `bold ${b.h * 0.4}px system-ui`;
+    ctx.fillText(b.label, b.x + b.w / 2, b.y + b.h / 2 + 1);
+  }
+}
+
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  const w = W(), h = H();
+  ctx.clearRect(0, 0, w, h);
+  if (state === 'title') drawTitle();
+  else {
+    step(dt);
+    const v = view();
+    drawSky(w, h);
+    drawWorld(v);
+    drawPlayer(v);
+    drawCursor(v);
+    // Nachts wird alles etwas dunkler
+    const l = daylight();
+    if (l < 1) { ctx.fillStyle = `rgba(5,8,30,${(1 - l) * 0.55})`; ctx.fillRect(0, 0, w, h); }
+    drawUI();
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
