@@ -1142,11 +1142,12 @@ function drawBall(x, y, r) {
   ctx.ellipse(x + 3, y + 4, r * 0.9, r * 0.45, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Weißer Spielball mit Schattierung
+  // Spielball mit Schattierung; im Schnee orange, damit man ihn sieht
+  const orange = weather === 'snow' && inMatch();
   const grad = ctx.createRadialGradient(x - r * 0.35, y - r * 0.35, r * 0.1, x, y, r);
-  grad.addColorStop(0, '#ffffff');
-  grad.addColorStop(0.7, '#e8e8e8');
-  grad.addColorStop(1, '#a8a8a8');
+  grad.addColorStop(0, orange ? '#ffc27a' : '#ffffff');
+  grad.addColorStop(0.7, orange ? '#ff8a1f' : '#e8e8e8');
+  grad.addColorStop(1, orange ? '#c25400' : '#a8a8a8');
   ctx.fillStyle = grad;
   ctx.beginPath();
   ctx.arc(x, y, r, 0, Math.PI * 2);
@@ -1842,8 +1843,9 @@ function updateCommentary() {
   if (st !== prev) {
     if (st === 'playing' && prev === 'menu') {
       cSaid10 = false; cPrevExtra = false; cShot = null;
-      say([`Herzlich willkommen! Wir sind live dabei: ${playerClub.stadium}. ${spokenClub(playerClub)} gegen ${spokenClub(opponentClub)}. Der Ball rollt!`,
-           `Hallo und willkommen zum Spiel ${spokenClub(playerClub)} gegen ${spokenClub(opponentClub)}! Anpfiff!`], 3);
+      const wx = { rain:' Es regnet, der Rasen ist rutschig!', snow:' Es schneit! Heute wird mit dem orangen Ball gespielt.' }[weather] || '';
+      say([`Herzlich willkommen! Wir sind live dabei: ${playerClub.stadium}. ${spokenClub(playerClub)} gegen ${spokenClub(opponentClub)}. Der Ball rollt!${wx}`,
+           `Hallo und willkommen zum Spiel ${spokenClub(playerClub)} gegen ${spokenClub(opponentClub)}!${wx} Anpfiff!`], 3);
     } else if (st === 'playing' && prev === 'halftime') {
       say(['Weiter geht\'s mit der zweiten Halbzeit!', 'Die zweite Halbzeit läuft!'], 3);
     } else if (st === 'goal') {
@@ -1911,6 +1913,72 @@ function updateCommentary() {
     if (atLine) { say(['Daneben!', 'Knapp vorbei!', 'Der war nicht weit weg!'], 2.5); cShot = null; }
     else if (now - cShot.t > 3000) cShot = null;
   }
+}
+
+// Wetter: vor dem Anpfiff wählbar, Zufall zieht öfter Sonne
+const WEATHERS = [
+  { id:'random', label:'🎲 Zufall' },
+  { id:'sun',    label:'☀️ Sonne' },
+  { id:'rain',   label:'🌧️ Regen' },
+  { id:'snow',   label:'❄️ Schnee' },
+];
+let weatherChoice = 'random', weather = 'sun', weatherParts = [], rainNode = null;
+const weatherLabel = id => WEATHERS.find(x => x.id === id).label;
+function rollWeather() {
+  weather = weatherChoice === 'random' ? pick(['sun', 'sun', 'rain', 'snow']) : weatherChoice;
+  weatherParts = [];
+}
+// Nasser Rasen lässt den Ball weiter rollen, Schnee bremst ihn
+const ballFriction = () => weather === 'rain' ? 1 - (1 - BALL_FRIC) * 0.6 : weather === 'snow' ? 1 - (1 - BALL_FRIC) * 1.6 : BALL_FRIC;
+
+function drawWeatherTint(w, h) {
+  if (weather === 'rain') { ctx.fillStyle = 'rgba(15,25,45,0.28)'; ctx.fillRect(0, 0, w, h); }
+  if (weather === 'snow') {
+    ctx.fillStyle = 'rgba(235,242,255,0.3)';
+    ctx.fillRect(w * FPADX, h * FPADY, w * (1 - 2 * FPADX), h * (1 - 2 * FPADY));
+  }
+}
+
+function drawWeather(w, h) {
+  if (weather === 'sun' || !inMatch()) return;
+  const rain = weather === 'rain', n = rain ? 160 : 110;
+  while (weatherParts.length < n) weatherParts.push({ x: Math.random() * w, y: Math.random() * h, s: 0.5 + Math.random() });
+  ctx.save();
+  // In der Zeitlupe fällt auch der Niederschlag langsam
+  const slow = gameState === 'replay' ? REPLAY_SPEED : 1;
+  if (rain) { ctx.strokeStyle = 'rgba(200,220,255,0.75)'; ctx.lineWidth = 1.6; ctx.beginPath(); }
+  else ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  for (const d of weatherParts) {
+    if (rain) {
+      d.y += 14 * d.s * slow; d.x -= 3 * d.s * slow;
+      ctx.moveTo(d.x, d.y); ctx.lineTo(d.x + 3 * d.s, d.y - 14 * d.s);
+    } else {
+      d.y += 1.2 * d.s * slow; d.x += Math.sin(d.y * 0.02 + d.s * 10) * 0.6 * slow;
+      ctx.beginPath(); ctx.arc(d.x, d.y, 1.5 + d.s * 1.8, 0, Math.PI * 2); ctx.fill();
+    }
+    if (d.y > h + 20) { d.y = -20; d.x = Math.random() * (w + 60); }
+    if (d.x < -20) d.x = w + 10;
+  }
+  if (rain) ctx.stroke();
+  ctx.restore();
+}
+
+// Regenrauschen: Rauschen durch einen Tief- und Hochpass
+function startRain() {
+  if (rainNode || weather !== 'rain') return;
+  const ac = getAC();
+  const src = ac.createBufferSource(); src.buffer = getNoiseBuf(); src.loop = true;
+  const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2500;
+  const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 500;
+  const g = ac.createGain(); g.gain.value = 0.07;
+  src.connect(lp); lp.connect(hp); hp.connect(g); g.connect(ac.destination);
+  src.start();
+  rainNode = src;
+}
+function stopRain() {
+  if (!rainNode) return;
+  try { rainNode.stop(); } catch (e) {}
+  rainNode = null;
 }
 
 // Zeitlupe: die letzten Sekunden werden mitgeschnitten und nach dem Tor langsam abgespielt
@@ -2203,10 +2271,10 @@ function updateAudio() {
   const prev = lastAudioState;
   lastAudioState = gameState;
   if (gameState === 'menu' || gameState === 'title') {
-    stopCrowd(); startMenuMusic();
+    stopCrowd(); stopRain(); startMenuMusic();
     if (window.speechSynthesis) speechSynthesis.cancel();
   }
-  if (gameState === 'playing')  { stopMenuMusic(); startCrowd(); }
+  if (gameState === 'playing')  { stopMenuMusic(); startCrowd(); startRain(); }
   if (gameState === 'goal' && (prev==='playing' || prev==='penalty')) {
     playGoalSound();
     const scorer = goalTeam === playerTeam ? playerClub : opponentClub;
@@ -2216,7 +2284,7 @@ function updateAudio() {
   }
   if (!['playing', 'goal', 'replay'].includes(gameState)) { stopChants(); nextChantAt = 0; }
   if (gameState === 'halftime') { playWhistle(); }
-  if (gameState === 'fulltime') { playWhistle(); stopCrowd(); }
+  if (gameState === 'fulltime') { playWhistle(); stopCrowd(); stopRain(); }
 }
 
 let redP  = { x:0.28, y:0.5,  vx:0, vy:0, team:'red',  num:'7',  name:'Lucas', skin:'#ffcc99', skinDark:'#e8a870', hair:'#3d1500', hairStyle:'short' };
@@ -2826,6 +2894,7 @@ function hitBtn(tx,ty,b)  { const dx=tx-b.x,dy=ty-b.y; return dx*dx+dy*dy<b.r*b.
 function startMatch() {
   for (const p of allPlayers) { p.sentOff = false; p.yellow = 0; }
   setPiece = null; penalty = null; protectUntil = 0; stamina = 1; tired = false;
+  rollWeather();
   controlledIdx=0; ballOwner=playerTeam==='red'?redP:blueP;
   currentHalf=1; halfTimeLeft=halfSecs; breakTimeLeft=BREAK_SECS; lastFrameMs=0;
   inExtra=false; score.red=0; score.blue=0;
@@ -2862,6 +2931,15 @@ function titleButtonHit(tx, ty) {
   }
 }
 
+function weatherBtn() {
+  const w=W(), h=H(), bw=Math.min(w*0.34, 190), bh=Math.min(h*0.075, 34);
+  return { x:w-12-bw, y:12, w:bw, h:bh };
+}
+function nextWeather() {
+  const i = WEATHERS.findIndex(x => x.id === weatherChoice);
+  weatherChoice = WEATHERS[(i+1) % WEATHERS.length].id;
+}
+
 function menuButtonHit(tx, ty) {
   const w=W(), h=H();
 
@@ -2877,7 +2955,9 @@ function menuButtonHit(tx, ty) {
       }
     }
   } else {
-    // Schritt 3: Starten
+    // Schritt 3: Wetter wählen oder starten
+    const wb = weatherBtn();
+    if (tx>=wb.x && tx<=wb.x+wb.w && ty>=wb.y && ty<=wb.y+wb.h) { nextWeather(); return true; }
     const SW=Math.min(w*0.5, 340), SH=Math.min(h*0.1, 56);
     if (tx>=w/2-SW/2 && tx<=w/2+SW/2 && ty>=h*0.8 && ty<=h*0.8+SH) {
       startMatch(); return true;
@@ -2967,6 +3047,8 @@ window.addEventListener('keydown', e=>{
       if (pick) { opponentClub=pick.club; opponentChosen=true; }
     } else if (e.key==='Enter'||e.key===' ') {
       startMatch();
+    } else if (e.key==='w'||e.key==='W') {
+      nextWeather();
     }
     return;
   }
@@ -3173,7 +3255,7 @@ function update() {
     ball.x=ballOwner.x+side*0.045; ball.y=ballOwner.y+0.055;
   } else {
     ball.x+=ball.vx; ball.y+=ball.vy;
-    ball.vx*=BALL_FRIC; ball.vy*=BALL_FRIC;
+    const fr=ballFriction(); ball.vx*=fr; ball.vy*=fr;
     // Ball-Radius in normierte Koordinaten
     const bRy = Math.min(W(),H())*0.022 / H();
     const bRx = Math.min(W(),H())*0.022 / W();
@@ -3738,6 +3820,12 @@ function drawUI() {
 
     } else {
       heading('Anpfiff!', `im ${playerClub.stadium} · Halbzeit ${halfSecs/60} Min · ${difficulty.name}`);
+      const wb = weatherBtn();
+      roundRect(wb.x, wb.y, wb.w, wb.h, wb.h/2);
+      ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fill();
+      ctx.strokeStyle='rgba(255,255,255,0.5)'; ctx.lineWidth=1.5; ctx.stroke();
+      ctx.fillStyle='#fff'; ctx.font=`bold ${wb.h*0.42}px system-ui`;
+      ctx.fillText(`Wetter: ${weatherLabel(weatherChoice)}`, wb.x+wb.w/2, wb.y+wb.h/2+1, wb.w-12);
       const me = clubEntry(playerClub), opp = clubEntry(opponentClub);
       const cw = Math.min(w*0.26, 210), ch = Math.min(cw*1.25, h*0.44);
       const cy = h*0.34;
@@ -3765,7 +3853,7 @@ function drawUI() {
 
     ctx.fillStyle='rgba(255,255,255,0.4)';
     ctx.font=`${Math.min(w*0.025,13)}px system-ui`;
-    ctx.fillText(opponentChosen ? 'Esc = zurück zum Hauptmenü'
+    ctx.fillText(opponentChosen ? 'W oder antippen = Wetter wechseln · Esc = zurück zum Hauptmenü'
       : `Tippe auf eine Karte oder drücke 1 bis ${menuClubs().length} · ← → Liga wechseln · Esc = zurück`, w/2, h*0.975);
     ctx.restore();
     return;
@@ -4050,6 +4138,7 @@ function loop() {
   const goalH=h*(GOAL_B-GOAL_T), goalY=h*GOAL_T, padX=w*FPADX;
   drawGoal(0,       goalY, padX, goalH, true);
   drawGoal(w-padX,  goalY, padX, goalH, false);
+  drawWeatherTint(w, h);
 
   update();
   recordReplay();
@@ -4117,6 +4206,7 @@ function loop() {
   drawBall(ball.x*w, ball.y*h - ballLift*ballR*2.5, ballR*(1+ballLift*0.5));
   if (gameState === 'penalty' && penalty.mine && penalty.phase === 'aim') drawPenaltyAim(w, h);
   if (camOn) ctx.restore();
+  drawWeather(w, h);
 
   updateAudio();
   updateChants();
