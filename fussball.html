@@ -2223,6 +2223,7 @@ function applySnapshot(s) {
 }
 
 function recordReplay() {
+  if (gameState === 'var') return;   // Mitschnitt bleibt für die Zeitlupe nach dem Videobeweis
   if (gameState === 'goal') {
     const now = Date.now();
     if (!goalShownAt) goalShownAt = now;
@@ -2508,7 +2509,7 @@ function updateAudio() {
     if (window.speechSynthesis) speechSynthesis.cancel();
   }
   if (gameState === 'playing' || (gameState === 'penalty' && MENU_STATES.includes(prev))) { stopMenuMusic(); startCrowd(); startRain(); }
-  if (gameState === 'goal' && (prev==='playing' || prev==='penalty')) {
+  if (gameState === 'goal' && (prev==='playing' || prev==='penalty' || prev==='var')) {
     playGoalSound();
     const scorer = goalTeam === playerTeam ? playerClub : opponentClub;
     stopChants();
@@ -3667,6 +3668,65 @@ function startCelebration() {
   celebration = { scorer, ...kind, t0: Date.now(), fromX: scorer.x, fromY: scorer.y, toX, toY, inward, side, mates, said: false };
 }
 
+// ── Videobeweis: manche Tore werden geprüft, ab und zu war es Abseits ──
+const VAR_CHANCE = 0.2, VAR_OFFSIDE = 0.35, VAR_DECIDE_MS = 2200, VAR_TOTAL_MS = 3600;
+let varChance = VAR_CHANCE, varOverturn = VAR_OFFSIDE;
+let varCheck = null;   // { t0, overturn, decided }
+
+function goalScored(team) {
+  score[team]++; goalTeam = team;
+  if (Math.random() < varChance) startVar(); else startCelebration();
+}
+function startVar() {
+  gameState = 'var';
+  ball.vx = 0; ball.vy = 0; ballOwner = null;
+  varCheck = { t0: Date.now(), overturn: Math.random() < varOverturn, decided: false };
+  say('Moment! Der Videobeweis schaut sich das Tor an.', 4);
+}
+function updateVar() {
+  const el = Date.now() - varCheck.t0;
+  if (el >= VAR_DECIDE_MS && !varCheck.decided) {
+    varCheck.decided = true;
+    if (varCheck.overturn) { playWhistle(); say('Abseits! Das Tor zählt nicht!', 5); }
+    else say('Das Tor zählt!', 5);
+  }
+  if (el < VAR_TOTAL_MS) return;
+  if (!varCheck.overturn) { startCelebration(); return; }
+  // Kein Tor: der Torwart der verteidigenden Mannschaft bekommt den Ball
+  score[goalTeam]--;
+  const keeper = goalTeam === 'red' ? blueKeeper : redKeeper;
+  goalTeam = ''; ballOwner = keeper;
+  protectUntil = Date.now() + 800;
+  gameState = 'playing'; lastFrameMs = 0;
+}
+
+function drawVarUI(w, h) {
+  const bw = Math.min(w * 0.8, 460), bh = Math.min(h * 0.4, 200), bx = w / 2 - bw / 2, by = h * 0.3;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(0, 0, w, h);
+  // Fernseher mit Bildschirmrand und Streifen
+  ctx.fillStyle = '#1b1f2a'; roundRect(bx - 10, by - 10, bw + 20, bh + 20, 18); ctx.fill();
+  ctx.fillStyle = '#0d2f4f'; roundRect(bx, by, bw, bh, 10); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.04)';
+  for (let y = by; y < by + bh; y += 4) ctx.fillRect(bx, y, bw, 2);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#fff';
+  ctx.font = `900 ${Math.min(bw * 0.09, 34)}px system-ui`;
+  ctx.fillText('📺 VIDEOBEWEIS', w / 2, by + bh * 0.25);
+  if (!varCheck.decided) {
+    const dots = '.'.repeat(1 + Math.floor(Date.now() / 400) % 3);
+    ctx.font = `${Math.min(bw * 0.05, 18)}px system-ui`;
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.fillText(`Der Schiedsrichter prüft das Tor${dots}`, w / 2, by + bh * 0.62, bw - 20);
+  } else {
+    ctx.font = `900 ${Math.min(bw * 0.085, 32)}px system-ui`;
+    ctx.fillStyle = varCheck.overturn ? '#ff6b6b' : '#2ecc71';
+    ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 20;
+    ctx.fillText(varCheck.overturn ? '❌ ABSEITS! KEIN TOR' : '✅ TOR ZÄHLT!', w / 2, by + bh * 0.64, bw - 20);
+  }
+  ctx.restore();
+}
+
 function clearCelebration() {
   for (const p of allPlayers) { p.celRot = 0; p.celLift = 0; p.kickFlip = 0; }
   celebration = null;
@@ -4546,6 +4606,7 @@ function update() {
   if (gameState === 'penalty') { updatePenalty(); return; }
   if (gameState === 'shootout') { updateShootout(); return; }
   if (gameState === 'goal') { updateCelebration(); return; }
+  if (gameState === 'var') { updateVar(); return; }
 
   if (gameState !== 'playing') return;
   updateKickFlips();
@@ -4608,11 +4669,11 @@ function update() {
     if (ball.y > 1-FPADY-bRy) { ball.y=1-FPADY-bRy; ball.vy*=-0.7; }
     // Links/Rechts: Tor oder Abprall
     if (ball.x < FPADX+bRx) {
-      if (ball.y>GOAL_T && ball.y<GOAL_B) { score.blue++; goalTeam='blue'; startCelebration(); return; }
+      if (ball.y>GOAL_T && ball.y<GOAL_B) { goalScored('blue'); return; }
       ball.x=FPADX+bRx; ball.vx*=-0.7;
     }
     if (ball.x > 1-FPADX-bRx) {
-      if (ball.y>GOAL_T && ball.y<GOAL_B) { score.red++; goalTeam='red'; startCelebration(); return; }
+      if (ball.y>GOAL_T && ball.y<GOAL_B) { goalScored('red'); return; }
       ball.x=1-FPADX-bRx; ball.vx*=-0.7;
     }
     for (const p of allPlayers) {
@@ -5290,6 +5351,8 @@ function drawUI() {
     ctx.restore();
     return;
   }
+
+  if (gameState === 'var') drawVarUI(w, h);
 
   // Tor-Bildschirm
   if (gameState === 'goal') {
