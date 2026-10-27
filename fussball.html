@@ -2332,6 +2332,7 @@ function titleAction(id) {
 }
 
 function titleButtonHit(tx, ty) {
+  if (introRunning()) { introStart=0; return; }
   for (const b of getTitleButtons()) {
     if (tx>=b.x && tx<=b.x+b.w && ty>=b.y && ty<=b.y+b.h) { titleAction(b.id); return; }
   }
@@ -2418,6 +2419,7 @@ window.addEventListener('keydown', e=>{
   if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
   if (gameState === 'title') {
     getAC();
+    if (introRunning()) { introStart=0; return; }
     const btns=getTitleButtons();
     if (e.key==='ArrowUp')   titleSel=(titleSel+btns.length-1)%btns.length;
     if (e.key==='ArrowDown') titleSel=(titleSel+1)%btns.length;
@@ -2727,7 +2729,17 @@ function drawStadiumBackdrop(w, h, t) {
 }
 
 // Eigenes Spiel-Logo: Wappenschild mit Ball, Sternen und Lorbeer
-function drawGameLogo(cx, cy, size, t, alpha=0.32) {
+// Intro beim Laden: das Logo setzt sich zusammen, dann kommt der Titel
+const INTRO_MS = 3400;
+let introStart = Date.now();
+const introProgress = () => Math.min(1, (Date.now() - introStart) / INTRO_MS);
+const introRunning = () => introProgress() < 1;
+// Anteil 0..1 von x zwischen a und z
+const seg = (x, a, z) => Math.max(0, Math.min(1, (x - a) / (z - a)));
+const easeOutBack = x => 1 + 2.70158 * Math.pow(x - 1, 3) + 1.70158 * Math.pow(x - 1, 2);
+
+// build 0..1: Schild fliegt ein, Lorbeer wächst, Sterne fallen, Ball rollt rein, Blitz
+function drawGameLogo(cx, cy, size, t, alpha=0.32, build=1) {
   ctx.save();
   ctx.globalAlpha=alpha;
   const sw=size*0.8, sh=size;
@@ -2740,32 +2752,50 @@ function drawGameLogo(cx, cy, size, t, alpha=0.32) {
     ctx.quadraticCurveTo(cx-sw/2, cy+sh*0.35, cx-sw/2, cy+sh*0.05);
     ctx.closePath();
   }
-  const g=ctx.createLinearGradient(cx-sw/2,0,cx+sw/2,0);
-  g.addColorStop(0,'#1e8449'); g.addColorStop(0.5,'#27ae60'); g.addColorStop(1,'#145a32');
-  shield(); ctx.fillStyle=g; ctx.fill();
-  ctx.lineWidth=size*0.04; ctx.strokeStyle='#fff'; ctx.stroke();
-  // Rasenstreifen im Schild
-  ctx.save(); shield(); ctx.clip();
-  ctx.fillStyle='rgba(255,255,255,0.08)';
-  for (let i=0;i<8;i+=2) ctx.fillRect(cx-sw/2+i*sw/8, cy-sh/2, sw/8, sh);
-  ctx.restore();
-  // Lorbeerzweige
+  const sIn=seg(build, 0, 0.3);
+  if (sIn > 0) {
+    const e=easeOut(sIn);
+    ctx.save();
+    ctx.translate(cx, cy+(1-e)*size*1.5);
+    ctx.rotate((1-e)*-0.8);
+    const k=Math.max(0.01, easeOutBack(sIn));
+    ctx.scale(k, k);
+    ctx.translate(-cx, -cy);
+    const g=ctx.createLinearGradient(cx-sw/2,0,cx+sw/2,0);
+    g.addColorStop(0,'#1e8449'); g.addColorStop(0.5,'#27ae60'); g.addColorStop(1,'#145a32');
+    shield(); ctx.fillStyle=g; ctx.fill();
+    ctx.lineWidth=size*0.04; ctx.strokeStyle='#fff'; ctx.stroke();
+    // Rasenstreifen im Schild
+    ctx.save(); shield(); ctx.clip();
+    ctx.fillStyle='rgba(255,255,255,0.08)';
+    for (let i=0;i<8;i+=2) ctx.fillRect(cx-sw/2+i*sw/8, cy-sh/2, sw/8, sh);
+    ctx.restore();
+    ctx.restore();
+  }
+  // Lorbeerzweige wachsen Blatt für Blatt
+  const lIn=seg(build, 0.25, 0.55);
   ctx.strokeStyle='#feca57'; ctx.fillStyle='#feca57'; ctx.lineWidth=size*0.015;
-  for (const side of [-1,1]) {
+  if (lIn > 0) for (const side of [-1,1]) {
+    const a0=Math.PI/2+side*0.3, a1=Math.PI/2+side*1.9;
     ctx.beginPath();
-    ctx.arc(cx, cy+sh*0.05, sw*0.33, Math.PI/2+side*0.3, Math.PI/2+side*1.9, side<0);
+    ctx.arc(cx, cy+sh*0.05, sw*0.33, a0, a0+(a1-a0)*lIn, side<0);
     ctx.stroke();
     for (let i=0;i<7;i++) {
+      const grow=Math.min(1, lIn*7-i);
+      if (grow <= 0) break;
       const a=Math.PI/2+side*(0.45+i*0.22);
       const lx=cx+Math.cos(a)*sw*0.33, ly=cy+sh*0.05+Math.sin(a)*sw*0.33;
       ctx.beginPath();
-      ctx.ellipse(lx, ly, size*0.04, size*0.016, a+side*0.8, 0, Math.PI*2);
+      ctx.ellipse(lx, ly, size*0.04*grow, size*0.016*grow, a+side*0.8, 0, Math.PI*2);
       ctx.fill();
     }
   }
-  // Drei Sterne oben
+  // Drei Sterne fallen nacheinander von oben
   for (let i=-1;i<=1;i++) {
-    const sx=cx+i*sw*0.18, sy=cy-sh*0.33+Math.abs(i)*sh*0.02, r=size*0.045;
+    const stIn=seg(build, 0.45+(i+1)*0.07, 0.6+(i+1)*0.07);
+    if (stIn <= 0) continue;
+    const drop=(1-easeOutBack(stIn))*size*0.8;
+    const sx=cx+i*sw*0.18, sy=cy-sh*0.33+Math.abs(i)*sh*0.02-drop, r=size*0.045*(0.4+0.6*stIn);
     ctx.beginPath();
     for (let k=0;k<10;k++) {
       const a=-Math.PI/2+k*Math.PI/5, rr=k%2?r*0.45:r;
@@ -2773,8 +2803,26 @@ function drawGameLogo(cx, cy, size, t, alpha=0.32) {
     }
     ctx.closePath(); ctx.fill();
   }
-  ctx.globalAlpha=Math.min(1, alpha*1.4);
-  drawBall(cx, cy+sh*0.05, size*0.2);
+  // Ball rollt von rechts in die Mitte
+  const bIn=seg(build, 0.55, 0.85);
+  if (bIn > 0) {
+    const e=easeOut(bIn);
+    const bx=cx+(1-e)*size*2, by=cy+sh*0.05;
+    ctx.globalAlpha=Math.min(1, alpha*1.4);
+    ctx.save();
+    ctx.translate(bx, by); ctx.rotate(-(1-e)*10); ctx.translate(-bx, -by);
+    drawBall(bx, by, size*0.2);
+    ctx.restore();
+  }
+  // Blitz, wenn alles zusammen ist
+  const fIn=seg(build, 0.85, 1);
+  if (fIn > 0 && fIn < 1) {
+    ctx.globalAlpha=(1-fIn)*0.8;
+    ctx.strokeStyle='#fff'; ctx.lineWidth=size*0.03*(1-fIn)+1;
+    ctx.beginPath(); ctx.arc(cx, cy, size*(0.5+fIn*0.6), 0, Math.PI*2); ctx.stroke();
+    ctx.fillStyle='#fff'; ctx.globalAlpha=(1-fIn)*0.35;
+    shield(); ctx.fill();
+  }
   ctx.restore();
 }
 
@@ -2782,7 +2830,14 @@ function drawTitle() {
   const w=W(), h=H(), t=Date.now()/1000;
   ctx.save();
   drawStadiumBackdrop(w, h, t);
-  if (!showControls) drawGameLogo(w/2, h*0.36, Math.min(w, h)*0.42, t);
+  const ip=introProgress();
+  const textIn=seg(ip, 0.6, 0.78), uiIn=seg(ip, 0.78, 1);
+  if (!showControls) {
+    // Erst groß in der Mitte, dann rückt das Logo hinter den Titel
+    const m=easeOut(textIn);
+    const big=Math.min(w, h)*0.62, small=Math.min(w, h)*0.42;
+    drawGameLogo(w/2, h*(0.5-0.14*m), big+(small-big)*m, t, 1-0.68*m, seg(ip, 0, 0.6));
+  }
 
   ctx.textAlign='center'; ctx.textBaseline='middle';
 
@@ -2815,18 +2870,28 @@ function drawTitle() {
     ctx.textAlign='center';
   } else {
     const ts=Math.min(w*0.13,84);
-    ctx.font=`900 ${ts}px system-ui`;
-    ctx.shadowColor='#27ae60'; ctx.shadowBlur=25+Math.sin(t*3)*10;
-    const tg=ctx.createLinearGradient(0,h*0.27-ts/2,0,h*0.27+ts/2);
-    tg.addColorStop(0,'#ffffff'); tg.addColorStop(1,'#c8f5c8');
-    ctx.fillStyle=tg;
-    ctx.fillText('KICK IT!', w/2, h*0.27);
+    // Titel knallt groß rein und schrumpft auf seine Größe
+    if (textIn > 0) {
+      const k=1+2.5*(1-easeOutBack(textIn));
+      ctx.save();
+      ctx.globalAlpha=Math.min(1, textIn*2);
+      ctx.translate(w/2, h*0.27); ctx.scale(k, k); ctx.translate(-w/2, -h*0.27);
+      ctx.font=`900 ${ts}px system-ui`;
+      ctx.shadowColor='#27ae60'; ctx.shadowBlur=25+Math.sin(t*3)*10;
+      const tg=ctx.createLinearGradient(0,h*0.27-ts/2,0,h*0.27+ts/2);
+      tg.addColorStop(0,'#ffffff'); tg.addColorStop(1,'#c8f5c8');
+      ctx.fillStyle=tg;
+      ctx.fillText('KICK IT!', w/2, h*0.27);
+      ctx.restore();
+    }
     ctx.shadowBlur=0;
+    ctx.globalAlpha=uiIn;
     ctx.font=`bold ${Math.min(w*0.035,20)}px system-ui`;
     ctx.fillStyle='#feca57';
     ctx.fillText('B U N D E S L I G A - D U E L L', w/2, h*0.27+ts*0.7);
   }
 
+  ctx.globalAlpha=uiIn;
   getTitleButtons().forEach((b,i)=>{
     const sel=i===titleSel;
     const primary=b.id==='play';
@@ -2844,9 +2909,10 @@ function drawTitle() {
     ctx.fillText(b.label, b.x+b.w/2, b.y+b.h/2, b.w-28);
   });
 
+  ctx.globalAlpha=1;
   ctx.font=`${Math.min(w*0.025,13)}px system-ui`;
   ctx.fillStyle='rgba(255,255,255,0.4)';
-  ctx.fillText(showControls?'Esc = zurück':'↑ ↓ auswählen · Enter bestätigen · oder antippen', w/2, h*0.965);
+  ctx.fillText(showControls?'Esc = zurück':introRunning()?'Tippen oder Taste drücken zum Überspringen':'↑ ↓ auswählen · Enter bestätigen · oder antippen', w/2, h*0.965);
   ctx.restore();
 }
 
