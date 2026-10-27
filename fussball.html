@@ -1953,8 +1953,9 @@ function updateChants() {
 
 // Kommentator: spricht Deutsch über die Sprachausgabe und zeigt den Satz oben an.
 // Wichtigeres (höhere Stufe) unterbricht Unwichtigeres, Geplauder braucht Pausen.
-let commentOn = true;
-try { commentOn = localStorage.getItem('kickit-comment') !== 'off'; } catch (e) {}
+let commentOn = false;
+// Neuer Schlüssel: der Kommentator startet aus, auch wenn er früher an war
+try { commentOn = localStorage.getItem('kickit-commentator') === 'on'; } catch (e) {}
 let commentLine = '', commentShownUntil = 0, commentBusyUntil = 0, commentQuietUntil = 0, commentPrio = 0, commentId = 0;
 const pick = a => a[Math.floor(Math.random() * a.length)];
 const MENU_STATES = ['start', 'title', 'menu', 'mode', 'cup', 'season'];
@@ -1994,7 +1995,7 @@ function say(lines, prio, anywhere = false) {
 
 function setCommentOn(on) {
   commentOn = on;
-  try { localStorage.setItem('kickit-comment', on ? 'on' : 'off'); } catch (e) {}
+  try { localStorage.setItem('kickit-commentator', on ? 'on' : 'off'); } catch (e) {}
   if (!on) { commentLine = ''; if (window.speechSynthesis) speechSynthesis.cancel(); }
 }
 
