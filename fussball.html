@@ -2006,8 +2006,10 @@ function updateCommentary() {
     say([`${playerName(before)} zieht ab!`, `Schuss von ${playerName(before)}!`, `${playerName(before)} versucht es!`], 2);
   }
   if (cShot) {
+    // Zwischen den Pfosten wird es gleich ein Tor, das kommentiert der Tor-Jubel
     const atLine = cShot.right ? ball.x > 1 - FPADX - 0.025 : ball.x < FPADX + 0.025;
-    if (atLine) { say(['Daneben!', 'Knapp vorbei!', 'Der war nicht weit weg!'], 2.5); cShot = null; }
+    const onTarget = ball.y > GOAL_T && ball.y < GOAL_B;
+    if (atLine && !onTarget) { say(['Daneben!', 'Knapp vorbei!', 'Der war nicht weit weg!'], 2.5); cShot = null; }
     else if (now - cShot.t > 3000) cShot = null;
   }
 }
