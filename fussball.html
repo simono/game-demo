@@ -1756,32 +1756,18 @@ let chantTimer = null;
 function chant(club, isGoal) {
   const set = CHANTS[club.short];
   if (!set) return;
-  const [text, lang, pattern] = isGoal ? set.goal : set.songs[Math.floor(Math.random() * set.songs.length)];
+  // Text und Sprache stehen nur zur Übersicht in CHANTS; sprechen darf allein der Kommentator
+  const [, , pattern] = isGoal ? set.goal : set.songs[Math.floor(Math.random() * set.songs.length)];
   stopChants();
   crowdSwell(true);
   const dur = singChoir(pattern);
   crowdClaps(3, 0.28, dur + 0.1);
   chantTimer = setTimeout(() => crowdSwell(false), (dur + 1.2) * 1000);
   nextChantBusyUntil = Date.now() + (dur + 1.2) * 1000;
-
-  // Leise Vorlesestimme, damit man die Worte versteht; der Kommentator hat Vorrang
-  if (!window.speechSynthesis || Date.now() < commentBusyUntil) return;
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang = lang;
-  const voice = speechSynthesis.getVoices().find(v => v.lang.replace('_', '-').startsWith(lang));
-  if (voice) u.voice = voice;
-  u.rate = 0.85;
-  u.pitch = 0.6;
-  u.volume = 0.35;
-  u.onend = () => { chantVoice = false; };
-  chantVoice = true;
-  speechSynthesis.speak(u);
 }
 let nextChantBusyUntil = 0;
-let chantVoice = false;
 
 function stopChants() {
-  if (window.speechSynthesis && chantVoice) { speechSynthesis.cancel(); chantVoice = false; }
   if (chantTimer) { clearTimeout(chantTimer); chantTimer = null; }
   crowdSwell(false);
 }
@@ -1813,7 +1799,7 @@ function say(lines, prio) {
   commentBusyUntil = now + 500 + text.length * 70;
   if (!window.speechSynthesis) return;
   const id = ++commentId;
-  speechSynthesis.cancel(); chantVoice = false;
+  speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   u.lang = 'de-DE';
   const voice = speechSynthesis.getVoices().find(v => v.lang.replace('_', '-').startsWith('de'));
@@ -2196,7 +2182,10 @@ function updateAudio() {
   if (gameState === lastAudioState) return;
   const prev = lastAudioState;
   lastAudioState = gameState;
-  if (gameState === 'menu' || gameState === 'title') { stopCrowd(); startMenuMusic(); }
+  if (gameState === 'menu' || gameState === 'title') {
+    stopCrowd(); startMenuMusic();
+    if (window.speechSynthesis) speechSynthesis.cancel();
+  }
   if (gameState === 'playing')  { stopMenuMusic(); startCrowd(); }
   if (gameState === 'goal' && (prev==='playing' || prev==='penalty')) {
     playGoalSound();
