@@ -3949,6 +3949,28 @@ function drawStats(w, y0, rowH, lCol, rCol) {
   ctx.textAlign = 'center';
 }
 
+// ── Sperren in der Liga-Saison: zwei Gelbe über mehrere Spiele oder Rot = ein Spiel Pause ──
+const seasonBans = () => season ? season.banned : [];
+function noteSeasonCard(fouler, card) {
+  if (mode !== 'season' || !season || fouler.team !== playerTeam || fouler.isKeeper) return;
+  const i = (playerTeam === 'red' ? redTeam : blueTeam).indexOf(fouler);
+  if (card === 'yellow') season.yellows[i]++;
+  if (card === 'red' || card === 'yellowred' || season.yellows[i] >= 2) {
+    if (!season.banned.includes(i)) season.banned.push(i);
+    season.yellows[i] = 0;
+  }
+}
+// Gesperrte sitzen draußen, es bleibt aber immer mindestens ein Feldspieler
+function applySeasonBans() {
+  if (mode !== 'season' || !season) return;
+  const team = playerTeam === 'red' ? redTeam : blueTeam;
+  season.bannedNow = season.banned.slice(0, team.length - 1);
+  season.banned = [];
+  for (const i of season.bannedNow) { team[i].sentOff = true; team[i].x = -1; team[i].y = -1; }
+  if (team[controlledIdx].sentOff) controlledIdx = team.findIndex(p => !p.sentOff);
+  if (season.bannedNow.length) announce(`${season.bannedNow.map(i => playerClub.names[i]).join(' und ')} ${season.bannedNow.length > 1 ? 'sind' : 'ist'} heute gesperrt.`, 3);
+}
+
 function commitFoul(fouler, victim) {
   if (gameState !== 'playing') return;
   matchStats[fouler.team].fouls++;
@@ -3962,6 +3984,7 @@ function commitFoul(fouler, victim) {
   else if (r < 0.35) card = fouler.yellow && canSendOff ? 'yellowred' : 'yellow';
   if (card === 'yellow') fouler.yellow = 1;
   if (card === 'red' || card === 'yellowred') fouler.sentOff = true;
+  if (card) noteSeasonCard(fouler, card);
 
   const attackRight = victim.team === 'red';
   const inBox = victim.y > PENALTY_BOX_T && victim.y < PENALTY_BOX_B &&
@@ -4424,6 +4447,7 @@ function startMatch() {
   inExtra=false; score.red=0; score.blue=0;
   gameState='playing'; teamChosen=false; opponentChosen=false;
   stadiumBannerUntil=Date.now()+3500;
+  applySeasonBans();
   if (mode === 'shootout') {
     shootout = { kicks:[], until:0 };
     announce(`Elfmeterschießen! ${spokenClub(playerClub)} gegen ${spokenClub(opponentClub)}. Wer hat die besseren Nerven?`, 3);
@@ -4577,7 +4601,7 @@ function startSeason() {
   }
   // Den Spieltag, an dem der Spieler frei hat, ans Ende schieben
   rounds.sort((x, y) => (x.some(isMine) ? 0 : 1) - (y.some(isMine) ? 0 : 1));
-  season = { league, clubs, rounds, day:0, done:false };
+  season = { league, clubs, rounds, day:0, done:false, yellows:[0, 0, 0], banned:[], bannedNow:[] };
   gameState = 'season';
   announce(NATION_LEAGUES.includes(league) ? 'Das Länderturnier beginnt! Welches Land holt den Titel?' : `Die Saison beginnt! Wer wird Meister in der ${LEAGUES.find(l => l.id === league).label}?`, 3);
 }
@@ -4908,7 +4932,15 @@ function drawSeasonScreen() {
   } else {
     const m = compNextMatch();
     ctx.fillStyle = '#fff';
-    ctx.fillText(`${season.day + 1}. Spieltag: ${clubEntry(m.a).label} gegen ${clubEntry(m.b).label}`, w / 2, infoY, w - 24);
+    const bans = seasonBans().map(i => playerClub.names[i]);
+    const warn = season.yellows.map((n, i) => n === 1 && !season.banned.includes(i) ? playerClub.names[i] : null).filter(Boolean);
+    const note = bans.length ? { text: `🟥 Gesperrt: ${bans.join(', ')}`, color: '#ff6b6b' }
+      : warn.length ? { text: `🟨 Noch eine Gelbe und gesperrt: ${warn.join(', ')}`, color: '#feca57' } : null;
+    const line = `${season.day + 1}. Spieltag: ${clubEntry(m.a).label} gegen ${clubEntry(m.b).label}`;
+    // Wenig Platz bis zum Knopf: Hinweis in dieselbe Zeile
+    const room = compBtn().y - infoY > h * 0.11;
+    ctx.fillText(note && !room ? `${line} · ${note.text}` : line, w / 2, infoY, w - 24);
+    if (note && room) { ctx.fillStyle = note.color; ctx.fillText(note.text, w / 2, infoY + h * 0.05, w - 24); }
   }
   drawCompButton(done ? '🏠 Zurück zum Hauptmenü' : '▶ Zum Spiel');
   if (done && place === 1) drawWinnerOverlay(w, h, t, `${clubEntry(playerClub).label} ist Meister! 🏆`, false);
