@@ -2013,7 +2013,7 @@ function updateCommentary() {
   if (st !== prev) {
     if (st === 'playing' && ['menu', 'cup', 'season'].includes(prev)) {
       cSaid10 = false; cPrevExtra = false; cShot = null;
-      const comp = mode === 'cl' ? `${cup.wm ? 'Weltmeisterschaft' : 'Champions League'}, ${cupRounds()[cup.round]}! ` : mode === 'season' ? `${season.day + 1}. Spieltag! ` : '';
+      const comp = mode === 'cl' ? `${CUPS[cup.kind].name}, ${cupRounds()[cup.round]}! ` : mode === 'season' ? `${season.day + 1}. Spieltag! ` : '';
       const wx = { rain:' Es regnet, der Rasen ist rutschig!', snow:' Es schneit! Heute wird mit dem orangen Ball gespielt.' }[weather] || '';
       say([`${comp}Herzlich willkommen! Wir sind live dabei: ${playerClub.stadium}. ${spokenClub(playerClub)} gegen ${spokenClub(opponentClub)}. Der Ball rollt!${wx}`,
            `${comp}Hallo und willkommen zum Spiel ${spokenClub(playerClub)} gegen ${spokenClub(opponentClub)}!${wx} Anpfiff!`], 3);
@@ -3639,7 +3639,22 @@ const MODES = [
   { id:'shootout', emoji:'🥅', label:'Elfmeterschießen',   sub:['5 Schüsse für jeden,', 'dann K.-o.'],       color:'#8e44ad' },
 ];
 const WM_MODE = { id:'cl', emoji:'🌍', label:'Weltmeisterschaft', sub:['32 Länder,', 'K.-o. bis zum Finale'], color:'#b8860b' };
-const modeCards = () => MODES.map(m => m.id === 'cl' && isNation(playerClub) ? WM_MODE : m);
+const EM_MODE = { id:'em', emoji:'🇪🇺', label:'Europameisterschaft', sub:['16 Länder aus Europa,', 'K.-o. bis zum Finale'], color:'#0b2e8a' };
+// Länder spielen statt der Champions League die WM, Länder aus Europa zusätzlich die EM
+const modeCards = () => [...MODES.map(m => m.id === 'cl' && isNation(playerClub) ? WM_MODE : m),
+                         ...(clubEntry(playerClub).league === 'eu' ? [EM_MODE] : [])];
+// K.-o.-Turniere: alle laufen als mode 'cl', cup.kind sagt welches
+const CUPS = {
+  cl: { name:'Champions League', heading:'🏆 Champions League', colors:['#0a1f5c', '#020713'], size:8,
+        pool: e => !isNation(e.club), title: () => 'Champions-League-Sieger! 🏆',
+        hello:'Willkommen zur Champions League! Acht Teams, nur einer holt den Pokal.', won: me => `Unglaublich! ${me} gewinnt die Champions League!` },
+  wm: { name:'Weltmeisterschaft', heading:'🌍 Weltmeisterschaft', half:'🌍 WM · deine Turnierhälfte', colors:['#0b6b3a', '#021a0c'], size:32,
+        pool: e => isNation(e.club), title: l => `${l} ist Weltmeister! 🏆`,
+        hello:'Willkommen zur Weltmeisterschaft! Zweiunddreißig Länder, nur einer wird Weltmeister.', won: me => `Unglaublich! ${me} ist Weltmeister!` },
+  em: { name:'Europameisterschaft', heading:'🇪🇺 Europameisterschaft', colors:['#0b2e8a', '#020a24'], size:16,
+        pool: e => e.league === 'eu', title: l => `${l} ist Europameister! 🏆`,
+        hello:'Willkommen zur Europameisterschaft! Sechzehn Länder aus Europa, nur einer wird Europameister.', won: me => `Unglaublich! ${me} ist Europameister!` },
+};
 const ROUND_NAMES = ['Sechzehntelfinale', 'Achtelfinale', 'Viertelfinale', 'Halbfinale', 'Finale'];
 const cupRounds = () => ROUND_NAMES.slice(-Math.log2(cup.rounds[0].length * 2));
 let mode = 'friendly', modeSel = 0, cup = null, season = null;
@@ -3678,11 +3693,12 @@ function backToTeamPick() {
 }
 
 function startCup() {
-  const wm = isNation(playerClub);
-  const others = shuffle(CLUB_LIST.filter(e => isNation(e.club) === wm).map(e => e.club).filter(c => c !== playerClub)).slice(0, wm ? 31 : 7);
-  cup = { rounds:[pairUp(shuffle([playerClub, ...others]))], round:0, out:false, won:false, champion:null, wm };
+  const kind = mode === 'em' ? 'em' : isNation(playerClub) ? 'wm' : 'cl', c = CUPS[kind];
+  mode = 'cl';
+  const others = shuffle(CLUB_LIST.filter(c.pool).map(e => e.club).filter(x => x !== playerClub)).slice(0, c.size - 1);
+  cup = { rounds:[pairUp(shuffle([playerClub, ...others]))], round:0, out:false, won:false, champion:null, kind };
   gameState = 'cup';
-  announce(wm ? 'Willkommen zur Weltmeisterschaft! Zweiunddreißig Länder, nur einer wird Weltmeister.' : 'Willkommen zur Champions League! Acht Teams, nur einer holt den Pokal.', 3);
+  announce(c.hello, 3);
 }
 function advanceCup() {
   const ms = cup.rounds[cup.round], mine = ms.find(isMine);
@@ -3699,7 +3715,7 @@ function advanceCup() {
     for (const m of cup.rounds[cup.round]) simMatch(m, true);
   }
   const me = spokenClub(playerClub);
-  if (cup.champion === playerClub) { cup.won = true; announce(cup.wm ? `Unglaublich! ${me} ist Weltmeister!` : `Unglaublich! ${me} gewinnt die Champions League!`); }
+  if (cup.champion === playerClub) { cup.won = true; announce(CUPS[cup.kind].won(me)); }
   else if (cup.out) announce(`Schade! ${me} ist ausgeschieden. Sieger wird ${spokenClub(cup.champion)}.`);
   else announce(`${me} steht im ${cupRounds()[cup.round]}!`);
 }
@@ -3774,12 +3790,12 @@ function afterFulltime() {
 function modeCardLayout() {
   const w = W(), h = H();
   if (w > h) {
-    const n = MODES.length, gap = Math.min(w * 0.03, 24);
+    const n = modeCards().length, gap = Math.min(w * 0.03, 24);
     const cw = Math.min((w * 0.92 - gap * (n - 1)) / n, 240), ch = Math.min(h * 0.52, 220);
     const x0 = w / 2 - (cw * n + gap * (n - 1)) / 2;
     return modeCards().map((m, i) => ({ m, x:x0 + i * (cw + gap), y:h * 0.33, w:cw, h:ch, n:i+1 }));
   }
-  const cw = w - 40, ch = Math.min((h * 0.62 - 14 * (MODES.length - 1)) / MODES.length, 140);
+  const n = modeCards().length, cw = w - 40, ch = Math.min((h * 0.62 - 14 * (n - 1)) / n, 140);
   return modeCards().map((m, i) => ({ m, x:20, y:h * 0.3 + i * (ch + 14), w:cw, h:ch, n:i+1 }));
 }
 function modeHit(tx, ty) {
@@ -3787,7 +3803,7 @@ function modeHit(tx, ty) {
 }
 function pickMode(id) {
   mode = id; cup = null; season = null; commentLine = '';
-  if (id === 'cl') startCup();
+  if (id === 'cl' || id === 'em') startCup();
   else if (id === 'season') startSeason();
   else { gameState = 'menu'; teamChosen = true; opponentChosen = false; }
 }
@@ -3842,7 +3858,7 @@ function drawModeScreen() {
   ctx.fillStyle = 'rgba(255,255,255,0.4)';
   ctx.font = `${Math.min(w * 0.025, 13)}px system-ui`;
   ctx.textAlign = 'center';
-  ctx.fillText(`Tippe auf eine Karte oder drücke 1 bis ${MODES.length} · Esc = zurück`, w / 2, h * 0.975);
+  ctx.fillText(`Tippe auf eine Karte oder drücke 1 bis ${modeCards().length} · Esc = zurück`, w / 2, h * 0.975);
   ctx.restore();
 }
 
@@ -3936,9 +3952,9 @@ function drawWinnerOverlay(w, h, t, text, cupShape) {
 function drawCupScreen() {
   const w = W(), h = H(), t = Date.now() / 1000;
   ctx.save();
-  // Champions League dunkelblau mit Sternen, WM grün mit goldenem Glanz
+  // Jedes Turnier hat seinen eigenen Sternenhimmel
   const g = ctx.createLinearGradient(0, 0, 0, h);
-  g.addColorStop(0, cup.wm ? '#0b6b3a' : '#0a1f5c'); g.addColorStop(1, cup.wm ? '#021a0c' : '#020713');
+  g.addColorStop(0, CUPS[cup.kind].colors[0]); g.addColorStop(1, CUPS[cup.kind].colors[1]);
   ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
   for (let i = 0; i < 60; i++) {
     ctx.fillStyle = `rgba(255,255,255,${0.2 + 0.5 * Math.abs(Math.sin(t + i))})`;
@@ -3948,7 +3964,7 @@ function drawCupScreen() {
   // Ab 32 Teams passt der ganze Baum nicht drauf: nur die Hälfte mit dem eigenen Team, dazu das Finale
   const split = R > 4, half = split && cup.rounds[0].findIndex(isMine) >= 1 << (R - 2) ? 1 : 0;
   const firstCount = 1 << (R - (split ? 2 : 1));
-  screenHeading(cup.wm ? (split ? '🌍 WM · deine Turnierhälfte' : '🌍 Weltmeisterschaft') : '🏆 Champions League', h * 0.08);
+  screenHeading(split && CUPS[cup.kind].half || CUPS[cup.kind].heading, h * 0.08);
 
   const top = h * 0.17, bottom = compBtn().y - h * 0.04, colGap = 10;
   const colW = (w - 24 - colGap * (R - 1)) / R;
@@ -4003,7 +4019,7 @@ function drawCupScreen() {
 
   const label = compFinished() ? '🏠 Zurück zum Hauptmenü' : `▶ ${cupRounds()[cup.round]} gegen ${clubEntry((m => m.a === playerClub ? m.b : m.a)(compNextMatch())).label}`;
   drawCompButton(label);
-  if (cup.won) drawWinnerOverlay(w, h, t, cup.wm ? `${clubEntry(playerClub).label} ist Weltmeister! 🏆` : 'Champions-League-Sieger! 🏆', true);
+  if (cup.won) drawWinnerOverlay(w, h, t, CUPS[cup.kind].title(clubEntry(playerClub).label), true);
   else if (cup.out) {
     ctx.fillStyle = '#ff6b6b'; ctx.textAlign = 'center';
     ctx.font = `bold ${Math.min(w * 0.035, 17)}px system-ui`;
@@ -4204,11 +4220,12 @@ window.addEventListener('keydown', e=>{
   }
   if (gameState === 'mode') {
     if (e.key==='Escape') { gameState='title'; return; }
-    if (e.key==='ArrowLeft' || e.key==='ArrowUp')    modeSel=(modeSel+MODES.length-1)%MODES.length;
-    if (e.key==='ArrowRight' || e.key==='ArrowDown') modeSel=(modeSel+1)%MODES.length;
+    const cards = modeCards();
+    if (e.key==='ArrowLeft' || e.key==='ArrowUp')    modeSel=(modeSel+cards.length-1)%cards.length;
+    if (e.key==='ArrowRight' || e.key==='ArrowDown') modeSel=(modeSel+1)%cards.length;
     const n = parseInt(e.key, 10) - 1;
-    if (MODES[n]) pickMode(MODES[n].id);
-    else if (e.key==='Enter'||e.key===' ') pickMode(MODES[modeSel].id);
+    if (cards[n]) pickMode(cards[n].id);
+    else if (e.key==='Enter'||e.key===' ') pickMode(cards[modeSel].id);
     return;
   }
   if (gameState === 'cup' || gameState === 'season') {
