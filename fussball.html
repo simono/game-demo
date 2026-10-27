@@ -1917,7 +1917,7 @@ function updateCommentary() {
   }
 }
 
-// Wetter: vor dem Anpfiff wählbar, Zufall zieht öfter Sonne
+// Wetter: vor dem Anpfiff wählbar
 const WEATHERS = [
   { id:'random', label:'🎲 Zufall' },
   { id:'sun',    label:'☀️ Sonne' },
@@ -1927,7 +1927,7 @@ const WEATHERS = [
 let weatherChoice = 'random', weather = 'sun', weatherParts = [], rainNode = null;
 const weatherLabel = id => WEATHERS.find(x => x.id === id).label;
 function rollWeather() {
-  weather = weatherChoice === 'random' ? pick(['sun', 'sun', 'rain', 'snow']) : weatherChoice;
+  weather = weatherChoice === 'random' ? pick(['sun', 'rain', 'snow']) : weatherChoice;
   weatherParts = [];
 }
 // Nasser Rasen lässt den Ball weiter rollen, Schnee bremst ihn
@@ -1941,8 +1941,27 @@ function drawWeatherTint(w, h) {
   }
 }
 
+function drawSunshine(w, h) {
+  const t = Date.now() / 1000;
+  ctx.save();
+  const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, Math.max(w, h) * 0.9);
+  glow.addColorStop(0, 'rgba(255,236,150,0.45)'); glow.addColorStop(0.4, 'rgba(255,220,120,0.12)'); glow.addColorStop(1, 'rgba(255,220,120,0)');
+  ctx.fillStyle = glow; ctx.fillRect(0, 0, w, h);
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < 5; i++) {
+    const a = 0.25 + i * 0.22 + Math.sin(t * 0.4 + i) * 0.03;
+    ctx.fillStyle = 'rgba(255,240,180,0.05)';
+    ctx.beginPath(); ctx.moveTo(0, 0);
+    ctx.lineTo(Math.cos(a - 0.04) * w * 1.5, Math.sin(a - 0.04) * w * 1.5);
+    ctx.lineTo(Math.cos(a + 0.04) * w * 1.5, Math.sin(a + 0.04) * w * 1.5);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+}
+
 function drawWeather(w, h) {
-  if (weather === 'sun' || !inMatch()) return;
+  if (!inMatch()) return;
+  if (weather === 'sun') { drawSunshine(w, h); return; }
   const rain = weather === 'rain', n = rain ? 160 : 110;
   while (weatherParts.length < n) weatherParts.push({ x: Math.random() * w, y: Math.random() * h, s: 0.5 + Math.random() });
   ctx.save();
@@ -3965,6 +3984,12 @@ function drawUI() {
     ctx.fillStyle='#fff';
     ctx.font=`bold ${bh*0.36}px system-ui`;
     ctx.fillText(playerClub.stadium, w/2, by+bh*0.62, bw-24);
+    ctx.font=`bold ${bh*0.26}px system-ui`;
+    ctx.fillStyle='#feca57';
+    roundRect(w/2-bw*0.22, by+bh+6, bw*0.44, bh*0.42, bh*0.21);
+    ctx.fill();
+    ctx.fillStyle='#111';
+    ctx.fillText(`Wetter: ${weatherLabel(weather)}`, w/2, by+bh+6+bh*0.22, bw*0.4);
     ctx.restore();
   }
 
@@ -4235,11 +4260,11 @@ function drawUI() {
       clubCardLayout(menuClubs()).forEach(c => drawClubCard(c));
 
     } else {
-      heading('Anpfiff!', `im ${playerClub.stadium} · Halbzeit ${halfSecs/60} Min · ${difficulty.name}`);
+      heading('Anpfiff!', `im ${playerClub.stadium} · Halbzeit ${halfSecs/60} Min · ${difficulty.name} · ${weatherLabel(weatherChoice)}`);
       const wb = weatherBtn();
       roundRect(wb.x, wb.y, wb.w, wb.h, wb.h/2);
-      ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fill();
-      ctx.strokeStyle='rgba(255,255,255,0.5)'; ctx.lineWidth=1.5; ctx.stroke();
+      ctx.fillStyle='#2980b9'; ctx.shadowColor='#48dbfb'; ctx.shadowBlur=12+Math.sin(t*4)*8; ctx.fill(); ctx.shadowBlur=0;
+      ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke();
       ctx.fillStyle='#fff'; ctx.font=`bold ${wb.h*0.42}px system-ui`;
       ctx.fillText(`Wetter: ${weatherLabel(weatherChoice)}`, wb.x+wb.w/2, wb.y+wb.h/2+1, wb.w-12);
       const me = clubEntry(playerClub), opp = clubEntry(opponentClub);
