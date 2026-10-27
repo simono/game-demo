@@ -911,6 +911,20 @@ function drawOlofssonCrest(cx, cy, s) {
   ctx.restore();
 }
 
+// Fantasy-Vereine: runde Wappen mit Rand und Symbol in der Mitte
+const symbolCrest = (bg, ring, symbol) => (cx, cy, s) => {
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx, cy, s*0.52, 0, Math.PI*2);
+  ctx.shadowColor='rgba(0,0,0,0.45)'; ctx.shadowBlur=s*0.12;
+  ctx.fillStyle=ring; ctx.fill(); ctx.shadowBlur=0;
+  ctx.beginPath(); ctx.arc(cx, cy, s*0.43, 0, Math.PI*2);
+  ctx.fillStyle=bg; ctx.fill();
+  ctx.font=`${s*0.5}px system-ui`;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(symbol, cx, cy + s*0.03);
+  ctx.restore();
+};
+
 function drawBVBCrest(cx, cy, s) {
   ctx.save();
   ctx.translate(cx, cy);
@@ -1075,8 +1089,8 @@ function paintStands(f, w, h, padX, padY) {
 
   // Werbebanden oben und unten
   const leagues = new Set([clubEntry(playerClub).league, clubEntry(opponentClub).league]);
-  const COUNTRY = { de:'DEUTSCHLAND', en:'ENGLAND', es:'SPANIEN' };
-  const DUEL = { de:'BUNDESLIGA-DUELL', en:'PREMIER LEAGUE', es:'LALIGA' };
+  const COUNTRY = { de:'DEUTSCHLAND', en:'ENGLAND', es:'SPANIEN', fantasy:'FANTASY' };
+  const DUEL = { de:'BUNDESLIGA-DUELL', en:'PREMIER LEAGUE', es:'LALIGA', fantasy:'FANTASY-LIGA' };
   const duel = isNation(playerClub) || isNation(opponentClub) ? 'LÄNDERSPIEL' : leagues.size > 1 ? [...leagues].map(l => COUNTRY[l]).join(' VS ') : DUEL[[...leagues][0]];
   const ads = [home.stadium, 'KICK IT!', home.name, 'TOOOR!', duel];
   f.font = `bold ${boardH * 0.7}px system-ui`;
@@ -2741,6 +2755,72 @@ const SPAIN = { name: 'Spanien', short: 'ESP', color: '#c60b1e', light: '#ff3b4e
 };
 
 // Auswärtstrikots für Vereine mit ähnlicher Farbe (Köln und Bayern sind beide rot)
+const DRACHEN = { name: 'Drachen FC', short: 'DRA', color: '#c0392b', light: '#ff5e4d', numColor:'#f1c40f', nums:['9','10','7'], names:['Feuerfuß','Flammen-Finn','Glut-Greta'], keeperName:'Schuppen-Sam', keeperNum:'1',
+  style:{shortsColor:'#f1c40f', shortSleeves:true, socksColor:'#c0392b', socksStripe:'#f1c40f', trim:'#f1c40f', shortsStripe:'#f1c40f'},
+  appearances:[
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#c0392b', hairStyle:'top' },
+    { skin:'#c99470', skinDark:'#a06e4c', hair:'#141414', hairStyle:'curly' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#d07a3a', hairStyle:'bun' },
+  ],
+  keeperLook:{ skin:'#9a6440', skinDark:'#744627', hair:'#141414', hairStyle:'short' }
+};
+DRACHEN.away = { color:'#f1c40f', numColor:'#c0392b', style:{shortsColor:'#f1c40f', shortSleeves:true, socksColor:'#f1c40f', socksStripe:'#c0392b', trim:'#c0392b', shortsStripe:'#c0392b'} };
+
+const BLITZ = { name: 'Blitz United', short: 'BLI', color: '#f7d000', light: '#ffe45c', numColor:'#111', nums:['11','9','8'], names:['Turbo-Tom','Donner-Dana','Zack-Zoe'], keeperName:'Funken-Fritz', keeperNum:'1',
+  style:{shortsColor:'#111111', shortSleeves:true, socksColor:'#111111', socksStripe:'#f7d000', trim:'#f7d000', shortsStripe:'#f7d000'},
+  appearances:[
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#d8c070', hairStyle:'short' },
+    { skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'bun' },
+    { skin:'#f0cfa8', skinDark:'#d4ab82', hair:'#141414', hairStyle:'top' },
+  ],
+  keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#5a3a20', hairStyle:'short', beard:'stubble' }
+};
+BLITZ.away = { color:'#111111', numColor:'#f7d000', style:{shortsColor:'#111111', shortSleeves:true, socksColor:'#111111', socksStripe:'#f7d000', trim:'#f7d000', shortsStripe:'#f7d000'} };
+
+const GALAXY = { name: 'Galaxy Kickers', short: 'GAL', color: '#6c3fc4', light: '#9a72ea', numColor:'#d9dde3', nums:['10','9','7'], names:['Kometen-Kai','Astro-Ali','Nova-Nele'], keeperName:'Orbit-Otto', keeperNum:'1',
+  style:{shortsColor:'#c0c6cf', shortSleeves:true, socksColor:'#6c3fc4', socksStripe:'#d9dde3', trim:'#d9dde3', shortsStripe:'#d9dde3'},
+  appearances:[
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#141414', hairStyle:'curly' },
+    { skin:'#c99470', skinDark:'#a06e4c', hair:'#141414', hairStyle:'short', beard:'stubble' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#d8c070', hairStyle:'bun' },
+  ],
+  keeperLook:{ skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'buzz' }
+};
+GALAXY.away = { color:'#d9dde3', numColor:'#6c3fc4', style:{shortsColor:'#d9dde3', shortSleeves:true, socksColor:'#d9dde3', socksStripe:'#6c3fc4', trim:'#6c3fc4', shortsStripe:'#6c3fc4'} };
+
+const EISBAEREN = { name: 'Eisbären Nordpol', short: 'EIS', color: '#ffffff', light: '#ffffff', numColor:'#2e86c1', nums:['9','10','6'], names:['Frost-Felix','Schnee-Svea','Polar-Paul'], keeperName:'Iglu-Ida', keeperNum:'1',
+  style:{shortsColor:'#5dade2', shortSleeves:true, socksColor:'#ffffff', socksStripe:'#5dade2', trim:'#5dade2', shortsStripe:'#5dade2'},
+  appearances:[
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#d8c070', hairStyle:'top' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#f0e0b0', hairStyle:'bun' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#8a6a45', hairStyle:'short' },
+  ],
+  keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#2a1a10', hairStyle:'bun' }
+};
+EISBAEREN.away = { color:'#5dade2', numColor:'#ffffff', style:{shortsColor:'#5dade2', shortSleeves:true, socksColor:'#5dade2', socksStripe:'#ffffff', trim:'#ffffff', shortsStripe:'#ffffff'} };
+
+const VULKAN = { name: 'Vulkan 04', short: 'VUL', color: '#ff7a00', light: '#ffa64d', numColor:'#111', nums:['9','10','11'], names:['Lava-Leo','Magma-Mia','Krater-Kurt'], keeperName:'Asche-Arne', keeperNum:'1',
+  style:{shortsColor:'#111111', shortSleeves:true, socksColor:'#ff7a00', socksStripe:'#111111', trim:'#111111', shortsStripe:'#111111'},
+  appearances:[
+    { skin:'#9a6440', skinDark:'#744627', hair:'#141414', hairStyle:'top' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#c0392b', hairStyle:'bun' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#5a3a20', hairStyle:'buzz', beard:'full' },
+  ],
+  keeperLook:{ skin:'#c99470', skinDark:'#a06e4c', hair:'#141414', hairStyle:'short', beard:'full' }
+};
+VULKAN.away = { color:'#111111', numColor:'#ff7a00', style:{shortsColor:'#111111', shortSleeves:true, socksColor:'#111111', socksStripe:'#ff7a00', trim:'#ff7a00', shortsStripe:'#ff7a00'} };
+
+const NINJA = { name: 'Ninja Warriors', short: 'NIN', color: '#151515', light: '#3a3a3a', numColor:'#2ecc71', nums:['7','10','9'], names:['Schatten-Sato','Shuriken-Suri','Kunai-Ken'], keeperName:'Stille-Sora', keeperNum:'1',
+  style:{shortsColor:'#151515', shortSleeves:true, socksColor:'#151515', socksStripe:'#2ecc71', trim:'#2ecc71', shortsStripe:'#2ecc71'},
+  appearances:[
+    { skin:'#f0cfa8', skinDark:'#d4ab82', hair:'#141414', hairStyle:'top' },
+    { skin:'#f0cfa8', skinDark:'#d4ab82', hair:'#141414', hairStyle:'bun' },
+    { skin:'#f0cfa8', skinDark:'#d4ab82', hair:'#141414', hairStyle:'short' },
+  ],
+  keeperLook:{ skin:'#f0cfa8', skinDark:'#d4ab82', hair:'#141414', hairStyle:'buzz' }
+};
+NINJA.away = { color:'#2ecc71', numColor:'#151515', style:{shortsColor:'#2ecc71', shortSleeves:true, socksColor:'#2ecc71', socksStripe:'#151515', trim:'#151515', shortsStripe:'#151515'} };
+
 const OLOFSSON = { name: 'FC Olofsson', short: 'FCO', color: '#ffd200', light: '#ffe45c', numColor:'#0b4ea2', nums:['10','9','7'], names:['Simon','Jonas','Anna'], keeperName:'Henrik', keeperNum:'1',
   style:{shortsColor:'#0b4ea2', shortSleeves:true, socksColor:'#ffd200', socksStripe:'#0b4ea2', trim:'#0b4ea2', shortsStripe:'#ffd200'},
   appearances:[
@@ -3095,6 +3175,12 @@ const CLUB_LIST = [
   { club:BMG,     team:'red',  crest:drawBMGCrest,     label:'M\'gladbach', league:'de' },
   { club:BAYERN,  team:'red',  crest:drawBayernCrest,  label:'Bayern', league:'de' },
   { club:OLOFSSON, team:'blue', crest:drawOlofssonCrest, label:'FC Olofsson', league:'de' },
+  { club:DRACHEN, team:'red', crest:symbolCrest('#c0392b', '#f1c40f', '🐉'), label:'Drachen FC', league:'fantasy' },
+  { club:BLITZ, team:'blue', crest:symbolCrest('#111111', '#f7d000', '⚡'), label:'Blitz United', league:'fantasy' },
+  { club:GALAXY, team:'red', crest:symbolCrest('#1b1040', '#c0c6cf', '🚀'), label:'Galaxy Kickers', league:'fantasy' },
+  { club:EISBAEREN, team:'blue', crest:symbolCrest('#5dade2', '#ffffff', '🐻‍❄️'), label:'Eisbären Nordpol', league:'fantasy' },
+  { club:VULKAN, team:'red', crest:symbolCrest('#111111', '#ff7a00', '🌋'), label:'Vulkan 04', league:'fantasy' },
+  { club:NINJA, team:'blue', crest:symbolCrest('#151515', '#2ecc71', '🥷'), label:'Ninja Warriors', league:'fantasy' },
   { club:CITY,    team:'blue', crest:drawCityCrest,    label:'Man City', league:'en' },
   { club:ARSENAL, team:'red',  crest:drawArsenalCrest, label:'Arsenal', league:'en' },
   { club:LIVERPOOL, team:'red', crest:drawLiverpoolCrest, label:'Liverpool', league:'en' },
@@ -3144,6 +3230,7 @@ const LEAGUES = [
   { id:'de', label:'Bundesliga',     flag:'🇩🇪' },
   { id:'en', label:'Premier League', flag:'🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
   { id:'es', label:'LaLiga',         flag:'🇪🇸' },
+  { id:'fantasy', label:'Fantasy-Liga', flag:'✨' },
   { id:'eu',    label:'Europa',       flag:'🇪🇺' },
   { id:'world', label:'Welt',         flag:'🌍' },
 ];
@@ -3183,6 +3270,12 @@ function clubCardLayout(entries) {
 KOELN.stadium   = 'RheinEnergieStadion'; KOELN.fans   = ['#e3000f', '#ffffff'];
 BVB.stadium     = 'Signal Iduna Park';   BVB.fans     = ['#ffe500', '#ffe500', '#111111'];
 OLOFSSON.stadium = 'Olofsson-Arena';     OLOFSSON.fans = ['#ffd200', '#ffd200', '#0b4ea2'];
+DRACHEN.stadium = 'Feuerberg-Arena'; DRACHEN.fans = ['#c0392b','#c0392b','#f1c40f'];
+BLITZ.stadium = 'Donnerdom'; BLITZ.fans = ['#f7d000','#f7d000','#111111'];
+GALAXY.stadium = 'Sternenstadion'; GALAXY.fans = ['#6c3fc4','#d9dde3','#6c3fc4'];
+EISBAEREN.stadium = 'Iglu-Park'; EISBAEREN.fans = ['#ffffff','#5dade2','#ffffff'];
+VULKAN.stadium = 'Lava-Kessel'; VULKAN.fans = ['#ff7a00','#ff7a00','#111111'];
+NINJA.stadium = 'Schattenhalle'; NINJA.fans = ['#151515','#2ecc71','#151515'];
 SCHALKE.stadium = 'Veltins-Arena';       SCHALKE.fans = ['#004c9f', '#ffffff'];
 BMG.stadium     = 'Borussia-Park';       BMG.fans     = ['#111111', '#ffffff', '#00a650'];
 BAYERN.stadium  = 'Allianz Arena';       BAYERN.fans  = ['#dc052d', '#ffffff'];
@@ -3244,7 +3337,7 @@ const subPage = () => showControls || showTrophies;
 // ── Pokal-Vitrine: jeder gewonnene Titel bleibt im Browser gespeichert ──
 const TROPHY_KEY = 'kickit-trophies';
 const TROPHY_NAMES = { cl:'Champions League', wm:'Weltmeister', em:'Europameister', de:'Deutscher Meister',
-  en:'Englischer Meister', es:'Spanischer Meister', eu:'Länderturnier Europa', world:'Länderturnier Welt' };
+  en:'Englischer Meister', es:'Spanischer Meister', fantasy:'Fantasy-Meister', eu:'Länderturnier Europa', world:'Länderturnier Welt' };
 let trophies = [];
 try { trophies = JSON.parse(localStorage.getItem(TROPHY_KEY)) || []; } catch (e) {}
 function addTrophy(kind, club) {
