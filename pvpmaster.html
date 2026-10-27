@@ -131,6 +131,7 @@ function startMatch() {
   buildIsland();
   actors = []; bullets = []; balloons = []; feed = []; matchTime = 0; endInfo = null;
   player = makeActor('Du', char(), false);
+  player.shield = 50;
   actors.push(player);
   for (let i = 0; i < 19; i++) {
     const b = makeActor(BOT_NAMES[i], { shirt: BOT_SHIRTS[i % BOT_SHIRTS.length], hair: pick(['#141414', '#5a3a20', '#d8c070', '#c0392b']), bot: true }, true);
@@ -188,8 +189,11 @@ function segBlocked(x1, y1, x2, y2) {
 }
 
 // ── Kampf ───────────────────────────────────────────────────────────
+const BOT_VS_YOU = 0.5, LANDING_SAFE = 10;
 function damage(a, amount, by, stormHit) {
   if (!a.alive || a.god) return;   // a.god nur für Tests: unverwundbar
+  // Bots gehen mit dir sanfter um: Landeschutz und halber Schaden
+  if (a === player && by && by.bot) { if (matchTime < (a.safeUntil || 0)) return; amount *= BOT_VS_YOU; }
   a.flash = 0.15;
   if (!stormHit && a.shield > 0) { const s = Math.min(a.shield, amount); a.shield -= s; amount -= s; }
   a.hp -= amount;
@@ -224,7 +228,7 @@ function fire(a) {
   a.cool = g.rate;
   const mul = RARITY[g.rarity].mul, n = g.pellets || 1;
   for (let i = 0; i < n; i++) {
-    const ang = a.aim + (Math.random() - 0.5) * g.spread * 2 + (a.bot ? (Math.random() - 0.5) * a.ai.aimErr : 0);
+    const ang = a.aim + (Math.random() - 0.5) * g.spread * 2 + (a.bot ? (Math.random() - 0.5) * (a.ai.aimErr + (a.ai.vsYou ? 0.3 : 0)) : 0);
     bullets.push({ x: a.x + Math.cos(ang) * 22, y: a.y + Math.sin(ang) * 22, vx: Math.cos(ang) * g.speed, vy: Math.sin(ang) * g.speed,
                    dmg: g.dmg * mul, owner: a, life: g.range / g.speed, color: RARITY[g.rarity].color });
   }
@@ -320,7 +324,8 @@ function stepBot(a, dt) {
     let bi = 0, bs = -1;
     a.slots.forEach((g, i) => { if (!g || g.kind === 'pickaxe') return; const sc = (best < g.range ? 2 : 0) + g.rarity * 0.3 + (g.kind === 'pump' && best < 200 ? 2 : 0); if (sc > bs) { bs = sc; bi = i; } });
     a.slot = bi;
-    if (ai.seen > ai.react) fire(a);
+    a.ai.vsYou = target === player;
+    if (ai.seen > ai.react + (target === player ? 0.6 : 0)) fire(a);
     const side = Math.sin(matchTime * 1.7 + a.x) > 0 ? 1 : -1;
     mx = -Math.sin(a.aim) * side + (best > 380 ? Math.cos(a.aim) : best < 160 ? -Math.cos(a.aim) : 0);
     my = Math.cos(a.aim) * side + (best > 380 ? Math.sin(a.aim) : best < 160 ? -Math.sin(a.aim) : 0);
@@ -432,6 +437,7 @@ canvas.addEventListener('pointerup', release); canvas.addEventListener('pointerc
 function dropMapRect() { const w = W(), h = H(), s = Math.min(w, h * 0.92) * 0.86 / MAP; return { s, x: w / 2 - MAP * s / 2, y: h * 0.52 - MAP * s / 2 }; }
 function land(x, y) {
   player.x = x; player.y = y; unstick(player);
+  player.safeUntil = matchTime + LANDING_SAFE;
   state = 'play';
   feed.unshift({ text: '🪂 Gelandet! Such dir Truhen 📦', t: 5 });
 }
@@ -774,6 +780,7 @@ function drawHUD() {
   ctx.font = '13px system-ui'; ctx.fillStyle = inStorm(p) ? '#ff9ff3' : '#fff';
   ctx.fillText(st.toR === st.r && st.phase === STORM.length - 1 && st.shrinking ? '🌪️ Letzter Kreis!' : st.shrinking ? `🌪️ Sturm zieht zu: ${secs}s` : `🌪️ Sturm in ${secs}s`, w - 14, my + ms + 38);
   if (inStorm(p)) { ctx.textAlign = 'center'; ctx.font = 'bold 18px system-ui'; ctx.fillStyle = '#ff9ff3'; ctx.fillText('Du bist im Sturm! Lauf in den Kreis!', w / 2, 70); }
+  else if (matchTime < (p.safeUntil || 0)) { ctx.textAlign = 'center'; ctx.font = 'bold 18px system-ui'; ctx.fillStyle = '#48dbfb'; ctx.fillText(`🛡️ Landeschutz: noch ${Math.ceil(p.safeUntil - matchTime)}s`, w / 2, 70); }
   // Meldungen links oben
   ctx.textAlign = 'left'; ctx.font = '13px system-ui';
   feed.forEach((f, i) => { ctx.globalAlpha = Math.min(1, f.t); ctx.fillStyle = 'rgba(0,0,0,0.45)'; const tw = ctx.measureText(f.text).width; ctx.fillRect(64, 14 + i * 24, tw + 12, 20); ctx.fillStyle = '#fff'; ctx.fillText(f.text, 70, 24 + i * 24); });
