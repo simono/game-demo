@@ -5153,6 +5153,20 @@ function updateAI() {
 }
 
 // ── Torwart-KI ──────────────────────────────────────────────────────
+// ── Torwart selbst steuern: kommt ein gegnerischer Schuss aufs Tor, hältst du mit ↑ ↓ ──
+let keeperCtlUntil = 0;
+const keeperControl = () => mode !== 'duo' && gameState === 'playing' && Date.now() < keeperCtlUntil;
+function watchShotOnGoal() {
+  const myKeeper = playerTeam === 'red' ? redKeeper : blueKeeper;
+  if (ballOwner === myKeeper || ballOwner) { keeperCtlUntil = 0; return; }
+  const dir = playerTeam === 'red' ? -1 : 1, lineX = playerTeam === 'red' ? FPADX : 1 - FPADX;
+  const fromFoe = goalScorer && goalScorer.team !== playerTeam && !goalScorer.isKeeper;
+  if (!fromFoe || Math.sign(ball.vx) !== dir || Math.abs(ball.vx) < KICK_SPD * 0.5) return;
+  // Wo kommt der Ball an der Torlinie an? Reibung macht ihn langsamer, das reicht als Schätzung
+  const t = (lineX - ball.x) / ball.vx, y = ball.y + ball.vy * t;
+  if (t > 0 && t < 90 && y > GOAL_T - 0.06 && y < GOAL_B + 0.06) keeperCtlUntil = Date.now() + 350;
+}
+
 function updateKeepers() {
   [
     { k: redKeeper,  homeX: 0.07, isLeft: true  },
@@ -5162,6 +5176,10 @@ function updateKeepers() {
     // Eigener Torwart bleibt immer gleich, der gegnerische hängt von der Schwierigkeit ab
     const foe = k.team !== playerTeam;
     const KSPEED = foe ? difficulty.keeperSpeed : 0.0032;
+    if (!foe && keeperControl() && ballOwner !== k) {
+      k.y = Math.max(GOAL_T + 0.01, Math.min(GOAL_B - 0.01, k.y + penaltyInput() * 0.0075));
+      return;
+    }
 
     if (ballOwner === k) {
       const dir = isLeft ? 1 : -1;
@@ -5243,11 +5261,13 @@ function update() {
   // Spieler bewegen
   const cp = getCP();
   let mvx = 0, mvy = 0;
-  const arrows = mode !== 'duo';   // im Zwei-Spieler-Modus gehören Pfeile und Enter Spieler 2
+  watchShotOnGoal();
+  const arrows = mode !== 'duo' && !keeperControl();   // im Zwei-Spieler-Modus gehören Pfeile und Enter Spieler 2
   if (dpad.left  || (arrows && keys['ArrowLeft'])  || keys['a']) mvx -= 1;
   if (dpad.right || (arrows && keys['ArrowRight']) || keys['d']) mvx += 1;
   if (dpad.up    || (arrows && keys['ArrowUp'])    || keys['w']) mvy -= 1;
   if (dpad.down  || (arrows && keys['ArrowDown'])  || keys['s']) mvy += 1;
+  if (keeperControl()) { mvx = 0; mvy = 0; }   // ↑ ↓ bewegen jetzt den Torwart
   if (keys[' ']||(arrows && keys['Enter'])) { doShoot(); keys[' ']=false; keys['Enter']=false; }
   if (keys['f']||keys['p'])     { doPass();       keys['f']=false; keys['p']=false; }
   if (keys['t']||keys['g'])     { doTackle();     keys['t']=false; keys['g']=false; }
@@ -5782,8 +5802,14 @@ function drawUI() {
 
   // Aktions-Buttons
   // Pfeil über dem kontrollierten Spieler
-  const cp2 = getCP();
+  const cp2 = keeperControl() ? (playerTeam === 'red' ? redKeeper : blueKeeper) : getCP();
   const pulse = Math.abs(Math.sin(Date.now()*0.006));
+  if (keeperControl()) {
+    ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.font=`900 ${Math.min(w*0.06, 30)}px system-ui`; ctx.fillStyle='#48dbfb'; ctx.shadowColor='#000'; ctx.shadowBlur=8;
+    ctx.fillText('🧤 HALTEN! ↑ ↓', w/2, h*0.18);
+    ctx.restore();
+  }
   ctx.save();
   ctx.fillStyle = `rgba(255,230,0,${0.6+pulse*0.4})`;
   ctx.font = `bold ${Math.min(w,h)*0.045}px system-ui`;
