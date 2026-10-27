@@ -1786,27 +1786,40 @@ function updateChants() {
 // Wichtigeres (höhere Stufe) unterbricht Unwichtigeres, Geplauder braucht Pausen.
 let commentOn = true;
 try { commentOn = localStorage.getItem('kickit-comment') !== 'off'; } catch (e) {}
-let commentLine = '', commentShownUntil = 0, commentBusyUntil = 0, commentPrio = 0, commentId = 0;
+let commentLine = '', commentShownUntil = 0, commentBusyUntil = 0, commentQuietUntil = 0, commentPrio = 0, commentId = 0;
 const pick = a => a[Math.floor(Math.random() * a.length)];
+const inMatch = () => gameState !== 'title' && gameState !== 'menu';
 
-function say(lines, prio) {
-  if (!commentOn) return;
-  const now = Date.now();
-  if (now < commentBusyUntil + (prio < 2 ? 1500 : 0) && prio <= commentPrio) return;
+// Es ist immer höchstens ein Satz unterwegs. Ob gerade gesprochen wird, sagt die
+// Sprachausgabe selbst; Sätze, die zu spät drankommen, werden verworfen statt nachgeholt.
+function say(lines, prio, anywhere = false) {
+  if (!commentOn || (!anywhere && !inMatch())) return;
+  const now = Date.now(), synth = window.speechSynthesis;
+  const talking = synth ? synth.speaking || synth.pending : now < commentBusyUntil;
+  if (talking && prio <= commentPrio) return;
+  if (!talking && prio < 2 && now < commentQuietUntil) return;
   const text = Array.isArray(lines) ? pick(lines) : lines;
-  commentLine = text; commentPrio = prio;
-  commentShownUntil = now + 1500 + text.length * 70;
-  commentBusyUntil = now + 500 + text.length * 70;
-  if (!window.speechSynthesis) return;
   const id = ++commentId;
-  speechSynthesis.cancel();
+  commentPrio = prio;
+  const show = () => { commentLine = text; commentShownUntil = Date.now() + 1500 + text.length * 70; };
+  if (!synth) {
+    show();
+    commentBusyUntil = now + 500 + text.length * 70;
+    commentQuietUntil = commentBusyUntil + 1500;
+    return;
+  }
   const u = new SpeechSynthesisUtterance(text);
   u.lang = 'de-DE';
-  const voice = speechSynthesis.getVoices().find(v => v.lang.replace('_', '-').startsWith('de'));
+  const voice = synth.getVoices().find(v => v.lang.replace('_', '-').startsWith('de'));
   if (voice) u.voice = voice;
   u.rate = 1.15; u.pitch = 1.05; u.volume = 1;
-  u.onend = () => { if (id === commentId) { commentBusyUntil = Date.now(); commentPrio = 0; } };
-  speechSynthesis.speak(u);
+  u.onstart = () => {
+    if (id !== commentId || Date.now() - now > 1200 || (!anywhere && !inMatch())) { synth.cancel(); return; }
+    show();
+  };
+  u.onend = u.onerror = () => { if (id === commentId) { commentPrio = 0; commentQuietUntil = Date.now() + 1500; } };
+  if (talking) synth.cancel();
+  synth.speak(u);
 }
 
 function setCommentOn(on) {
@@ -1878,11 +1891,11 @@ function updateCommentary() {
       say([`Gehalten! Klasse Parade von ${playerName(owner)}!`, `${playerName(owner)} hält den Ball fest!`, `Was für ein Reflex von ${playerName(owner)}!`], 2.5);
       cShot = null;
     } else if (!owner.isKeeper && before && before !== owner && before.team !== owner.team) {
-      if (Math.random() < 0.6) say([`${playerName(owner)} erobert den Ball!`, `Ballgewinn durch ${playerName(owner)}!`, `${playerName(owner)} schnappt sich den Ball!`], 1);
+      if (Math.random() < 0.35) say([`${playerName(owner)} erobert den Ball!`, `Ballgewinn durch ${playerName(owner)}!`, `${playerName(owner)} schnappt sich den Ball!`], 1);
     } else if (!owner.isKeeper && !before && cLastTouch && cLastTouch !== owner) {
       if (cLastTouch.team === owner.team) {
-        if (Math.random() < 0.35) say([`${playerName(cLastTouch)} auf ${playerName(owner)}.`, `Schöner Pass zu ${playerName(owner)}.`, `${playerName(owner)} nimmt den Ball an.`], 1);
-      } else if (Math.random() < 0.5) say([`Abgefangen von ${playerName(owner)}!`, `${playerName(owner)} geht dazwischen!`], 1);
+        if (Math.random() < 0.2) say([`${playerName(cLastTouch)} auf ${playerName(owner)}.`, `Schöner Pass zu ${playerName(owner)}.`, `${playerName(owner)} nimmt den Ball an.`], 1);
+      } else if (Math.random() < 0.3) say([`Abgefangen von ${playerName(owner)}!`, `${playerName(owner)} geht dazwischen!`], 1);
       cShot = null;
     }
     if (owner !== cLastTouch) cLastTouch = owner;
@@ -4120,7 +4133,7 @@ function loop() {
 
 micBtn.addEventListener('click', () => {
   setCommentOn(!commentOn);
-  if (commentOn) say('Hallo! Ich bin dein Kommentator.', 3);
+  if (commentOn) say('Hallo! Ich bin dein Kommentator.', 3, true);
 });
 loop();
 </script>
