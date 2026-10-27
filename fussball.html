@@ -885,6 +885,32 @@ function drawSchalkeCrest(cx, cy, s) {
   ctx.restore();
 }
 
+// Jonas' eigener Verein: blaues Schild mit gelbem Rand, Stern und FCO
+function drawOlofssonCrest(cx, cy, s) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  const shield = () => {
+    ctx.beginPath();
+    ctx.moveTo(-s*0.42, -s*0.46); ctx.lineTo(s*0.42, -s*0.46); ctx.lineTo(s*0.42, s*0.05);
+    ctx.quadraticCurveTo(s*0.4, s*0.4, 0, s*0.55); ctx.quadraticCurveTo(-s*0.4, s*0.4, -s*0.42, s*0.05);
+    ctx.closePath();
+  };
+  shield();
+  ctx.shadowColor='rgba(0,0,0,0.45)'; ctx.shadowBlur=s*0.12;
+  ctx.fillStyle='#ffd200'; ctx.fill(); ctx.shadowBlur=0;
+  ctx.scale(0.84, 0.84); shield(); ctx.fillStyle='#0b4ea2'; ctx.fill();
+  ctx.fillStyle='#ffd200'; ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const a = -Math.PI/2 + i*Math.PI/5, r = i % 2 ? s*0.07 : s*0.16;
+    ctx.lineTo(Math.cos(a)*r, -s*0.2 + Math.sin(a)*r);
+  }
+  ctx.closePath(); ctx.fill();
+  ctx.font=`900 ${s*0.22}px system-ui`;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('FCO', 0, s*0.14);
+  ctx.restore();
+}
+
 function drawBVBCrest(cx, cy, s) {
   ctx.save();
   ctx.translate(cx, cy);
@@ -2715,6 +2741,16 @@ const SPAIN = { name: 'Spanien', short: 'ESP', color: '#c60b1e', light: '#ff3b4e
 };
 
 // Auswärtstrikots für Vereine mit ähnlicher Farbe (Köln und Bayern sind beide rot)
+const OLOFSSON = { name: 'FC Olofsson', short: 'FCO', color: '#ffd200', light: '#ffe45c', numColor:'#0b4ea2', nums:['10','9','7'], names:['Simon','Jonas','Anna'], keeperName:'Henrik', keeperNum:'1',
+  style:{shortsColor:'#0b4ea2', shortSleeves:true, socksColor:'#ffd200', socksStripe:'#0b4ea2', trim:'#0b4ea2', shortsStripe:'#ffd200'},
+  appearances:[
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#8a6a45', hairStyle:'short' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#8a6a45', hairStyle:'top' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#8a6a45', hairStyle:'bun' },
+  ],
+  keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#8a6a45', hairStyle:'short' }
+};
+OLOFSSON.away = { color:'#0b4ea2', numColor:'#ffd200', style:{shortsColor:'#0b4ea2', shortSleeves:true, socksColor:'#0b4ea2', socksStripe:'#ffd200', trim:'#ffd200', shortsStripe:'#ffd200'} };
 KOELN.away  = { color:'#ffffff', numColor:'#e3000f', style:{shortsColor:'#ffffff', shortSleeves:true, socksColor:'#ffffff', socksStripe:'#e3000f', trim:'#e3000f', shortsStripe:'#e3000f'} };
 BAYERN.away = { color:'#f2f2f2', numColor:'#dc052d', style:{shortsColor:'#f2f2f2', shortSleeves:true, socksColor:'#f2f2f2', socksStripe:'#dc052d', trim:'#dc052d', sidePanel:'rgba(220,5,45,0.85)', shortsStripe:'#dc052d'} };
 
@@ -3058,6 +3094,7 @@ const CLUB_LIST = [
   { club:SCHALKE, team:'blue', crest:drawSchalkeCrest, label:'Schalke', league:'de' },
   { club:BMG,     team:'red',  crest:drawBMGCrest,     label:'M\'gladbach', league:'de' },
   { club:BAYERN,  team:'red',  crest:drawBayernCrest,  label:'Bayern', league:'de' },
+  { club:OLOFSSON, team:'blue', crest:drawOlofssonCrest, label:'FC Olofsson', league:'de' },
   { club:CITY,    team:'blue', crest:drawCityCrest,    label:'Man City', league:'en' },
   { club:ARSENAL, team:'red',  crest:drawArsenalCrest, label:'Arsenal', league:'en' },
   { club:LIVERPOOL, team:'red', crest:drawLiverpoolCrest, label:'Liverpool', league:'en' },
@@ -3145,6 +3182,7 @@ function clubCardLayout(entries) {
 
 KOELN.stadium   = 'RheinEnergieStadion'; KOELN.fans   = ['#e3000f', '#ffffff'];
 BVB.stadium     = 'Signal Iduna Park';   BVB.fans     = ['#ffe500', '#ffe500', '#111111'];
+OLOFSSON.stadium = 'Olofsson-Arena';     OLOFSSON.fans = ['#ffd200', '#ffd200', '#0b4ea2'];
 SCHALKE.stadium = 'Veltins-Arena';       SCHALKE.fans = ['#004c9f', '#ffffff'];
 BMG.stadium     = 'Borussia-Park';       BMG.fans     = ['#111111', '#ffffff', '#00a650'];
 BAYERN.stadium  = 'Allianz Arena';       BAYERN.fans  = ['#dc052d', '#ffffff'];
