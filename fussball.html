@@ -1977,20 +1977,49 @@ function crowdSwell(on) {
   crowdGainNode.gain.setTargetAtTime(on ? 0.45 : 0.25, getAC().currentTime, 0.3);
 }
 
+// Vereine ohne eigene Lieder bekommen welche mit ihrem Namen
+function chantFor(club) {
+  if (CHANTS[club.short]) return CHANTS[club.short];
+  const n = clubEntry(club).label, nation = isNation(club);
+  return { songs:[
+      [`${n}! ${n}!`, 'de-DE', 'a1:4 e2:0 -1 a1:4 e2:0'],
+      [nation ? `Auf geht's, ${n}!` : `Allez, allez, ${n}!`, 'de-DE', 'a1:0 e1:2 a1:4 e2:0 -1 a1:0 e1:2 a1:4 e2:0'],
+      [`Wir sind ${n}! Olé, olé!`, 'de-DE', 'i1:4 i1:2 a2:0 -1 o1:4 e1:2 o1:4 e2:0']],
+    goal:[`Tooor! ${n}!`, 'de-DE', 'o4:7 -1 a1:4 e2:0'] };
+}
+let chantLine = null;   // { text, club, until }: Liedtext, der gerade oben eingeblendet wird
+const chantVisible = () => !!chantLine && Date.now() < chantLine.until && inMatch();
+
 let chantTimer = null;
 function chant(club, isGoal) {
-  const set = CHANTS[club.short];
+  const set = chantFor(club);
   if (!set) return;
   // Text und Sprache stehen nur zur Übersicht in CHANTS; sprechen darf allein der Kommentator
-  const [, , pattern] = isGoal ? set.goal : set.songs[Math.floor(Math.random() * set.songs.length)];
+  const [text, , pattern] = isGoal ? set.goal : set.songs[Math.floor(Math.random() * set.songs.length)];
   stopChants();
   crowdSwell(true);
   const dur = singChoir(pattern);
+  chantLine = { text, club, until: Date.now() + (dur + 1) * 1000 };
   crowdClaps(3, 0.28, dur + 0.1);
   chantTimer = setTimeout(() => crowdSwell(false), (dur + 1.2) * 1000);
   nextChantBusyUntil = Date.now() + (dur + 1.2) * 1000;
 }
 let nextChantBusyUntil = 0;
+
+function drawChantBanner() {
+  if (!chantVisible() || gameState === 'goal' || gameState === 'var') return;
+  const w = W(), h = H(), c = chantLine, e = clubEntry(c.club), left = c.until - Date.now();
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, left / 400);
+  ctx.font = `bold ${Math.min(w * 0.032, 16)}px system-ui`;
+  const text = `🎵 ${c.text}`, tw = Math.min(ctx.measureText(text).width, w * 0.7), bh = Math.min(h * 0.075, 32), bx = w / 2 - tw / 2 - bh, by = Math.min(h * 0.16, 64);
+  ctx.fillStyle = 'rgba(0,0,0,0.55)'; roundRect(bx, by, tw + bh * 2, bh, bh / 2); ctx.fill();
+  ctx.fillStyle = c.club.light || '#fff'; ctx.fillRect(bx + bh * 0.4, by + bh - 4, tw + bh * 1.2, 2);
+  e.crest(bx + bh * 0.55, by + bh / 2, bh * 0.75);
+  ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(text, w / 2 + bh * 0.3, by + bh / 2 + 1, tw);
+  ctx.restore();
+}
 
 function stopChants() {
   if (chantTimer) { clearTimeout(chantTimer); chantTimer = null; }
@@ -6413,6 +6442,7 @@ function loop() {
   if (mode === 'shootout' && shootout && (gameState === 'penalty' || gameState === 'shootout')) drawShootoutUI();
   drawReplayUI();
   drawCommentary();
+  drawChantBanner();
   homeBtn.hidden = gameState !== 'start';
   micBtn.hidden = !['start', 'title'].includes(gameState) || subPage() || introRunning();
   if (nameInput.hidden !== (gameState !== 'careerNew')) nameInput.hidden = gameState !== 'careerNew';
