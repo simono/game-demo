@@ -3574,7 +3574,7 @@ function controlP2(p) {
     if (ballOwner === p) {
       const dx = goalX - ball.x, dy = 0.5 - ball.y, l = Math.hypot(dx, dy) || 1;
       ball.vx = dx / l * KICK_SPD; ball.vy = dy / l * KICK_SPD + (Math.random() - 0.5) * 0.006;
-      ball.special = null; ball.curve = 0; goalScorer = p; ballOwner = null;
+      ball.special = null; ball.curve = 0; goalScorer = p; ballOwner = null; countShot(p);
     }
   }
   if (keys['k']) {
@@ -3917,8 +3917,41 @@ function playerName(p) {
   return (club.names && club.names[team.indexOf(p)]) || `Nr. ${p.num}`;
 }
 
+// ── Statistik fürs Spielende: Ballbesitz in Sekunden, Schüsse, Fouls ──
+let matchStats = null;
+const resetStats = () => { matchStats = { red: { poss: 0, shots: 0, fouls: 0 }, blue: { poss: 0, shots: 0, fouls: 0 } }; };
+resetStats();
+const countShot = p => { if (p && !p.isKeeper) matchStats[p.team].shots++; };
+function possessionPct(team) {
+  const r = matchStats.red.poss, b = matchStats.blue.poss;
+  return r + b ? Math.round((team === 'red' ? r : b) / (r + b) * 100) : 50;
+}
+function statRows() {
+  const L = playerTeam === 'red' ? 'red' : 'blue', R = L === 'red' ? 'blue' : 'red';
+  return [
+    { label: 'Ballbesitz', l: possessionPct(L), r: possessionPct(R), unit: '%' },
+    { label: 'Schüsse', l: matchStats[L].shots, r: matchStats[R].shots, unit: '' },
+    { label: 'Fouls', l: matchStats[L].fouls, r: matchStats[R].fouls, unit: '' },
+  ];
+}
+function drawStats(w, y0, rowH, lCol, rCol) {
+  const bw = Math.min(w * 0.7, 420), x0 = w / 2 - bw / 2;
+  statRows().forEach((r, i) => {
+    const y = y0 + i * rowH, tot = r.l + r.r || 1, lw = bw * r.l / tot;
+    ctx.fillStyle = 'rgba(255,255,255,0.12)'; roundRect(x0, y + rowH * 0.42, bw, rowH * 0.22, rowH * 0.11); ctx.fill();
+    ctx.fillStyle = lCol; roundRect(x0, y + rowH * 0.42, Math.max(2, lw), rowH * 0.22, rowH * 0.11); ctx.fill();
+    ctx.fillStyle = rCol; roundRect(x0 + lw, y + rowH * 0.42, Math.max(2, bw - lw), rowH * 0.22, rowH * 0.11); ctx.fill();
+    ctx.font = `bold ${Math.min(rowH * 0.34, 16)}px system-ui`; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.fillText(r.label, w / 2, y + rowH * 0.18);
+    ctx.textAlign = 'left'; ctx.fillText(`${r.l}${r.unit}`, x0, y + rowH * 0.18);
+    ctx.textAlign = 'right'; ctx.fillText(`${r.r}${r.unit}`, x0 + bw, y + rowH * 0.18);
+  });
+  ctx.textAlign = 'center';
+}
+
 function commitFoul(fouler, victim) {
   if (gameState !== 'playing') return;
+  matchStats[fouler.team].fouls++;
   playWhistle();
   let card = null;
   const r = Math.random();
@@ -4166,7 +4199,7 @@ function doShoot() {
     specialBanner = { text: SPECIALS[special], until: Date.now() + 1300 };
     say(SPECIAL_SAY[special], 3);
   }
-  goalScorer = cp; ballOwner = null;
+  goalScorer = cp; ballOwner = null; countShot(cp);
 }
 
 function updateKickFlips() {
@@ -4382,7 +4415,7 @@ function updateCelebration() {
 
 function startMatch() {
   for (const p of allPlayers) { p.sentOff = false; p.yellow = 0; }
-  setPiece = null; penalty = null; protectUntil = 0; stamina = 1; tired = false;
+  setPiece = null; penalty = null; protectUntil = 0; stamina = 1; tired = false; resetStats();
   p2Idx = 0; stamina2 = 1; tired2 = false; careerMatchGoals = 0;
   clearCelebration();
   rollWeather();
@@ -5140,7 +5173,7 @@ function updateAI() {
       if (foeClose(fp) && aiShootCooldown<=0) {
         const dx=foeGoalX-fp.x, dy=0.5-fp.y, len=Math.hypot(dx,dy)||1;
         ball.vx=(dx/len)*KICK_SPD; ball.vy=(dy/len)*KICK_SPD+(Math.random()-0.5)*difficulty.aim;
-        goalScorer=fp; ballOwner=null; aiShootCooldown=difficulty.cooldown;
+        goalScorer=fp; ballOwner=null; aiShootCooldown=difficulty.cooldown; countShot(fp);
       } else { moveTo(fp, sx, foeSupY[i], difficulty.speed); }
     } else if (ballOwner && ballOwner.team===playerTeam) {
       moveTo(fp, ballOwner.x, ballOwner.y, difficulty.speed);
@@ -5165,7 +5198,7 @@ function updateAI() {
       if (myClose(rp) && aiShootCooldown<=0) {
         const dx=myGoalX-ball.x, dy=0.5-ball.y, len=Math.hypot(dx,dy)||1;
         ball.vx=(dx/len)*KICK_SPD; ball.vy=(dy/len)*KICK_SPD;
-        goalScorer=rp; ballOwner=null; aiShootCooldown=60;
+        goalScorer=rp; ballOwner=null; aiShootCooldown=60; countShot(rp);
       } else {
         const dx=cp.x-rp.x, dy=cp.y-rp.y, len=Math.hypot(dx,dy)||1;
         ball.vx=(dx/len)*PASS_SPD; ball.vy=(dy/len)*PASS_SPD;
@@ -5290,6 +5323,7 @@ function update() {
   // Spieler bewegen
   const cp = getCP();
   let mvx = 0, mvy = 0;
+  if (ballOwner && !ballOwner.isKeeper) matchStats[ballOwner.team].poss += delta;
   watchShotOnGoal();
   const arrows = mode !== 'duo' && !keeperControl();   // im Zwei-Spieler-Modus gehören Pfeile und Enter Spieler 2
   if (dpad.left  || (arrows && keys['ArrowLeft'])  || keys['a']) mvx -= 1;
@@ -5742,38 +5776,39 @@ function drawUI() {
     ctx.textAlign='center'; ctx.textBaseline='middle';
     ctx.fillStyle='#fff';
     ctx.font=`bold ${Math.min(w*0.1,44)}px system-ui`;
-    ctx.fillText('Spielende! 🏁', w/2, h*0.22);
+    ctx.fillText('Spielende! 🏁', w/2, h*0.11);
     const lC=playerTeam==='red'?playerClub:opponentClub, rC=playerTeam==='red'?opponentClub:playerClub;
     const lS=score.red, rS=score.blue;
     // Vereinsnamen
     ctx.font=`bold ${Math.min(w*0.05,21)}px system-ui`;
-    ctx.fillStyle=lC.light; ctx.textAlign='right';  ctx.fillText(lC.short, w/2-30, h*0.36);
-    ctx.fillStyle=rC.light; ctx.textAlign='left';   ctx.fillText(rC.short, w/2+30, h*0.36);
+    ctx.fillStyle=lC.light; ctx.textAlign='right';  ctx.fillText(lC.short, w/2-30, h*0.22);
+    ctx.fillStyle=rC.light; ctx.textAlign='left';   ctx.fillText(rC.short, w/2+30, h*0.22);
     // Ergebnis groß
     ctx.font=`bold ${Math.min(w*0.15,64)}px system-ui`;
-    ctx.fillStyle=lC.light; ctx.textAlign='right';  ctx.fillText(lS, w/2-18, h*0.48);
-    ctx.fillStyle='#fff';   ctx.textAlign='center'; ctx.fillText(':', w/2,    h*0.48);
-    ctx.fillStyle=rC.light; ctx.textAlign='left';   ctx.fillText(rS, w/2+18, h*0.48);
+    ctx.fillStyle=lC.light; ctx.textAlign='right';  ctx.fillText(lS, w/2-18, h*0.32);
+    ctx.fillStyle='#fff';   ctx.textAlign='center'; ctx.fillText(':', w/2,    h*0.32);
+    ctx.fillStyle=rC.light; ctx.textAlign='left';   ctx.fillText(rS, w/2+18, h*0.32);
     // Gewinner
     ctx.textAlign='center';
     ctx.font=`bold ${Math.min(w*0.06,26)}px system-ui`;
-    if (lS > rS)      { ctx.fillStyle=lC.light; ctx.fillText(`${lC.name} gewinnt! 🏆`, w/2, h*0.63); }
-    else if (rS > lS) { ctx.fillStyle=rC.light; ctx.fillText(`${rC.name} gewinnt! 🏆`, w/2, h*0.63); }
-    else              { ctx.fillStyle='#feca57'; ctx.fillText(mode === 'cl' ? 'Unentschieden! Elfmeterschießen … 🥅' : 'Unentschieden! 🤝', w/2, h*0.63); }
+    if (lS > rS)      { ctx.fillStyle=lC.light; ctx.fillText(`${lC.name} gewinnt! 🏆`, w/2, h*0.43, w-24); }
+    else if (rS > lS) { ctx.fillStyle=rC.light; ctx.fillText(`${rC.name} gewinnt! 🏆`, w/2, h*0.43, w-24); }
+    else              { ctx.fillStyle='#feca57'; ctx.fillText(mode === 'cl' ? 'Unentschieden! Elfmeterschießen … 🥅' : 'Unentschieden! 🤝', w/2, h*0.43, w-24); }
+    if (mode !== 'shootout') drawStats(w, h*0.5, Math.min(h*0.11, 54), lC.light, rC.light);
     const elapsed = Date.now() - fulltimeShowMs;
     if (elapsed > 4000) {
       const blink = Math.sin(Date.now()*0.005) > 0;
       if (blink) {
         ctx.fillStyle='rgba(255,255,255,0.7)';
         ctx.font=`${Math.min(w*0.045,19)}px system-ui`;
-        ctx.fillText(mode === 'cl' ? 'Drückt eine Taste: weiter zum Turnier' : mode === 'season' ? 'Drückt eine Taste: weiter zur Tabelle' : mode === 'career' ? 'Drückt eine Taste: weiter zur Karriere' : 'Drückt eine Taste zum Hauptmenü', w/2, h*0.77);
+        ctx.fillText(mode === 'cl' ? 'Drückt eine Taste: weiter zum Turnier' : mode === 'season' ? 'Drückt eine Taste: weiter zur Tabelle' : mode === 'career' ? 'Drückt eine Taste: weiter zur Karriere' : 'Drückt eine Taste zum Hauptmenü', w/2, h*0.92);
       }
     } else {
       // Countdown bis man weiterkann
       const remaining = Math.ceil((4000 - elapsed) / 1000);
       ctx.fillStyle='rgba(255,255,255,0.4)';
       ctx.font=`${Math.min(w*0.04,17)}px system-ui`;
-      ctx.fillText(`Weiter in ${remaining}...`, w/2, h*0.77);
+      ctx.fillText(`Weiter in ${remaining}...`, w/2, h*0.92);
     }
     ctx.restore();
     return;
