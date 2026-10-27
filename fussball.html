@@ -744,6 +744,44 @@ const drawJapanCrest = (cx, cy, s) => drawFlagCrest(cx, cy, s, (fw, fh) => {
   ctx.fillStyle='#ffffff'; ctx.fillRect(0, 0, fw, fh);
   ctx.fillStyle='#bc002d'; ctx.beginPath(); ctx.arc(fw/2, fh/2, fh*0.3, 0, Math.PI*2); ctx.fill();
 });
+const drawNetherlandsCrest = (cx, cy, s) => drawFlagCrest(cx, cy, s, (fw, fh) => {
+  ['#ae1c28', '#ffffff', '#21468b'].forEach((c, i) => { ctx.fillStyle=c; ctx.fillRect(0, i*fh/3, fw, fh/3+1); });
+});
+const drawItalyCrest = (cx, cy, s) => drawFlagCrest(cx, cy, s, (fw, fh) => {
+  ['#009246', '#ffffff', '#ce2b37'].forEach((c, i) => { ctx.fillStyle=c; ctx.fillRect(i*fw/3, 0, fw/3+1, fh); });
+});
+const drawBelgiumCrest = (cx, cy, s) => drawFlagCrest(cx, cy, s, (fw, fh) => {
+  ['#111111', '#fdda24', '#ef3340'].forEach((c, i) => { ctx.fillStyle=c; ctx.fillRect(i*fw/3, 0, fw/3+1, fh); });
+});
+const drawCroatiaCrest = (cx, cy, s) => drawFlagCrest(cx, cy, s, (fw, fh) => {
+  ['#ff0000', '#ffffff', '#171796'].forEach((c, i) => { ctx.fillStyle=c; ctx.fillRect(0, i*fh/3, fw, fh/3+1); });
+  // Kleines rot-weißes Schachbrett-Wappen in der Mitte
+  const q = fh*0.09;
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) {
+    ctx.fillStyle = (i + j) % 2 ? '#ffffff' : '#ff0000';
+    ctx.fillRect(fw/2 - 2*q + i*q, fh/2 - 2*q + j*q, q, q);
+  }
+});
+const drawMoroccoCrest = (cx, cy, s) => drawFlagCrest(cx, cy, s, (fw, fh) => {
+  ctx.fillStyle='#c1272d'; ctx.fillRect(0, 0, fw, fh);
+  ctx.strokeStyle='#006233'; ctx.lineWidth=fh*0.05;
+  ctx.beginPath();
+  for (let i = 0; i < 5; i++) {
+    const a = -Math.PI/2 + i * Math.PI * 4/5;
+    ctx.lineTo(fw/2 + Math.cos(a)*fh*0.25, fh/2 + Math.sin(a)*fh*0.25);
+  }
+  ctx.closePath(); ctx.stroke();
+});
+const drawUsaCrest = (cx, cy, s) => drawFlagCrest(cx, cy, s, (fw, fh) => {
+  for (let i = 0; i < 13; i++) { ctx.fillStyle = i % 2 ? '#ffffff' : '#b22234'; ctx.fillRect(0, i*fh/13, fw, fh/13+1); }
+  ctx.fillStyle='#3c3b6e'; ctx.fillRect(0, 0, fw*0.4, fh*7/13);
+  ctx.fillStyle='#ffffff';
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) { ctx.beginPath(); ctx.arc(fw*(0.06 + i*0.09), fh*(0.09 + j*0.16), fh*0.025, 0, Math.PI*2); ctx.fill(); }
+});
+const drawMexicoCrest = (cx, cy, s) => drawFlagCrest(cx, cy, s, (fw, fh) => {
+  ['#006847', '#ffffff', '#ce1126'].forEach((c, i) => { ctx.fillStyle=c; ctx.fillRect(i*fw/3, 0, fw/3+1, fh); });
+  ctx.fillStyle='#8b5a2b'; ctx.beginPath(); ctx.arc(fw/2, fh/2, fh*0.12, 0, Math.PI*2); ctx.fill();
+});
 
 function drawSchalkeCrest(cx, cy, s) {
   ctx.save();
@@ -1399,6 +1437,10 @@ function drawPlayer(x, y, size, color, label, celebrate=false, numColor='rgba(25
     } else if (style.pattern === 'hoops') {
       ctx.fillStyle = style.patternColor;
       for (let py = 0.3; py < 0.85; py += 0.14) ctx.fillRect(x - s * 0.4, y + py * s, s * 0.8, s * 0.06);
+    } else if (style.pattern === 'checks') {
+      ctx.fillStyle = style.patternColor;
+      const q = s * 0.1;
+      for (let i = 0; i < 8; i++) for (let j = 0; j < 10; j++) if ((i + j) % 2) ctx.fillRect(x - s * 0.4 + i * q, y + j * q, q, q);
     } else if (style.pattern === 'chevron') {
       ctx.strokeStyle = style.patternColor;
       ctx.lineWidth = s * 0.06;
@@ -1897,7 +1939,7 @@ function updateCommentary() {
   if (st !== prev) {
     if (st === 'playing' && ['menu', 'cup', 'season'].includes(prev)) {
       cSaid10 = false; cPrevExtra = false; cShot = null;
-      const comp = mode === 'cl' ? `${cup.wm ? 'Weltmeisterschaft' : 'Champions League'}, ${CUP_ROUNDS[cup.round]}! ` : mode === 'season' ? `${season.day + 1}. Spieltag! ` : '';
+      const comp = mode === 'cl' ? `${cup.wm ? 'Weltmeisterschaft' : 'Champions League'}, ${cupRounds()[cup.round]}! ` : mode === 'season' ? `${season.day + 1}. Spieltag! ` : '';
       const wx = { rain:' Es regnet, der Rasen ist rutschig!', snow:' Es schneit! Heute wird mit dem orangen Ball gespielt.' }[weather] || '';
       say([`${comp}Herzlich willkommen! Wir sind live dabei: ${playerClub.stadium}. ${spokenClub(playerClub)} gegen ${spokenClub(opponentClub)}. Der Ball rollt!${wx}`,
            `${comp}Hallo und willkommen zum Spiel ${spokenClub(playerClub)} gegen ${spokenClub(opponentClub)}!${wx} Anpfiff!`], 3);
@@ -2616,6 +2658,76 @@ const JAPAN = { name: 'Japan', short: 'JPN', color: '#1b2e7a', light: '#4a63c9',
   keeperLook:{ skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'short' }
 };
 
+const NETHERLANDS = { name: 'Niederlande', short: 'NED', color: '#f36c21', light: '#ff9a55', numColor:'#1d2a5c', nums:['11','7','4'], names:['Gakpo','Simons','van Dijk'], keeperName:'Verbruggen', keeperNum:'1',
+  style:{shortsColor:'#f36c21', shortSleeves:true, socksColor:'#f36c21', socksStripe:'#1d2a5c', trim:'#1d2a5c', shortsStripe:'#1d2a5c'},
+  appearances:[
+    { skin:'#9a6440', skinDark:'#744627', hair:'#141414', hairStyle:'short' },
+    { skin:'#9a6440', skinDark:'#744627', hair:'#141414', hairStyle:'curly' },
+    { skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'buzz', beard:'full' },
+  ],
+  keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#d8c070', hairStyle:'short' }
+};
+
+const ITALY = { name: 'Italien', short: 'ITA', color: '#1f5fbf', light: '#5a8fe0', numColor:'#fff', nums:['19','18','8'], names:['Retegui','Barella','Tonali'], keeperName:'Donnarumma', keeperNum:'1',
+  style:{shortsColor:'#ffffff', shortSleeves:true, socksColor:'#1f5fbf', socksStripe:'#ffffff', trim:'#ffffff', shortsStripe:'#1f5fbf'},
+  appearances:[
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#2a1a10', hairStyle:'short', beard:'stubble' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#2a1a10', hairStyle:'top' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#3a2516', hairStyle:'bun', beard:'stubble' },
+  ],
+  keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#2a1a10', hairStyle:'short', beard:'stubble' }
+};
+
+const BELGIUM = { name: 'Belgien', short: 'BEL', color: '#e30613', light: '#ff4d55', numColor:'#fdda24', nums:['7','11','10'], names:['De Bruyne','Doku','Lukaku'], keeperName:'Courtois', keeperNum:'1',
+  style:{shortsColor:'#e30613', shortSleeves:true, socksColor:'#e30613', socksStripe:'#111111', trim:'#fdda24', shortsStripe:'#111111'},
+  appearances:[
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#d07a3a', hairStyle:'short' },
+    { skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'top' },
+    { skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'buzz', beard:'stubble' },
+  ],
+  keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#5a3a20', hairStyle:'short', beard:'stubble' }
+};
+
+const CROATIA = { name: 'Kroatien', short: 'CRO', color: '#ffffff', light: '#ffffff', numColor:'#171796', nums:['10','9','4'], names:['Modrić','Kramarić','Gvardiol'], keeperName:'Livaković', keeperNum:'1',
+  style:{shortsColor:'#ffffff', shortSleeves:true, socksColor:'#171796', socksStripe:'#ff0000', trim:'#171796', pattern:'checks', patternColor:'#e30613', shortsStripe:'#171796'},
+  appearances:[
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#8a6a45', hairStyle:'bun' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#2a1a10', hairStyle:'short' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#2a1a10', hairStyle:'top' },
+  ],
+  keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#2a1a10', hairStyle:'short', beard:'full' }
+};
+
+const MOROCCO = { name: 'Marokko', short: 'MAR', color: '#c1272d', light: '#ff5a5f', numColor:'#fff', nums:['10','2','19'], names:['Brahim Díaz','Hakimi','En-Nesyri'], keeperName:'Bounou', keeperNum:'1',
+  style:{shortsColor:'#006233', shortSleeves:true, socksColor:'#c1272d', socksStripe:'#006233', trim:'#006233', shortsStripe:'#c1272d'},
+  appearances:[
+    { skin:'#e0aa80', skinDark:'#c08860', hair:'#141414', hairStyle:'top', beard:'stubble' },
+    { skin:'#c99470', skinDark:'#a06e4c', hair:'#141414', hairStyle:'curly' },
+    { skin:'#c99470', skinDark:'#a06e4c', hair:'#141414', hairStyle:'short', beard:'stubble' },
+  ],
+  keeperLook:{ skin:'#c99470', skinDark:'#a06e4c', hair:'#141414', hairStyle:'short', beard:'full' }
+};
+
+const USA = { name: 'USA', short: 'USA', color: '#ffffff', light: '#ffffff', numColor:'#0a3161', nums:['10','8','20'], names:['Pulisic','McKennie','Balogun'], keeperName:'Turner', keeperNum:'1',
+  style:{shortsColor:'#0a3161', shortSleeves:true, socksColor:'#ffffff', socksStripe:'#b22234', trim:'#0a3161', shortsStripe:'#ffffff'},
+  appearances:[
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#5a3a20', hairStyle:'short' },
+    { skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'curly' },
+    { skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'buzz' },
+  ],
+  keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#a0522d', hairStyle:'short', beard:'full' }
+};
+
+const MEXICO = { name: 'Mexiko', short: 'MEX', color: '#006847', light: '#2e9a6e', numColor:'#fff', nums:['9','4','22'], names:['Raúl Jiménez','Edson Álvarez','Lozano'], keeperName:'Ochoa', keeperNum:'13',
+  style:{shortsColor:'#ffffff', shortSleeves:true, socksColor:'#ce1126', socksStripe:'#ffffff', trim:'#ce1126', shortsStripe:'#006847'},
+  appearances:[
+    { skin:'#d9a47f', skinDark:'#b8845f', hair:'#141414', hairStyle:'bun', beard:'full' },
+    { skin:'#d9a47f', skinDark:'#b8845f', hair:'#141414', hairStyle:'short', beard:'stubble' },
+    { skin:'#d9a47f', skinDark:'#b8845f', hair:'#141414', hairStyle:'top' },
+  ],
+  keeperLook:{ skin:'#d9a47f', skinDark:'#b8845f', hair:'#141414', hairStyle:'curly' }
+};
+
 GERMANY.away   = { color:'#1a1a1a', numColor:'#ffffff', style:{shortsColor:'#1a1a1a', shortSleeves:true, socksColor:'#1a1a1a', socksStripe:'#dd0000', trim:'#ffcc00', shortsStripe:'#dd0000'} };
 SWEDEN.away    = { color:'#005b99', numColor:'#fecc00', style:{shortsColor:'#005b99', shortSleeves:true, socksColor:'#005b99', socksStripe:'#fecc00', trim:'#fecc00', shortsStripe:'#fecc00'} };
 ENGLAND.away   = { color:'#c8102e', numColor:'#ffffff', style:{shortsColor:'#c8102e', shortSleeves:true, socksColor:'#c8102e', socksStripe:'#ffffff', trim:'#ffffff', shortsStripe:'#ffffff'} };
@@ -2625,6 +2737,13 @@ BRAZIL.away    = { color:'#1f4fa3', numColor:'#ffdf00', style:{shortsColor:'#1f4
 ARGENTINA.away = { color:'#1b1f4a', numColor:'#74acdf', style:{shortsColor:'#1b1f4a', shortSleeves:true, socksColor:'#1b1f4a', socksStripe:'#74acdf', trim:'#74acdf', shortsStripe:'#74acdf'} };
 PORTUGAL.away  = { color:'#f2f2f2', numColor:'#c8102e', style:{shortsColor:'#f2f2f2', shortSleeves:true, socksColor:'#f2f2f2', socksStripe:'#c8102e', trim:'#046a38', shortsStripe:'#c8102e'} };
 JAPAN.away     = { color:'#f2f2f2', numColor:'#1b2e7a', style:{shortsColor:'#f2f2f2', shortSleeves:true, socksColor:'#f2f2f2', socksStripe:'#bc002d', trim:'#bc002d', shortsStripe:'#1b2e7a'} };
+NETHERLANDS.away = { color:'#1d2a5c', numColor:'#f36c21', style:{shortsColor:'#1d2a5c', shortSleeves:true, socksColor:'#1d2a5c', socksStripe:'#f36c21', trim:'#f36c21', shortsStripe:'#f36c21'} };
+ITALY.away     = { color:'#f2f2f2', numColor:'#1f5fbf', style:{shortsColor:'#1f5fbf', shortSleeves:true, socksColor:'#f2f2f2', socksStripe:'#1f5fbf', trim:'#1f5fbf', shortsStripe:'#ffffff'} };
+BELGIUM.away   = { color:'#f2f2f2', numColor:'#e30613', style:{shortsColor:'#f2f2f2', shortSleeves:true, socksColor:'#f2f2f2', socksStripe:'#e30613', trim:'#111111', shortsStripe:'#e30613'} };
+CROATIA.away   = { color:'#1a1f5c', numColor:'#ffffff', style:{shortsColor:'#1a1f5c', shortSleeves:true, socksColor:'#1a1f5c', socksStripe:'#e30613', trim:'#e30613', shortsStripe:'#e30613'} };
+MOROCCO.away   = { color:'#f2f2f2', numColor:'#c1272d', style:{shortsColor:'#f2f2f2', shortSleeves:true, socksColor:'#f2f2f2', socksStripe:'#006233', trim:'#c1272d', shortsStripe:'#c1272d'} };
+USA.away       = { color:'#0a3161', numColor:'#ffffff', style:{shortsColor:'#0a3161', shortSleeves:true, socksColor:'#0a3161', socksStripe:'#b22234', trim:'#b22234', shortsStripe:'#ffffff'} };
+MEXICO.away    = { color:'#1a1a1a', numColor:'#ffffff', style:{shortsColor:'#1a1a1a', shortSleeves:true, socksColor:'#1a1a1a', socksStripe:'#006847', trim:'#006847', shortsStripe:'#ce1126'} };
 CHELSEA.away   = { color:'#f2f2f2', numColor:'#034694', style:{shortsColor:'#f2f2f2', shortSleeves:true, socksColor:'#f2f2f2', socksStripe:'#034694', trim:'#034694', shortsStripe:'#034694'} };
 
 function colorDistance(a, b) {
@@ -2664,6 +2783,13 @@ const CLUB_LIST = [
   { club:ARGENTINA, team:'blue', crest:drawArgentinaCrest, label:'Argentinien', league:'nat' },
   { club:PORTUGAL,  team:'red',  crest:drawPortugalCrest,  label:'Portugal', league:'nat' },
   { club:JAPAN,     team:'blue', crest:drawJapanCrest,     label:'Japan', league:'nat' },
+  { club:NETHERLANDS, team:'red',  crest:drawNetherlandsCrest, label:'Niederlande', league:'nat' },
+  { club:ITALY,       team:'blue', crest:drawItalyCrest,       label:'Italien', league:'nat' },
+  { club:BELGIUM,     team:'red',  crest:drawBelgiumCrest,     label:'Belgien', league:'nat' },
+  { club:CROATIA,     team:'blue', crest:drawCroatiaCrest,     label:'Kroatien', league:'nat' },
+  { club:MOROCCO,     team:'red',  crest:drawMoroccoCrest,     label:'Marokko', league:'nat' },
+  { club:USA,         team:'blue', crest:drawUsaCrest,         label:'USA', league:'nat' },
+  { club:MEXICO,      team:'red',  crest:drawMexicoCrest,      label:'Mexiko', league:'nat' },
 ];
 const clubEntry = club => CLUB_LIST.find(e => e.club === club);
 
@@ -2691,7 +2817,8 @@ function leagueTabLayout() {
 // Karten der Vereinsauswahl: bis 4 in einer Reihe, sonst zwei Reihen
 function clubCardLayout(entries) {
   const w=W(), h=H();
-  const rows = entries.length > 4 ? [Math.ceil(entries.length/2), Math.floor(entries.length/2)] : [entries.length];
+  const n = entries.length, rowsN = n > 4 ? Math.max(2, Math.ceil(n / (w > h ? 8 : 4))) : 1, per = Math.ceil(n / rowsN);
+  const rows = Array.from({ length:rowsN }, (_, r) => Math.min(per, n - r * per));
   const top = h*0.36, bottom = h*0.95, gapY = h*0.03;
   const rowH = (bottom - top - gapY*(rows.length-1)) / rows.length;
   const out = [];
@@ -2729,6 +2856,13 @@ BRAZIL.stadium    = 'Maracanã';               BRAZIL.fans    = ['#ffdf00', '#ff
 ARGENTINA.stadium = 'Estadio Monumental';     ARGENTINA.fans = ['#74acdf', '#ffffff', '#74acdf'];
 PORTUGAL.stadium  = 'Estádio da Luz';         PORTUGAL.fans  = ['#da291c', '#da291c', '#046a38'];
 JAPAN.stadium     = 'Nationalstadion Tokio';  JAPAN.fans     = ['#1b2e7a', '#ffffff', '#bc002d'];
+NETHERLANDS.stadium = 'Johan Cruijff ArenA';  NETHERLANDS.fans = ['#f36c21', '#f36c21', '#21468b'];
+ITALY.stadium     = 'Stadio Olimpico';        ITALY.fans     = ['#1f5fbf', '#1f5fbf', '#ffffff'];
+BELGIUM.stadium   = 'König-Baudouin-Stadion'; BELGIUM.fans   = ['#e30613', '#fdda24', '#111111'];
+CROATIA.stadium   = 'Stadion Maksimir';       CROATIA.fans   = ['#ff0000', '#ffffff', '#171796'];
+MOROCCO.stadium   = 'Stade Mohammed V';       MOROCCO.fans   = ['#c1272d', '#c1272d', '#006233'];
+USA.stadium       = 'MetLife Stadium';        USA.fans       = ['#ffffff', '#b22234', '#0a3161'];
+MEXICO.stadium    = 'Estadio Azteca';         MEXICO.fans    = ['#006847', '#ffffff', '#ce1126'];
 let stadiumBannerUntil = 0;
 
 let ball  = { x: 0.5, y: 0.5, vx: 0, vy: 0 };
@@ -3103,9 +3237,10 @@ const MODES = [
   { id:'cl',       emoji:'🏆', label:'Champions League',   sub:['8 Teams aus Europa,', 'K.-o. bis zum Finale'], color:'#1d3f9a' },
   { id:'season',   emoji:'📊', label:'Liga-Saison',        sub:['Jeder gegen jeden', 'mit Tabelle'],        color:'#c0392b' },
 ];
-const WM_MODE = { id:'cl', emoji:'🌍', label:'Weltmeisterschaft', sub:['8 Länder,', 'K.-o. bis zum Finale'], color:'#b8860b' };
+const WM_MODE = { id:'cl', emoji:'🌍', label:'Weltmeisterschaft', sub:['16 Länder,', 'K.-o. bis zum Finale'], color:'#b8860b' };
 const modeCards = () => MODES.map(m => m.id === 'cl' && isNation(playerClub) ? WM_MODE : m);
 const CUP_ROUNDS = ['Viertelfinale', 'Halbfinale', 'Finale'];
+const cupRounds = () => cup.wm ? ['Achtelfinale', ...CUP_ROUNDS] : CUP_ROUNDS;
 let mode = 'friendly', modeSel = 0, cup = null, season = null;
 
 const shuffle = a => { a = [...a]; for (let i = a.length-1; i > 0; i--) { const j = Math.floor(Math.random()*(i+1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
@@ -3143,10 +3278,10 @@ function backToTeamPick() {
 
 function startCup() {
   const wm = isNation(playerClub);
-  const others = shuffle(CLUB_LIST.filter(e => (e.league === 'nat') === wm).map(e => e.club).filter(c => c !== playerClub)).slice(0, 7);
+  const others = shuffle(CLUB_LIST.filter(e => (e.league === 'nat') === wm).map(e => e.club).filter(c => c !== playerClub)).slice(0, wm ? 15 : 7);
   cup = { rounds:[pairUp(shuffle([playerClub, ...others]))], round:0, out:false, won:false, champion:null, wm };
   gameState = 'cup';
-  announce(wm ? 'Willkommen zur Weltmeisterschaft! Acht Länder, nur einer wird Weltmeister.' : 'Willkommen zur Champions League! Acht Teams, nur einer holt den Pokal.', 3);
+  announce(wm ? 'Willkommen zur Weltmeisterschaft! Sechzehn Länder, nur einer wird Weltmeister.' : 'Willkommen zur Champions League! Acht Teams, nur einer holt den Pokal.', 3);
 }
 function advanceCup() {
   const ms = cup.rounds[cup.round], mine = ms.find(isMine);
@@ -3165,7 +3300,7 @@ function advanceCup() {
   const me = spokenClub(playerClub);
   if (cup.champion === playerClub) { cup.won = true; announce(cup.wm ? `Unglaublich! ${me} ist Weltmeister!` : `Unglaublich! ${me} gewinnt die Champions League!`); }
   else if (cup.out) announce(`Schade! ${me} ist ausgeschieden. Sieger wird ${spokenClub(cup.champion)}.`);
-  else announce(`${me} steht im ${CUP_ROUNDS[cup.round]}!`);
+  else announce(`${me} steht im ${cupRounds()[cup.round]}!`);
 }
 
 function startSeason() {
@@ -3410,14 +3545,15 @@ function drawCupScreen() {
   screenHeading(cup.wm ? '🌍 Weltmeisterschaft' : '🏆 Champions League', h * 0.08);
 
   const top = h * 0.17, bottom = compBtn().y - h * 0.04, colGap = 10;
-  const colW = (w - 24 - colGap * 2) / 3;
-  CUP_ROUNDS.forEach((name, r) => {
-    const x = 12 + r * (colW + colGap), count = 4 >> r, ms = cup.rounds[r] || [];
+  const rounds = cupRounds(), R = rounds.length, firstCount = 1 << (R - 1);
+  const colW = (w - 24 - colGap * (R - 1)) / R;
+  rounds.forEach((name, r) => {
+    const x = 12 + r * (colW + colGap), count = firstCount >> r, ms = cup.rounds[r] || [];
     ctx.fillStyle = r === cup.round && !compFinished() ? '#feca57' : 'rgba(255,255,255,0.7)';
     ctx.font = `bold ${Math.min(w * 0.03, 14)}px system-ui`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(name, x + colW / 2, top);
-    const area = bottom - top - 18, bh = Math.min(area / 4 * 0.86, 60);
+    const area = bottom - top - 18, bh = Math.min(area / firstCount * 0.86, 60);
     for (let i = 0; i < count; i++) {
       const m = ms[i], cy = top + 18 + (i + 0.5) * area / count, by = cy - bh / 2;
       roundRect(x, by, colW, bh, 8);
@@ -3425,6 +3561,21 @@ function drawCupScreen() {
       ctx.strokeStyle = m && isMine(m) ? '#feca57' : 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1.2; ctx.stroke();
       if (!m) { ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fillText('?', x + colW / 2, cy); continue; }
       const played = m.ga != null, win = played ? winnerOf(m) : null;
+      if (bh < 34) {
+        // Wenig Platz: beide Teams in einer Zeile
+        const cs = bh * 0.6;
+        ctx.font = `bold ${Math.min(bh * 0.42, 12)}px system-ui`;
+        [[m.a, x + 4 + cs * 0.5, 'left'], [m.b, x + colW - 4 - cs * 0.5, 'right']].forEach(([club, cx, align]) => {
+          ctx.globalAlpha = played && win !== club ? 0.45 : 1;
+          clubEntry(club).crest(cx, cy, cs);
+          ctx.fillStyle = club === playerClub ? '#feca57' : '#fff';
+          ctx.textAlign = align;
+          ctx.fillText(club.short, cx + (align === 'left' ? 1 : -1) * cs * 0.6, cy);
+        });
+        ctx.globalAlpha = 1; ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+        if (played) ctx.fillText(m.pa != null ? `${m.ga}:${m.gb} (${m.pa}:${m.pb})` : `${m.ga}:${m.gb}`, x + colW / 2, cy);
+        continue;
+      }
       [[m.a, m.ga, m.pa], [m.b, m.gb, m.pb]].forEach(([club, goals, pens], k) => {
         const ry = by + bh * (k ? 0.74 : 0.27), cs = bh * 0.38;
         ctx.globalAlpha = played && win !== club ? 0.45 : 1;
@@ -3432,7 +3583,9 @@ function drawCupScreen() {
         ctx.fillStyle = club === playerClub ? '#feca57' : '#fff';
         ctx.font = `bold ${Math.min(bh * 0.28, 14)}px system-ui`;
         ctx.textAlign = 'left';
-        ctx.fillText(colW < 160 ? club.short : clubEntry(club).label, x + cs * 1.5, ry, colW - cs * 1.5 - (pens != null ? 44 : 22));
+        const name = colW < 160 ? club.short : clubEntry(club).label, room = colW - cs * 1.5 - (pens != null ? 44 : 22);
+        // Lieber nur die Flagge als ein zerquetschter Name
+        if (room >= ctx.measureText(name).width * 0.7) ctx.fillText(name, x + cs * 1.5, ry, room);
         if (played) {
           ctx.textAlign = 'right';
           ctx.fillText(pens != null ? `${goals} (${pens})` : `${goals}`, x + colW - 6, ry);
@@ -3442,7 +3595,7 @@ function drawCupScreen() {
     }
   });
 
-  const label = compFinished() ? '🏠 Zurück zum Hauptmenü' : `▶ ${CUP_ROUNDS[cup.round]} gegen ${clubEntry((m => m.a === playerClub ? m.b : m.a)(compNextMatch())).label}`;
+  const label = compFinished() ? '🏠 Zurück zum Hauptmenü' : `▶ ${cupRounds()[cup.round]} gegen ${clubEntry((m => m.a === playerClub ? m.b : m.a)(compNextMatch())).label}`;
   drawCompButton(label);
   if (cup.won) drawWinnerOverlay(w, h, t, cup.wm ? `${clubEntry(playerClub).label} ist Weltmeister! 🏆` : 'Champions-League-Sieger! 🏆', true);
   else if (cup.out) {
@@ -4500,7 +4653,7 @@ function drawUI() {
     ctx.fillStyle='rgba(255,255,255,0.4)';
     ctx.font=`${Math.min(w*0.025,13)}px system-ui`;
     ctx.fillText(opponentChosen ? 'W oder antippen = Wetter wechseln · Esc = zurück zum Hauptmenü'
-      : `Tippe auf eine Karte oder drücke 1 bis ${menuClubs().length} · ← → Liga wechseln · Esc = zurück`, w/2, h*0.975);
+      : `Tippe auf eine Karte oder drücke 1 bis ${Math.min(menuClubs().length, 9)} · ← → Liga wechseln · Esc = zurück`, w/2, h*0.975);
     ctx.restore();
     return;
   }
