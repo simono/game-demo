@@ -2204,7 +2204,7 @@ function clubCardLayout(entries) {
   const out = [];
   let idx = 0;
   rows.forEach((k, r) => {
-    const cw = Math.min(w/k*0.8, 200, rowH*0.95);
+    const cw = Math.min(w/rows[0]*0.8, 200, rowH*0.95);
     const ch = Math.min(rowH, cw*1.25);
     const y = top + r*(rowH+gapY) + (rowH-ch)/2;
     for (let i=0; i<k; i++, idx++) out.push({ entry:entries[idx], x:w*(i+0.5)/k - cw/2, y, w:cw, h:ch, n:idx+1 });
