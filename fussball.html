@@ -2390,7 +2390,7 @@ function updateAudio() {
     stopCrowd(); stopRain(); startMenuMusic();
     if (window.speechSynthesis) speechSynthesis.cancel();
   }
-  if (gameState === 'playing')  { stopMenuMusic(); startCrowd(); startRain(); }
+  if (gameState === 'playing' || (gameState === 'penalty' && MENU_STATES.includes(prev))) { stopMenuMusic(); startCrowd(); startRain(); }
   if (gameState === 'goal' && (prev==='playing' || prev==='penalty')) {
     playGoalSound();
     const scorer = goalTeam === playerTeam ? playerClub : opponentClub;
@@ -3079,6 +3079,12 @@ function finishPenalty() {
   const k = penalty.keeper;
   k.diveAngle = 0; k.y = 0.5;
   ballLift = 0;
+  if (mode === 'shootout') {
+    penalty = null; setPiece = null;
+    shootout.until = Date.now() + 1400;
+    gameState = 'shootout';
+    return;
+  }
   ballOwner = k;
   penalty = null; setPiece = null;
   protectUntil = Date.now() + 800;
@@ -3122,7 +3128,8 @@ function updatePenalty() {
     k.diveAngle = pn.diveY === 0.5 ? 0 : Math.sign(pn.diveY - 0.5) * pn.side * kt * Math.PI / 2;
     if (t >= 1) {
       ballLift = 0;
-      if (pn.outcome === 'goal') {
+      if (mode === 'shootout') recordShootoutKick(pn);
+      else if (pn.outcome === 'goal') {
         if (pn.taker.team === 'red') score.red++; else score.blue++;
         goalTeam = pn.taker.team; halfTimeLeft += 10;
         k.diveAngle = 0;
@@ -3229,6 +3236,48 @@ function startMatch() {
   inExtra=false; score.red=0; score.blue=0;
   gameState='playing'; teamChosen=false; opponentChosen=false;
   stadiumBannerUntil=Date.now()+3500;
+  if (mode === 'shootout') {
+    shootout = { kicks:[], until:0 };
+    announce(`Elfmeterschießen! ${spokenClub(playerClub)} gegen ${spokenClub(opponentClub)}. Wer hat die besseren Nerven?`, 3);
+    nextShootoutKick();
+  }
+}
+
+// ── Elfmeterschießen: abwechselnd, du fängst an, 5 Schüsse pro Team, danach K.-o. ──
+let shootout = null;   // { kicks:[{ team, scored }], until }
+// a/b: Tore, ka/kb: Schüsse des Teams, das anfängt (a) und des anderen (b)
+function shootoutOver(a, b, ka, kb) {
+  if (ka <= 5 && kb <= 5) return a + (5 - ka) < b || b + (5 - kb) < a;
+  return ka === kb && a !== b;
+}
+const otherTeam = t => t === 'red' ? 'blue' : 'red';
+function shootoutTally(team) {
+  const ks = shootout.kicks.filter(k => k.team === team);
+  return [ks.filter(k => k.scored).length, ks.length];
+}
+function nextShootoutKick() {
+  const n = shootout.kicks.length, team = n % 2 ? otherTeam(playerTeam) : playerTeam;
+  const shooters = activeOf(team === 'red' ? redTeam : blueTeam);
+  const victim = shooters[Math.floor(n / 2) % shooters.length];
+  setPiece = { type:'penalty', victim, fouler: team === 'red' ? blueKeeper : redKeeper, card:null };
+  setupSetPiece();
+}
+function recordShootoutKick(pn) {
+  const scored = pn.outcome === 'goal';
+  shootout.kicks.push({ team: pn.taker.team, scored });
+  if (scored) {
+    score[pn.taker.team]++;
+    playGoalSound();
+    say(`Tor! ${playerName(pn.taker)} trifft!`, 4);
+  } else if (pn.outcome === 'miss') say(`Daneben! ${playerName(pn.taker)} schießt vorbei!`, 4);
+}
+function updateShootout() {
+  if (Date.now() < shootout.until) return;
+  const [a, ka] = shootoutTally(playerTeam), [b, kb] = shootoutTally(otherTeam(playerTeam));
+  if (shootoutOver(a, b, ka, kb)) {
+    gameState = 'fulltime'; fulltimeShowMs = Date.now();
+    announce(`Das Elfmeterschießen ist vorbei! ${spokenClub(a > b ? playerClub : opponentClub)} gewinnt ${Math.max(a, b)} zu ${Math.min(a, b)}!`, 4);
+  } else nextShootoutKick();
 }
 
 // ── Wettbewerbe: Freundschaftsspiel, Champions League (mit Ländern: WM), Liga-Saison ──
@@ -3236,6 +3285,7 @@ const MODES = [
   { id:'friendly', emoji:'⚽', label:'Freundschaftsspiel', sub:['Ein Spiel gegen', 'wen du willst'],      color:'#27ae60' },
   { id:'cl',       emoji:'🏆', label:'Champions League',   sub:['8 Teams aus Europa,', 'K.-o. bis zum Finale'], color:'#1d3f9a' },
   { id:'season',   emoji:'📊', label:'Liga-Saison',        sub:['Jeder gegen jeden', 'mit Tabelle'],        color:'#c0392b' },
+  { id:'shootout', emoji:'🥅', label:'Elfmeterschießen',   sub:['5 Schüsse für jeden,', 'dann K.-o.'],       color:'#8e44ad' },
 ];
 const WM_MODE = { id:'cl', emoji:'🌍', label:'Weltmeisterschaft', sub:['16 Länder,', 'K.-o. bis zum Finale'], color:'#b8860b' };
 const modeCards = () => MODES.map(m => m.id === 'cl' && isNation(playerClub) ? WM_MODE : m);
@@ -3373,11 +3423,12 @@ function afterFulltime() {
 function modeCardLayout() {
   const w = W(), h = H();
   if (w > h) {
-    const cw = Math.min(w * 0.28, 240), ch = Math.min(h * 0.52, 220), gap = Math.min(w * 0.03, 24);
-    const x0 = w / 2 - (cw * 3 + gap * 2) / 2;
+    const n = MODES.length, gap = Math.min(w * 0.03, 24);
+    const cw = Math.min((w * 0.92 - gap * (n - 1)) / n, 240), ch = Math.min(h * 0.52, 220);
+    const x0 = w / 2 - (cw * n + gap * (n - 1)) / 2;
     return modeCards().map((m, i) => ({ m, x:x0 + i * (cw + gap), y:h * 0.33, w:cw, h:ch, n:i+1 }));
   }
-  const cw = w - 40, ch = Math.min(h * 0.17, 140);
+  const cw = w - 40, ch = Math.min((h * 0.62 - 14 * (MODES.length - 1)) / MODES.length, 140);
   return modeCards().map((m, i) => ({ m, x:20, y:h * 0.3 + i * (ch + 14), w:cw, h:ch, n:i+1 }));
 }
 function modeHit(tx, ty) {
@@ -3440,7 +3491,7 @@ function drawModeScreen() {
   ctx.fillStyle = 'rgba(255,255,255,0.4)';
   ctx.font = `${Math.min(w * 0.025, 13)}px system-ui`;
   ctx.textAlign = 'center';
-  ctx.fillText('Tippe auf eine Karte oder drücke 1 bis 3 · Esc = zurück', w / 2, h * 0.975);
+  ctx.fillText(`Tippe auf eine Karte oder drücke 1 bis ${MODES.length} · Esc = zurück`, w / 2, h * 0.975);
   ctx.restore();
 }
 
@@ -3986,6 +4037,7 @@ function update() {
     return;
   }
   if (gameState === 'penalty') { updatePenalty(); return; }
+  if (gameState === 'shootout') { updateShootout(); return; }
 
   if (gameState !== 'playing') return;
 
@@ -4441,7 +4493,9 @@ function drawUI() {
   const timerStr = `${Math.floor(secs/60)}:${String(secs%60).padStart(2,'0')}`;
   ctx.textAlign='center';
   ctx.font=`${Math.min(w*0.03,13)}px system-ui`;
-  if (inExtra) {
+  if (mode === 'shootout') {
+    // Keine Uhr: der Hinweis oben sagt schon, welcher Schuss dran ist
+  } else if (inExtra) {
     ctx.fillStyle='#feca57';
     ctx.fillText(`Verlängerung  ${timerStr}`, w/2, 14);
   } else {
@@ -4618,7 +4672,9 @@ function drawUI() {
       clubCardLayout(menuClubs()).forEach(c => drawClubCard(c));
 
     } else {
-      heading('Anpfiff!', `im ${playerClub.stadium} · Halbzeit ${halfSecs/60} Min · ${difficulty.name} · ${weatherLabel(weatherChoice)}`);
+      heading(mode === 'shootout' ? '🥅 Elfmeterschießen!' : 'Anpfiff!', mode === 'shootout'
+        ? `im ${playerClub.stadium} · ${difficulty.name} · ${weatherLabel(weatherChoice)}`
+        : `im ${playerClub.stadium} · Halbzeit ${halfSecs/60} Min · ${difficulty.name} · ${weatherLabel(weatherChoice)}`);
       const wb = weatherBtn();
       roundRect(wb.x, wb.y, wb.w, wb.h, wb.h/2);
       ctx.fillStyle='#2980b9'; ctx.shadowColor='#48dbfb'; ctx.shadowBlur=12+Math.sin(t*4)*8; ctx.fill(); ctx.shadowBlur=0;
@@ -4781,6 +4837,43 @@ function drawPenaltyAim(w, h) {
   ctx.restore();
 }
 
+function drawShootoutUI() {
+  const w = W(), h = H(), pause = gameState === 'shootout';
+  const r = Math.min(h * 0.022, 9), gap = r * 2.8;
+  const teams = [playerTeam, otherTeam(playerTeam)];
+  const slots = Math.max(5, ...teams.map(t => shootoutTally(t)[1]));
+  const rowW = r * 2.6 + slots * gap, x0 = w / 2 - rowW / 2;
+  const y0 = pause ? h * 0.5 : h * 0.04 + Math.min(h * 0.13, 66) + r * 2.6;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  roundRect(x0 - r * 1.2, y0 - r * 1.8, rowW + r * 2.4, r * 6.4, r); ctx.fill();
+  teams.forEach((team, row) => {
+    const y = y0 + row * r * 2.8, club = team === playerTeam ? playerClub : opponentClub;
+    clubEntry(club).crest(x0 + r, y, r * 2.2);
+    const ks = shootout.kicks.filter(k => k.team === team);
+    for (let i = 0; i < slots; i++) {
+      const x = x0 + r * 2.6 + (i + 0.5) * gap, k = ks[i];
+      ctx.beginPath(); ctx.arc(x, y, r * 0.8, 0, Math.PI * 2);
+      if (!k) { ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1.5; ctx.stroke(); continue; }
+      ctx.fillStyle = k.scored ? '#2ecc71' : '#e74c3c'; ctx.fill();
+      if (!k.scored) {
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(x - r * 0.4, y - r * 0.4); ctx.lineTo(x + r * 0.4, y + r * 0.4);
+        ctx.moveTo(x + r * 0.4, y - r * 0.4); ctx.lineTo(x - r * 0.4, y + r * 0.4); ctx.stroke();
+      }
+    }
+  });
+  if (pause && shootout.kicks.length) {
+    const last = shootout.kicks[shootout.kicks.length - 1];
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = `900 ${Math.min(w * 0.1, 56)}px system-ui`;
+    ctx.fillStyle = last.scored ? '#2ecc71' : '#ff6b6b';
+    ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 12;
+    ctx.fillText(last.scored ? 'TOR!' : 'VERSCHOSSEN!', w / 2, y0 - r * 5.5);
+  }
+  ctx.restore();
+}
+
 function drawSetPieceUI() {
   const w=W(), h=H();
   ctx.save();
@@ -4851,7 +4944,7 @@ function drawSetPieceUI() {
     roundRect(w/2-bw/2, by, bw, bh, 12); ctx.fill();
     ctx.fillStyle='#feca57';
     ctx.font=`900 ${bh*0.36}px system-ui`;
-    ctx.fillText('ELFMETER!', w/2, by+bh*0.33);
+    ctx.fillText(mode === 'shootout' && shootout ? `ELFMETERSCHIESSEN · ${Math.floor(shootout.kicks.length / 2) + 1}. SCHUSS` : 'ELFMETER!', w/2, by+bh*0.33, bw-16);
     ctx.fillStyle='#fff';
     ctx.font=`bold ${bh*0.21}px system-ui`;
     const hint = pn.phase !== 'aim' && pn.phase !== 'runup' ? `${playerName(pn.taker)} gegen ${playerName(pn.keeper)}` :
@@ -4910,7 +5003,7 @@ function loop() {
   const w=W(), h=H();
   ctx.clearRect(0,0,w,h);
   // Beim Elfmeter zoomt die Kamera aufs Tor
-  const camTarget = gameState === 'penalty' ? 1.45 : 1;
+  const camTarget = gameState === 'penalty' || gameState === 'shootout' ? 1.45 : 1;
   camZoom += (camTarget - camZoom) * 0.08;
   if (penalty) camFocusX = penalty.attackRight ? w * 0.82 : w * 0.18;
   if (Math.abs(camZoom - 1) < 0.002) camZoom = 1;
@@ -5012,6 +5105,7 @@ function loop() {
   updateCommentary();
   drawUI();
   if (gameState === 'foul' || gameState === 'penalty') drawSetPieceUI();
+  if (mode === 'shootout' && shootout && (gameState === 'penalty' || gameState === 'shootout')) drawShootoutUI();
   drawReplayUI();
   drawCommentary();
   homeBtn.hidden = gameState !== 'start';
