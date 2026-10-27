@@ -3160,6 +3160,28 @@ let goalScorer = null; // Spieler-Objekt das das Tor geschossen hat
 let gameState = 'start';   // Startbild mit Intro, danach Teamwahl und Hauptmenü
 let titleSel = 0;          // markierter Knopf im Hauptmenü
 let showControls = false;  // Steuerung-Seite im Hauptmenü
+let showTrophies = false;  // Pokal-Vitrine im Hauptmenü
+const subPage = () => showControls || showTrophies;
+
+// ── Pokal-Vitrine: jeder gewonnene Titel bleibt im Browser gespeichert ──
+const TROPHY_KEY = 'kickit-trophies';
+const TROPHY_NAMES = { cl:'Champions League', wm:'Weltmeister', em:'Europameister', de:'Deutscher Meister',
+  en:'Englischer Meister', es:'Spanischer Meister', eu:'Länderturnier Europa', world:'Länderturnier Welt' };
+let trophies = [];
+try { trophies = JSON.parse(localStorage.getItem(TROPHY_KEY)) || []; } catch (e) {}
+function addTrophy(kind, club) {
+  trophies.push({ kind, team: clubEntry(club).label, t: Date.now() });
+  try { localStorage.setItem(TROPHY_KEY, JSON.stringify(trophies)); } catch (e) {}
+}
+// Gleicher Titel mit gleichem Team steht einmal da, mit Anzahl; der neueste zuerst
+function trophyGroups() {
+  const groups = new Map();
+  for (const tr of trophies) {
+    const k = tr.kind + '|' + tr.team, g = groups.get(k) || { ...tr, n: 0 };
+    g.n++; g.t = tr.t; groups.set(k, g);
+  }
+  return [...groups.values()].sort((a, b) => b.t - a.t);
+}
 let playerTeam = 'red';
 let playerClub = KOELN;
 let opponentClub = SCHALKE;
@@ -3687,7 +3709,7 @@ function chooseClub(entry) {
 }
 const isNation = club => NATION_LEAGUES.includes(clubEntry(club).league);
 function backToTeamPick() {
-  mode = 'friendly'; cup = null; season = null; showControls = false;
+  mode = 'friendly'; cup = null; season = null; showControls = false; showTrophies = false;
   gameState = 'menu'; teamChosen = false; opponentChosen = false;
   menuLeague = clubEntry(playerClub).league;
 }
@@ -3715,7 +3737,7 @@ function advanceCup() {
     for (const m of cup.rounds[cup.round]) simMatch(m, true);
   }
   const me = spokenClub(playerClub);
-  if (cup.champion === playerClub) { cup.won = true; announce(CUPS[cup.kind].won(me)); }
+  if (cup.champion === playerClub) { cup.won = true; addTrophy(cup.kind, playerClub); announce(CUPS[cup.kind].won(me)); }
   else if (cup.out) announce(`Schade! ${me} ist ausgeschieden. Sieger wird ${spokenClub(cup.champion)}.`);
   else announce(`${me} steht im ${cupRounds()[cup.round]}!`);
 }
@@ -3754,6 +3776,7 @@ function advanceSeason() {
   const table = seasonTable(), place = table.findIndex(r => r.club === playerClub) + 1;
   if (season.day >= season.rounds.length) {
     season.done = true;
+    if (place === 1) addTrophy(clubEntry(playerClub).league, playerClub);
     announce(place === 1 ? `${spokenClub(playerClub)} ist Meister! Was für eine Saison!` : `Die Saison ist vorbei. Meister ist ${spokenClub(table[0].club)}. ${spokenClub(playerClub)} wird ${place}.`);
   } else announce(`${spokenClub(playerClub)} steht auf Platz ${place}.`, 3);
 }
@@ -3780,7 +3803,7 @@ function compAction() {
   startMatch();
 }
 function afterFulltime() {
-  stopCrowd(); showControls = false; titleSel = 0;
+  stopCrowd(); showControls = false; showTrophies = false; titleSel = 0;
   if (mode === 'cl' && cup) { advanceCup(); gameState = 'cup'; }
   else if (mode === 'season' && season) { advanceSeason(); gameState = 'season'; }
   else gameState = 'title';
@@ -4080,15 +4103,18 @@ function getTitleButtons() {
     const bw=Math.min(w*0.6, 380), bh=Math.min(h*0.13, 70);
     return [{ id:'start', label:'▶  Spiel starten', x:w/2-bw/2, y:h*0.62, w:bw, h:bh }];
   }
-  const bw=Math.min(w*0.42, 320), bh=Math.min(h*0.1, 56), x=w/2-bw/2;
-  if (showControls) return [{ id:'back', label:'← Zurück', x, y:h*0.84, w:bw, h:bh }];
-  const y0=h*0.46, gap=bh*1.22;
-  return [
-    { id:'play',       label:'▶  Spielen',                        x, y:y0,       w:bw, h:bh },
-    { id:'difficulty', label:`💪  Schwierigkeit: ${difficulty.name}`, x, y:y0+gap,   w:bw, h:bh, accent:difficulty.color },
-    { id:'duration',   label:`⏱  Halbzeit: ${halfSecs/60} Min`,   x, y:y0+gap*2, w:bw, h:bh },
-    { id:'controls',   label:'🎮  Steuerung',                     x, y:y0+gap*3, w:bw, h:bh },
+  const bw=Math.min(w*0.42, 320), x=w/2-bw/2;
+  if (subPage()) { const bh=Math.min(h*0.1, 56); return [{ id:'back', label:'← Zurück', x, y:h*0.84, w:bw, h:bh }]; }
+  const btns = [
+    { id:'play',       label:'▶  Spielen' },
+    { id:'difficulty', label:`💪  Schwierigkeit: ${difficulty.name}`, accent:difficulty.color },
+    { id:'duration',   label:`⏱  Halbzeit: ${halfSecs/60} Min` },
+    { id:'controls',   label:'🎮  Steuerung' },
+    { id:'trophies',   label:`🏆  Pokal-Vitrine${trophies.length ? ` (${trophies.length})` : ''}` },
   ];
+  const top=h*0.44, bottom=h*0.93, bh=Math.min(h*0.085, 52);
+  const gap=Math.min(bh*1.22, (bottom-top-bh)/(btns.length-1));
+  return btns.map((b, i) => ({ ...b, x, y:top+gap*i, w:bw, h:bh }));
 }
 
 function titleAction(id) {
@@ -4098,13 +4124,14 @@ function titleAction(id) {
   if (id==='difficulty') { difficulty=DIFFICULTIES[(DIFFICULTIES.indexOf(difficulty)+1)%DIFFICULTIES.length]; }
   if (id==='duration') { halfSecs=HALF_OPTIONS[(HALF_OPTIONS.indexOf(halfSecs)+1)%HALF_OPTIONS.length]; }
   if (id==='controls') { showControls=true; titleSel=0; }
-  if (id==='back')     { showControls=false; titleSel=3; }
+  if (id==='trophies') { showTrophies=true; titleSel=0; }
+  if (id==='back')     { titleSel=showTrophies ? 4 : 3; showControls=false; showTrophies=false; }
 }
 
 function titleButtonHit(tx, ty) {
   if (introRunning()) { introStart=0; return; }
   const chip = myTeamChip();
-  if (gameState==='title' && !showControls && tx>=chip.x && tx<=chip.x+chip.w && ty>=chip.y && ty<=chip.y+chip.h) { titleAction('team'); return; }
+  if (gameState==='title' && !subPage() && tx>=chip.x && tx<=chip.x+chip.w && ty>=chip.y && ty<=chip.y+chip.h) { titleAction('team'); return; }
   for (const b of getTitleButtons()) {
     if (tx>=b.x && tx<=b.x+b.w && ty>=b.y && ty<=b.y+b.h) { titleAction(b.id); return; }
   }
@@ -4215,7 +4242,7 @@ window.addEventListener('keydown', e=>{
     if (e.key==='ArrowUp')   titleSel=(titleSel+btns.length-1)%btns.length;
     if (e.key==='ArrowDown') titleSel=(titleSel+1)%btns.length;
     if (e.key==='Enter'||e.key===' ') titleAction(btns[Math.min(titleSel,btns.length-1)].id);
-    if (e.key==='Escape') titleAction(showControls ? 'back' : gameState === 'title' ? 'team' : '');
+    if (e.key==='Escape') titleAction(subPage() ? 'back' : gameState === 'title' ? 'team' : '');
     return;
   }
   if (gameState === 'mode') {
@@ -4659,13 +4686,66 @@ function drawMyTeamChip(label) {
   ctx.fillText(label, c.x+c.w/2+c.h*0.3, c.y+c.h/2, c.w-c.h*1.4);
 }
 
+function drawTrophyCabinet(w, h) {
+  ctx.fillStyle='#fff';
+  ctx.font=`bold ${Math.min(w*0.07,40)}px system-ui`;
+  ctx.fillText('🏆 Pokal-Vitrine', w/2, h*0.1);
+  const gs = trophyGroups();
+  if (!gs.length) {
+    ctx.fillStyle='rgba(255,255,255,0.85)';
+    ctx.font=`bold ${Math.min(w*0.05,24)}px system-ui`;
+    ctx.fillText('Noch leer!', w/2, h*0.38);
+    ctx.font=`${Math.min(w*0.035,17)}px system-ui`;
+    ctx.fillText('Gewinne die WM, die EM, die Champions League', w/2, h*0.48, w-24);
+    ctx.fillText('oder eine Meisterschaft, dann steht der Pokal hier.', w/2, h*0.54, w-24);
+    return;
+  }
+  const cols = w > h ? 5 : 3, maxRows = w > h ? 2 : 4, shown = gs.slice(0, cols * maxRows);
+  const top = h*0.18, cellH = h*0.62/maxRows, cellW = Math.min(w*0.94/cols, 190);
+  const rows = Math.ceil(shown.length / cols);
+  for (let r = 0; r < rows; r++) {
+    // Holzbrett unter jeder Reihe
+    const sy = top + (r + 1) * cellH - cellH*0.08;
+    ctx.fillStyle='#7a4a24'; roundRect(w*0.04, sy, w*0.92, cellH*0.05, 3); ctx.fill();
+    ctx.fillStyle='rgba(0,0,0,0.35)'; ctx.fillRect(w*0.04, sy + cellH*0.05, w*0.92, cellH*0.03);
+  }
+  shown.forEach((g, i) => {
+    const r = Math.floor(i / cols), inRow = Math.min(cols, shown.length - r * cols);
+    const cx = w/2 + (i % cols - (inRow - 1) / 2) * cellW, cy = top + r * cellH + cellH*0.36;
+    const size = Math.min(cellW*0.5, cellH*0.42), cupShape = ['cl', 'wm', 'em'].includes(g.kind);
+    ctx.save();
+    ctx.shadowColor='#feca57'; ctx.shadowBlur=18;
+    if (cupShape) drawTrophy(cx, cy, size); else drawSchale(cx, cy, size);
+    ctx.restore();
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    if (g.n > 1) {
+      ctx.fillStyle='#e74c3c';
+      ctx.beginPath(); ctx.arc(cx + size*0.55, cy - size*0.45, size*0.2, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle='#fff'; ctx.font=`900 ${size*0.22}px system-ui`;
+      ctx.fillText(`${g.n}×`, cx + size*0.55, cy - size*0.45);
+    }
+    const fs = Math.min(cellW*0.09, cellH*0.1, 15);
+    ctx.fillStyle='#feca57'; ctx.font=`bold ${fs}px system-ui`;
+    ctx.fillText(TROPHY_NAMES[g.kind] || g.kind, cx, cy + cellH*0.33, cellW - 8);
+    const entry = CLUB_LIST.find(e => e.label === g.team);
+    ctx.fillStyle='#fff'; ctx.font=`${fs}px system-ui`;
+    const tw = Math.min(ctx.measureText(g.team).width, cellW - fs*2.5);
+    if (entry) entry.crest(cx - tw/2 - fs*0.8, cy + cellH*0.47, fs*1.3);
+    ctx.fillText(g.team, cx + fs*0.4, cy + cellH*0.47, cellW - fs*2.5);
+  });
+  if (gs.length > shown.length) {
+    ctx.fillStyle='rgba(255,255,255,0.6)'; ctx.font=`${Math.min(w*0.03,14)}px system-ui`;
+    ctx.fillText(`… und ${gs.length - shown.length} weitere`, w/2, h*0.81);
+  }
+}
+
 function drawTitle() {
   const w=W(), h=H(), t=Date.now()/1000;
   ctx.save();
   drawStadiumBackdrop(w, h, t);
   const ip=introProgress();
   const textIn=seg(ip, 0.6, 0.78), uiIn=seg(ip, 0.78, 1);
-  if (!showControls) {
+  if (!subPage()) {
     // Erst groß in der Mitte, dann rückt das Logo hinter den Titel
     const m=easeOut(textIn);
     const big=Math.min(w, h)*0.62, small=Math.min(w, h)*0.42;
@@ -4674,7 +4754,9 @@ function drawTitle() {
 
   ctx.textAlign='center'; ctx.textBaseline='middle';
 
-  if (showControls) {
+  if (showTrophies) {
+    drawTrophyCabinet(w, h);
+  } else if (showControls) {
     ctx.fillStyle='#fff';
     ctx.font=`bold ${Math.min(w*0.07,40)}px system-ui`;
     ctx.fillText('Steuerung', w/2, h*0.12);
@@ -4703,7 +4785,7 @@ function drawTitle() {
     });
     ctx.textAlign='center';
   } else {
-    const ts=Math.min(w*0.13,84);
+    const ts=Math.min(w*0.13, 84, h*0.17);
     // Titel knallt groß rein und schrumpft auf seine Größe
     if (textIn > 0) {
       const k=1+2.5*(1-easeOutBack(textIn));
@@ -4726,7 +4808,7 @@ function drawTitle() {
   }
 
   ctx.globalAlpha=uiIn;
-  if (gameState==='title' && !showControls) { drawMyTeamChip(`${clubEntry(playerClub).label} 🔄`); ctx.textAlign='center'; }
+  if (gameState==='title' && !subPage()) { drawMyTeamChip(`${clubEntry(playerClub).label} 🔄`); ctx.textAlign='center'; }
   getTitleButtons().forEach((b,i)=>{
     const sel=i===titleSel;
     const primary=b.id==='play' || b.id==='start';
@@ -4747,7 +4829,7 @@ function drawTitle() {
   ctx.globalAlpha=1;
   ctx.font=`${Math.min(w*0.025,13)}px system-ui`;
   ctx.fillStyle='rgba(255,255,255,0.4)';
-  ctx.fillText(showControls?'Esc = zurück':introRunning()?'Tippen oder Taste drücken zum Überspringen':gameState==='start'?'Enter drücken oder antippen':'↑ ↓ auswählen · Enter bestätigen · Esc = Team wechseln', w/2, h*0.965);
+  ctx.fillText(subPage()?'Esc = zurück':introRunning()?'Tippen oder Taste drücken zum Überspringen':gameState==='start'?'Enter drücken oder antippen':'↑ ↓ auswählen · Enter bestätigen · Esc = Team wechseln', w/2, h*0.965);
   ctx.restore();
 }
 
@@ -5492,7 +5574,7 @@ function loop() {
   drawReplayUI();
   drawCommentary();
   homeBtn.hidden = gameState !== 'start';
-  micBtn.hidden = !['start', 'title'].includes(gameState) || showControls || introRunning();
+  micBtn.hidden = !['start', 'title'].includes(gameState) || subPage() || introRunning();
   micBtn.classList.toggle('off', !commentOn);
   requestAnimationFrame(loop);
 }
