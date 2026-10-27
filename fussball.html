@@ -2765,7 +2765,10 @@ function doTackle() {
 
 // ── Eingabe ─────────────────────────────────────────────────────────
 const dpad      = { up:false, down:false, left:false, right:false };
-const btnActive = { shoot:false, pass:false, tackle:false, switch:false };
+const btnActive = { shoot:false, pass:false, tackle:false, switch:false, sprint:false };
+// Sprinten kostet Ausdauer (0 bis 1), die sich beim normalen Laufen wieder auffüllt
+const SPRINT_FACTOR = 1.6, STAMINA_DRAIN = 0.45, STAMINA_REFILL = 0.2;
+let stamina = 1, tired = false;   // leer gelaufen: erst ab 30 % wieder sprinten
 const touched   = {};
 
 function getDpad() {
@@ -2793,6 +2796,7 @@ function getActionBtns() {
     pass:   {x:lx, y:by, r},   // unten links
     tackle: {x:rx, y:ty, r},   // oben rechts
     switch: {x:lx, y:ty, r},   // oben links
+    sprint: {x:lx-r*2-g, y:by, r},   // unten, ganz links
   };
 }
 
@@ -2801,7 +2805,7 @@ function hitBtn(tx,ty,b)  { const dx=tx-b.x,dy=ty-b.y; return dx*dx+dy*dy<b.r*b.
 
 function startMatch() {
   for (const p of allPlayers) { p.sentOff = false; p.yellow = 0; }
-  setPiece = null; penalty = null; protectUntil = 0;
+  setPiece = null; penalty = null; protectUntil = 0; stamina = 1; tired = false;
   controlledIdx=0; ballOwner=playerTeam==='red'?redP:blueP;
   currentHalf=1; halfTimeLeft=halfSecs; breakTimeLeft=BREAK_SECS; lastFrameMs=0;
   inExtra=false; score.red=0; score.blue=0;
@@ -2877,6 +2881,7 @@ function onPointerDown(tx, ty, id) {
   if (hitBtn(tx,ty,ab.pass))   { btnActive.pass=true;   touched[id]='pass';   doPass();       return; }
   if (hitBtn(tx,ty,ab.tackle)) { btnActive.tackle=true; touched[id]='tackle'; doTackle();     return; }
   if (hitBtn(tx,ty,ab.switch)) { btnActive.switch=true; touched[id]='switch'; switchPlayer(); return; }
+  if (hitBtn(tx,ty,ab.sprint)) { btnActive.sprint=true; touched[id]='sprint'; return; }
   for (const dir of ['up','down','left','right']) {
     if (hitDpad(tx,ty,dp[dir])) { dpad[dir]=true; touched[id]=dir; return; }
   }
@@ -2884,7 +2889,7 @@ function onPointerDown(tx, ty, id) {
 
 function onPointerUp(id) {
   const what=touched[id]; if (!what) return;
-  if (['shoot','pass','tackle','switch'].includes(what)) btnActive[what]=false;
+  if (['shoot','pass','tackle','switch','sprint'].includes(what)) btnActive[what]=false;
   else dpad[what]=false;
   delete touched[id];
 }
@@ -3131,7 +3136,10 @@ function update() {
   if (keys['x']||keys['Tab'])   { switchPlayer(); keys['x']=false; keys['Tab']=false; }
 
   const mlen=Math.sqrt(mvx*mvx+mvy*mvy)||1;
-  const spd=Math.min(Math.sqrt(mvx*mvx+mvy*mvy),1)*SPEED;
+  if (stamina <= 0) tired = true; else if (stamina > 0.3) tired = false;
+  const sprinting = (btnActive.sprint || keys['Shift']) && (mvx || mvy) && !tired;
+  stamina = Math.max(0, Math.min(1, stamina + (sprinting ? -STAMINA_DRAIN : STAMINA_REFILL) * delta));
+  const spd=Math.min(Math.sqrt(mvx*mvx+mvy*mvy),1)*SPEED*(sprinting ? SPRINT_FACTOR : 1);
   cp.vx=mvx/mlen*spd; cp.vy=mvy/mlen*spd;
   cp.x=Math.max(FL,Math.min(FR,cp.x+cp.vx));
   cp.y=Math.max(FT,Math.min(FB,cp.y+cp.vy));
@@ -3353,6 +3361,7 @@ function drawTitle() {
       ['Passen',           'F oder P',                 'Knopf „Passen“'],
       ['Zweikampf',        'T oder G',                 'Knopf „Zweikampf“'],
       ['Spieler wechseln', 'X oder Tab',               'Knopf „Wechsel“'],
+      ['Sprinten',         'Shift gedrückt halten',    'Knopf „Sprint“ halten'],
     ];
     const fs=Math.min(w*0.032,18), rowH=Math.min(h*0.1,52), top=h*0.27;
     ctx.font=`bold ${fs}px system-ui`;
@@ -3570,9 +3579,10 @@ function drawUI() {
   const bs=getActionBtns();
   const infos={
     shoot:  {emoji:'⚽', label:'Schuss',    color:'#c0392b'},
-    pass:   {emoji:'→',  label:'Passen',   color:'#d35400'},
+    pass:   {emoji:'👟', label:'Passen',   color:'#d35400'},
     tackle: {emoji:'💪', label:'Zweikampf', color:'#27ae60'},
     switch: {emoji:'🔄', label:'Wechsel',   color:'#7d3c98'},
+    sprint: {emoji:'🏃', label:'Sprint',    color:'#2980b9'},
   };
   for (const [k,b] of Object.entries(bs)) {
     if(!b) continue;
@@ -3592,6 +3602,14 @@ function drawUI() {
     ctx.font=`bold ${b.r*0.29}px system-ui`;
     ctx.fillStyle='#fff';
     ctx.fillText(inf.label, b.x, b.y+b.r*0.58);
+    // Ausdauer als Ring um den Sprint-Knopf
+    if (k === 'sprint') {
+      ctx.lineWidth = b.r*0.14; ctx.lineCap = 'round';
+      ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+      ctx.beginPath(); ctx.arc(b.x, b.y, b.r*1.15, 0, Math.PI*2); ctx.stroke();
+      ctx.strokeStyle = tired ? '#e74c3c' : '#feca57';
+      ctx.beginPath(); ctx.arc(b.x, b.y, b.r*1.15, -Math.PI/2, -Math.PI/2 + Math.PI*2*stamina); ctx.stroke();
+    }
     ctx.restore();
   }
 
