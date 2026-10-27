@@ -3135,7 +3135,7 @@ function updatePenalty() {
       if (mode === 'shootout') recordShootoutKick(pn);
       else if (pn.outcome === 'goal') {
         if (pn.taker.team === 'red') score.red++; else score.blue++;
-        goalTeam = pn.taker.team; halfTimeLeft += 10;
+        goalTeam = pn.taker.team;
         k.diveAngle = 0;
         penalty = null; setPiece = null;
         startCelebration();
@@ -4166,11 +4166,11 @@ function update() {
     if (ball.y > 1-FPADY-bRy) { ball.y=1-FPADY-bRy; ball.vy*=-0.7; }
     // Links/Rechts: Tor oder Abprall
     if (ball.x < FPADX+bRx) {
-      if (ball.y>GOAL_T && ball.y<GOAL_B) { score.blue++; goalTeam='blue'; halfTimeLeft+=10; startCelebration(); return; }
+      if (ball.y>GOAL_T && ball.y<GOAL_B) { score.blue++; goalTeam='blue'; startCelebration(); return; }
       ball.x=FPADX+bRx; ball.vx*=-0.7;
     }
     if (ball.x > 1-FPADX-bRx) {
-      if (ball.y>GOAL_T && ball.y<GOAL_B) { score.red++; goalTeam='red'; halfTimeLeft+=10; startCelebration(); return; }
+      if (ball.y>GOAL_T && ball.y<GOAL_B) { score.red++; goalTeam='red'; startCelebration(); return; }
       ball.x=1-FPADX-bRx; ball.vx*=-0.7;
     }
     for (const p of allPlayers) {
