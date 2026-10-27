@@ -3622,6 +3622,9 @@ if (career && !Array.isArray(career.offers)) {
   delete career.offer;
 }
 if (career && !career.name) Object.assign(career, { name:'Jonas', num:'9', look: lookOf({ skin:0, hair:2, style:0 }) });
+if (career && !career.nat) career.nat = 'Deutschland';
+const CAP_AT = 10;   // ab so vielen Toren ruft die Nationalmannschaft an
+const careerNations = () => CLUB_LIST.filter(e => isNation(e.club));
 const saveCareer = () => { try { localStorage.setItem(CAREER_KEY, JSON.stringify(career)); } catch (e) {} };
 const isStar = p => mode === 'career' && career && p === getCP();
 const starNum = p => isStar(p) ? career.num : null;
@@ -3645,6 +3648,7 @@ function openCreator() {
     ? { num: +career.num, skin: findIdx(SKINS, career.look.skin), hair: findIdx(HAIRS, career.look.hair), style: findIdx(HAIR_STYLES, career.look.hairStyle) }
     : { num: 9, skin: 0, hair: 2, style: 0 };
   draft.club = Math.max(0, clubs.findIndex(e => e.club === start));
+  draft.nat = Math.max(0, careerNations().findIndex(e => e.label === (career ? career.nat : 'Deutschland')));
   nameInput.value = career ? career.name : 'Jonas';
   nameInput.hidden = false;
   gameState = 'careerNew';
@@ -3659,10 +3663,12 @@ function creatorAction(id) {
   if (id === 'style+') draft.style = wrap(draft.style + 1, HAIR_STYLES.length);
   if (id === 'club-') draft.club = wrap(draft.club - 1, careerClubs().length);
   if (id === 'club+') draft.club = wrap(draft.club + 1, careerClubs().length);
+  if (id === 'nat-') draft.nat = wrap(draft.nat - 1, careerNations().length);
+  if (id === 'nat+') draft.nat = wrap(draft.nat + 1, careerNations().length);
   if (id === 'start') {
     const name = nameInput.value.trim() || 'Jonas';
     career = { name, num: String(draft.num), look: lookOf(draft), club: careerClubs()[draft.club].label,
-               games: 0, goals: 0, offers: [], offerCount: 0 };
+               nat: careerNations()[draft.nat].label, capped: false, games: 0, goals: 0, offers: [], offerCount: 0 };
     nameInput.blur(); nameInput.hidden = true;
     saveCareer(); careerUseClub(); careerNext();
     gameState = 'career';
@@ -3671,7 +3677,7 @@ function creatorAction(id) {
 function creatorControls() {
   const w = W(), h = H(), wide = w > h;
   const x0 = wide ? w * 0.4 : w * 0.05, x1 = wide ? w * 0.96 : w * 0.95, labelW = Math.min((x1 - x0) * 0.3, 110);
-  const top = wide ? h * 0.2 : h * 0.37, rowH = wide ? h * 0.105 : h * 0.075, bh = rowH * 0.8;
+  const top = wide ? h * 0.19 : h * 0.35, rowH = wide ? h * 0.092 : h * 0.07, bh = rowH * 0.8;
   const cx0 = x0 + labelW, cw = x1 - cx0, sw = Math.min(bh, cw / 6.6), pw = Math.min(cw, 230);
   const row = i => top + i * rowH;
   const out = [{ id:'name', x:cx0, y:row(0) - bh / 2, w:pw, h:bh }];
@@ -3679,13 +3685,13 @@ function creatorControls() {
   out.push({ id:'num+', x:cx0 + bh * 2.8, y:row(1) - bh / 2, w:bh, h:bh, label:'+' });
   SKINS.forEach((s, i) => out.push({ id:'skin:' + i, x:cx0 + i * sw * 1.12, y:row(2) - sw / 2, w:sw, h:sw, swatch:s[0], on: draft.skin === i }));
   HAIRS.forEach((c, i) => out.push({ id:'hair:' + i, x:cx0 + i * sw * 1.12, y:row(3) - sw / 2, w:sw, h:sw, swatch:c, on: draft.hair === i }));
-  for (const [r, key] of [[4, 'style'], [5, 'club']]) {
+  for (const [r, key] of [[4, 'style'], [5, 'club'], [6, 'nat']]) {
     out.push({ id:key + '-', x:cx0, y:row(r) - bh / 2, w:bh, h:bh, label:'◀' });
     out.push({ id:key + '+', x:cx0 + pw - bh, y:row(r) - bh / 2, w:bh, h:bh, label:'▶' });
   }
   const sbw = Math.min(w * 0.6, 340), sbh = Math.min(h * 0.1, 52);
   out.push({ id:'start', x:w / 2 - sbw / 2, y:wide ? h * 0.85 : h * 0.88, w:sbw, h:sbh, label:'▶  Karriere starten', big:true });
-  out.labels = ['Name', 'Nummer', 'Haut', 'Haare', 'Frisur', 'Verein'].map((t, i) => ({ t, x:x0, y:row(i) }));
+  out.labels = ['Name', 'Nummer', 'Haut', 'Haare', 'Frisur', 'Verein', 'Land'].map((t, i) => ({ t, x:x0, y:row(i) }));
   out.mid = (r) => ({ x:cx0 + pw / 2, y:row(r) });
   return out;
 }
@@ -3736,6 +3742,9 @@ function drawCreator() {
   const ch = n.h * 0.8;
   club.crest(cm.x - ctx.measureText(club.label).width / 2 - ch * 0.7, cm.y, ch);
   ctx.fillText(club.label, cm.x + ch * 0.2, cm.y + 1, cs.find(c => c.id === 'club+').x - cs.find(c => c.id === 'club-').x - n.w * 2.4);
+  const nat = careerNations()[draft.nat], nm = cs.mid(6);
+  nat.crest(nm.x - ctx.measureText(nat.label).width / 2 - ch * 0.7, nm.y, ch);
+  ctx.fillText(nat.label, nm.x + ch * 0.2, nm.y + 1, cs.find(c => c.id === 'nat+').x - cs.find(c => c.id === 'nat-').x - n.w * 2.4);
   // Das Namensfeld ist ein echtes Eingabefeld über dem Bild, damit auch Handys tippen können
   const nf = cs.find(c => c.id === 'name');
   Object.assign(nameInput.style, { left:`${nf.x}px`, top:`${nf.y}px`, width:`${nf.w}px`, height:`${nf.h}px`, fontSize:`${Math.min(nf.h * 0.5, 20)}px` });
@@ -3762,6 +3771,10 @@ function makeOffers() {
 }
 function careerAfterMatch() {
   career.games++; career.goals += careerMatchGoals; careerMatchGoals = 0;
+  if (!career.capped && career.goals >= CAP_AT) {
+    career.capped = true;
+    announce(`Riesige Neuigkeit! ${career.name} wird für ${career.nat} nominiert!`, 4);
+  }
   if (!career.offers.length && career.goals >= offerAt(career.offerCount)) {
     career.offers = makeOffers();
     if (career.offers.length) announce(`${career.offers.length} Vereine wollen dich haben! Wohin wechselst du?`, 4);
@@ -3826,9 +3839,18 @@ function drawCareerScreen() {
   ctx.fillStyle = '#feca57'; ctx.font = `bold ${Math.min(w * 0.045, 20)}px system-ui`;
   ctx.fillText(`⚽ ${career.goals} ${career.goals === 1 ? 'Tor' : 'Tore'} in ${career.games} ${career.games === 1 ? 'Spiel' : 'Spielen'}`, w / 2, h * 0.57, w - 24);
   if (!career.offers.length) {
+    // Nationalität mit Flagge, und ob man schon für sein Land spielt
+    const ne = CLUB_LIST.find(x => x.label === career.nat), fs = Math.min(w * 0.035, 16);
+    if (ne) {
+      const txt = career.capped ? `${career.nat} · ⭐ Nationalspieler!` : `${career.nat} · Nominierung ab ${CAP_AT} Toren`;
+      ctx.font = `bold ${fs}px system-ui`; ctx.fillStyle = career.capped ? '#feca57' : 'rgba(255,255,255,0.8)';
+      const tw = Math.min(ctx.measureText(txt).width, w - 60);
+      ne.crest(w / 2 - tw / 2 - fs, h * 0.625, fs * 1.6);
+      ctx.fillText(txt, w / 2 + fs * 0.4, h * 0.625, w - 60);
+    }
     const need = offerAt(career.offerCount) - career.goals;
     ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.font = `${Math.min(w * 0.035, 16)}px system-ui`;
-    ctx.fillText(`Noch ${need} ${need === 1 ? 'Tor' : 'Tore'} bis zu den nächsten Angeboten`, w / 2, h * 0.68, w - 24);
+    ctx.fillText(need > 0 ? `Noch ${need} ${need === 1 ? 'Tor' : 'Tore'} bis zu den nächsten Angeboten` : 'Nach dem nächsten Spiel kommen neue Angebote!', w / 2, h * 0.69, w - 24);
   }
   for (const b of careerButtons()) {
     roundRect(b.x, b.y, b.w, b.h, Math.min(b.h * 0.3, 14));
