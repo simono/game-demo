@@ -912,6 +912,22 @@ function drawOlofssonCrest(cx, cy, s) {
 }
 
 // Fantasy-Vereine: runde Wappen mit Rand und Symbol in der Mitte
+// Wappen mit Buchstaben, für Vereine ohne eigene Zeichnung
+const letterCrest = (bg, ring, text, fg) => (cx, cy, s) => {
+  ctx.save();
+  ctx.beginPath(); ctx.moveTo(cx - s*0.42, cy - s*0.45); ctx.lineTo(cx + s*0.42, cy - s*0.45); ctx.lineTo(cx + s*0.42, cy + s*0.05);
+  ctx.quadraticCurveTo(cx + s*0.4, cy + s*0.4, cx, cy + s*0.55); ctx.quadraticCurveTo(cx - s*0.4, cy + s*0.4, cx - s*0.42, cy + s*0.05); ctx.closePath();
+  ctx.shadowColor='rgba(0,0,0,0.45)'; ctx.shadowBlur=s*0.12;
+  ctx.fillStyle=ring; ctx.fill(); ctx.shadowBlur=0;
+  ctx.translate(cx, cy); ctx.scale(0.84, 0.84); ctx.translate(-cx, -cy);
+  ctx.beginPath(); ctx.moveTo(cx - s*0.42, cy - s*0.45); ctx.lineTo(cx + s*0.42, cy - s*0.45); ctx.lineTo(cx + s*0.42, cy + s*0.05);
+  ctx.quadraticCurveTo(cx + s*0.4, cy + s*0.4, cx, cy + s*0.55); ctx.quadraticCurveTo(cx - s*0.4, cy + s*0.4, cx - s*0.42, cy + s*0.05); ctx.closePath();
+  ctx.fillStyle=bg; ctx.fill();
+  ctx.fillStyle=fg; ctx.font=`900 ${s*(text.length > 2 ? 0.26 : 0.38)}px system-ui`;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(text, cx, cy + s*0.02, s*0.7);
+  ctx.restore();
+};
 const symbolCrest = (bg, ring, symbol) => (cx, cy, s) => {
   ctx.save();
   ctx.beginPath(); ctx.arc(cx, cy, s*0.52, 0, Math.PI*2);
@@ -1089,8 +1105,8 @@ function paintStands(f, w, h, padX, padY) {
 
   // Werbebanden oben und unten
   const leagues = new Set([clubEntry(playerClub).league, clubEntry(opponentClub).league]);
-  const COUNTRY = { de:'DEUTSCHLAND', en:'ENGLAND', es:'SPANIEN', fantasy:'FANTASY' };
-  const DUEL = { de:'BUNDESLIGA-DUELL', en:'PREMIER LEAGUE', es:'LALIGA', fantasy:'FANTASY-LIGA' };
+  const COUNTRY = { de:'DEUTSCHLAND', en:'ENGLAND', es:'SPANIEN', it:'ITALIEN', fr:'FRANKREICH', fantasy:'FANTASY' };
+  const DUEL = { de:'BUNDESLIGA-DUELL', en:'PREMIER LEAGUE', es:'LALIGA', it:'SERIE A', fr:'LIGUE 1', fantasy:'FANTASY-LIGA' };
   const duel = isNation(playerClub) || isNation(opponentClub) ? 'LÄNDERSPIEL' : leagues.size > 1 ? [...leagues].map(l => COUNTRY[l]).join(' VS ') : DUEL[[...leagues][0]];
   const ads = [home.stadium, 'KICK IT!', home.name, 'TOOOR!', duel];
   f.font = `bold ${boardH * 0.7}px system-ui`;
@@ -2821,6 +2837,116 @@ const NINJA = { name: 'Ninja Warriors', short: 'NIN', color: '#151515', light: '
 };
 NINJA.away = { color:'#2ecc71', numColor:'#151515', style:{shortsColor:'#2ecc71', shortSleeves:true, socksColor:'#2ecc71', socksStripe:'#151515', trim:'#151515', shortsStripe:'#151515'} };
 
+const INTER = { name: 'Inter Mailand', short: 'INT', color: '#0a2d8f', light: '#3d64d6', numColor:'#fff', nums:['10','9','23'], names:['Lautaro','Thuram','Barella'], keeperName:'Sommer', keeperNum:'1',
+  style:{shortsColor:'#111111', shortSleeves:true, socksColor:'#111111', socksStripe:'#ffffff', trim:'#ffffff', shortsStripe:'#ffffff', pattern:'stripes', patternColor:'#111111'},
+  appearances:[
+    { skin:'#e0aa80', skinDark:'#c08860', hair:'#141414', hairStyle:'short', beard:'stubble' },
+    { skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'buzz' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#2a1a10', hairStyle:'short', beard:'stubble' },
+  ],
+  keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#d8c070', hairStyle:'short' }
+};
+INTER.away = { color:'#f2f2f2', numColor:'#0a2d8f', style:{shortsColor:'#f2f2f2', shortSleeves:true, socksColor:'#f2f2f2', socksStripe:'#0a2d8f', trim:'#0a2d8f', shortsStripe:'#0a2d8f'} };
+
+const MILAN = { name: 'AC Mailand', short: 'MIL', color: '#c8102e', light: '#ff4455', numColor:'#fff', nums:['10','11','14'], names:['Leão','Pulisic','Modrić'], keeperName:'Maignan', keeperNum:'1',
+  style:{shortsColor:'#ffffff', shortSleeves:true, socksColor:'#111111', socksStripe:'#c8102e', trim:'#c8102e', shortsStripe:'#c8102e', pattern:'stripes', patternColor:'#111111'},
+  appearances:[
+    { skin:'#9a6440', skinDark:'#744627', hair:'#141414', hairStyle:'top', beard:'stubble' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#5a3a20', hairStyle:'short' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#8a6a45', hairStyle:'bun' },
+  ],
+  keeperLook:{ skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'short', beard:'full' }
+};
+MILAN.away = { color:'#f2f2f2', numColor:'#c8102e', style:{shortsColor:'#f2f2f2', shortSleeves:true, socksColor:'#f2f2f2', socksStripe:'#c8102e', trim:'#c8102e', shortsStripe:'#c8102e'} };
+
+const JUVE = { name: 'Juventus Turin', short: 'JUV', color: '#f2f2f2', light: '#ffffff', numColor:'#111', nums:['9','10','7'], names:['Vlahović','Yıldız','Conceição'], keeperName:'Di Gregorio', keeperNum:'1',
+  style:{shortsColor:'#111111', shortSleeves:true, socksColor:'#111111', socksStripe:'#f2f2f2', trim:'#f2f2f2', shortsStripe:'#f2f2f2', pattern:'stripes', patternColor:'#111111'},
+  appearances:[
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#2a1a10', hairStyle:'bun', beard:'stubble' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#141414', hairStyle:'curly' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#2a1a10', hairStyle:'short' },
+  ],
+  keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#141414', hairStyle:'short', beard:'full' }
+};
+JUVE.away = { color:'#1a1a1a', numColor:'#f2f2f2', style:{shortsColor:'#1a1a1a', shortSleeves:true, socksColor:'#1a1a1a', socksStripe:'#f2f2f2', trim:'#f2f2f2', shortsStripe:'#f2f2f2'} };
+
+const NAPOLI = { name: 'SSC Neapel', short: 'NAP', color: '#12a0d7', light: '#5cc7f0', numColor:'#fff', nums:['11','8','19'], names:['De Bruyne','McTominay','Højlund'], keeperName:'Meret', keeperNum:'1',
+  style:{shortsColor:'#ffffff', shortSleeves:true, socksColor:'#12a0d7', socksStripe:'#ffffff', trim:'#ffffff', shortsStripe:'#ffffff'},
+  appearances:[
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#d07a3a', hairStyle:'short' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#2a1a10', hairStyle:'short' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#d8c070', hairStyle:'short' },
+  ],
+  keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#2a1a10', hairStyle:'short', beard:'stubble' }
+};
+NAPOLI.away = { color:'#f2f2f2', numColor:'#12a0d7', style:{shortsColor:'#f2f2f2', shortSleeves:true, socksColor:'#f2f2f2', socksStripe:'#12a0d7', trim:'#12a0d7', shortsStripe:'#12a0d7'} };
+
+const ROMA = { name: 'AS Rom', short: 'ROM', color: '#8e1f2f', light: '#c4475a', numColor:'#f0bc42', nums:['21','7','11'], names:['Dybala','Pellegrini','Dovbyk'], keeperName:'Svilar', keeperNum:'1',
+  style:{shortsColor:'#8e1f2f', shortSleeves:true, socksColor:'#8e1f2f', socksStripe:'#f0bc42', trim:'#f0bc42', shortsStripe:'#f0bc42'},
+  appearances:[
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#2a1a10', hairStyle:'short', beard:'stubble' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#2a1a10', hairStyle:'short', beard:'full' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#5a3a20', hairStyle:'top' },
+  ],
+  keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#5a3a20', hairStyle:'short', beard:'stubble' }
+};
+ROMA.away = { color:'#f2f2f2', numColor:'#8e1f2f', style:{shortsColor:'#f2f2f2', shortSleeves:true, socksColor:'#f2f2f2', socksStripe:'#8e1f2f', trim:'#8e1f2f', shortsStripe:'#8e1f2f'} };
+
+const PSG = { name: 'Paris Saint-Germain', short: 'PSG', color: '#0f1f4b', light: '#3a4f8f', numColor:'#fff', nums:['10','7','2'], names:['Dembélé','Kvaratskhelia','Hakimi'], keeperName:'Chevalier', keeperNum:'1',
+  style:{shortsColor:'#0f1f4b', shortSleeves:true, socksColor:'#0f1f4b', socksStripe:'#e30613', trim:'#e30613', shortsStripe:'#e30613', pattern:'stripes', patternColor:'#e30613'},
+  appearances:[
+    { skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'curly', beard:'stubble' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#2a1a10', hairStyle:'top' },
+    { skin:'#c99470', skinDark:'#a06e4c', hair:'#141414', hairStyle:'top', beard:'stubble' },
+  ],
+  keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#5a3a20', hairStyle:'short' }
+};
+PSG.away = { color:'#f2f2f2', numColor:'#0f1f4b', style:{shortsColor:'#f2f2f2', shortSleeves:true, socksColor:'#f2f2f2', socksStripe:'#0f1f4b', trim:'#0f1f4b', shortsStripe:'#0f1f4b'} };
+
+const OM = { name: 'Olympique Marseille', short: 'OM', color: '#ffffff', light: '#ffffff', numColor:'#2faee0', nums:['10','97','25'], names:['Greenwood','Aubameyang','Rabiot'], keeperName:'Rulli', keeperNum:'1',
+  style:{shortsColor:'#ffffff', shortSleeves:true, socksColor:'#ffffff', socksStripe:'#2faee0', trim:'#2faee0', shortsStripe:'#2faee0'},
+  appearances:[
+    { skin:'#9a6440', skinDark:'#744627', hair:'#141414', hairStyle:'curly', beard:'stubble' },
+    { skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'buzz', beard:'full' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#5a3a20', hairStyle:'bun' },
+  ],
+  keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#2a1a10', hairStyle:'short', beard:'full' }
+};
+OM.away = { color:'#2faee0', numColor:'#ffffff', style:{shortsColor:'#2faee0', shortSleeves:true, socksColor:'#2faee0', socksStripe:'#ffffff', trim:'#ffffff', shortsStripe:'#ffffff'} };
+
+const LYON = { name: 'Olympique Lyon', short: 'OL', color: '#ffffff', light: '#ffffff', numColor:'#1b3a8c', nums:['8','11','9'], names:['Tolisso','Fofana','Mikautadze'], keeperName:'Perri', keeperNum:'1',
+  style:{shortsColor:'#1b3a8c', shortSleeves:true, socksColor:'#ffffff', socksStripe:'#e30613', trim:'#e30613', shortsStripe:'#e30613'},
+  appearances:[
+    { skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'buzz' },
+    { skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'top' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#2a1a10', hairStyle:'short' },
+  ],
+  keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#5a3a20', hairStyle:'short' }
+};
+LYON.away = { color:'#1b3a8c', numColor:'#ffffff', style:{shortsColor:'#1b3a8c', shortSleeves:true, socksColor:'#1b3a8c', socksStripe:'#ffffff', trim:'#ffffff', shortsStripe:'#ffffff'} };
+
+const MONACO = { name: 'AS Monaco', short: 'ASM', color: '#e30613', light: '#ff4d55', numColor:'#fff', nums:['10','18','7'], names:['Golovin','Minamino','Akliouche'], keeperName:'Köhn', keeperNum:'1',
+  style:{shortsColor:'#e30613', shortSleeves:true, socksColor:'#ffffff', socksStripe:'#ffffff', trim:'#ffffff', shortsStripe:'#ffffff'},
+  appearances:[
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#5a3a20', hairStyle:'short' },
+    { skin:'#f0cfa8', skinDark:'#d4ab82', hair:'#141414', hairStyle:'short' },
+    { skin:'#e0aa80', skinDark:'#c08860', hair:'#141414', hairStyle:'curly' },
+  ],
+  keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#d8c070', hairStyle:'short' }
+};
+MONACO.away = { color:'#1a1a1a', numColor:'#e30613', style:{shortsColor:'#1a1a1a', shortSleeves:true, socksColor:'#1a1a1a', socksStripe:'#e30613', trim:'#e30613', shortsStripe:'#e30613'} };
+
+const LILLE = { name: 'OSC Lille', short: 'LOSC', color: '#c8102e', light: '#ff4455', numColor:'#fff', nums:['10','9','8'], names:['Haraldsson','Giroud','André'], keeperName:'Özer', keeperNum:'1',
+  style:{shortsColor:'#1b2a5c', shortSleeves:true, socksColor:'#c8102e', socksStripe:'#ffffff', trim:'#ffffff', shortsStripe:'#ffffff'},
+  appearances:[
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#d8c070', hairStyle:'short' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#5a3a20', hairStyle:'short', beard:'full' },
+    { skin:'#9a6440', skinDark:'#744627', hair:'#141414', hairStyle:'curly' },
+  ],
+  keeperLook:{ skin:'#e0aa80', skinDark:'#c08860', hair:'#141414', hairStyle:'short', beard:'stubble' }
+};
+LILLE.away = { color:'#f2f2f2', numColor:'#c8102e', style:{shortsColor:'#f2f2f2', shortSleeves:true, socksColor:'#f2f2f2', socksStripe:'#c8102e', trim:'#c8102e', shortsStripe:'#c8102e'} };
+
 const OLOFSSON = { name: 'FC Olofsson', short: 'FCO', color: '#ffd200', light: '#ffe45c', numColor:'#0b4ea2', nums:['10','9','7'], names:['Simon','Jonas','Anna'], keeperName:'Henrik', keeperNum:'1',
   style:{shortsColor:'#0b4ea2', shortSleeves:true, socksColor:'#ffd200', socksStripe:'#0b4ea2', trim:'#0b4ea2', shortsStripe:'#ffd200'},
   appearances:[
@@ -3191,6 +3317,16 @@ const CLUB_LIST = [
   { club:REALMADRID, team:'blue', crest:drawRealMadridCrest, label:'Real Madrid', league:'es' },
   { club:BETIS,   team:'red',  crest:drawBetisCrest,   label:'Betis', league:'es' },
   { club:SOCIEDAD, team:'blue', crest:drawSociedadCrest, label:'Sociedad', league:'es' },
+  { club:INTER, team:'blue', crest:letterCrest('#0a2d8f', '#d4af37', 'IM', '#ffffff'), label:'Inter', league:'it' },
+  { club:MILAN, team:'red', crest:letterCrest('#c8102e', '#111111', 'ACM', '#ffffff'), label:'Milan', league:'it' },
+  { club:JUVE, team:'blue', crest:letterCrest('#111111', '#f2f2f2', 'J', '#ffffff'), label:'Juventus', league:'it' },
+  { club:NAPOLI, team:'red', crest:letterCrest('#12a0d7', '#ffffff', 'N', '#ffffff'), label:'Napoli', league:'it' },
+  { club:ROMA, team:'blue', crest:letterCrest('#8e1f2f', '#f0bc42', 'ASR', '#f0bc42'), label:'Roma', league:'it' },
+  { club:PSG, team:'red', crest:letterCrest('#0f1f4b', '#e30613', 'PSG', '#ffffff'), label:'PSG', league:'fr' },
+  { club:OM, team:'blue', crest:letterCrest('#ffffff', '#2faee0', 'OM', '#2faee0'), label:'Marseille', league:'fr' },
+  { club:LYON, team:'red', crest:letterCrest('#1b3a8c', '#e30613', 'OL', '#ffffff'), label:'Lyon', league:'fr' },
+  { club:MONACO, team:'blue', crest:letterCrest('#e30613', '#ffffff', 'ASM', '#ffffff'), label:'Monaco', league:'fr' },
+  { club:LILLE, team:'red', crest:letterCrest('#c8102e', '#1b2a5c', 'LOSC', '#ffffff'), label:'Lille', league:'fr' },
   { club:GERMANY, team:'red',  crest:drawGermanyCrest, label:'Deutschland', league:'eu' },
   { club:SWEDEN,  team:'blue', crest:drawSwedenCrest,  label:'Schweden', league:'eu' },
   { club:ENGLAND, team:'blue', crest:drawEnglandCrest, label:'England', league:'eu' },
@@ -3230,6 +3366,8 @@ const LEAGUES = [
   { id:'de', label:'Bundesliga',     flag:'🇩🇪' },
   { id:'en', label:'Premier League', flag:'🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
   { id:'es', label:'LaLiga',         flag:'🇪🇸' },
+  { id:'it', label:'Serie A',        flag:'🇮🇹' },
+  { id:'fr', label:'Ligue 1',        flag:'🇫🇷' },
   { id:'fantasy', label:'Fantasy-Liga', flag:'✨' },
   { id:'eu',    label:'Europa',       flag:'🇪🇺' },
   { id:'world', label:'Welt',         flag:'🌍' },
@@ -3289,6 +3427,16 @@ ATLETICO.stadium = 'Metropolitano';      ATLETICO.fans = ['#cb3524', '#ffffff', 
 REALMADRID.stadium = 'Santiago Bernabéu'; REALMADRID.fans = ['#ffffff', '#ffffff', '#3d195b'];
 BETIS.stadium   = 'Benito Villamarín';   BETIS.fans   = ['#0bb363', '#ffffff'];
 SOCIEDAD.stadium = 'Reale Arena';        SOCIEDAD.fans = ['#0067b1', '#ffffff'];
+INTER.stadium = 'San Siro'; INTER.fans = ['#0a2d8f','#111111','#0a2d8f'];
+MILAN.stadium = 'San Siro'; MILAN.fans = ['#c8102e','#111111','#c8102e'];
+JUVE.stadium = 'Allianz Stadium'; JUVE.fans = ['#111111','#ffffff','#111111'];
+NAPOLI.stadium = 'Stadio Maradona'; NAPOLI.fans = ['#12a0d7','#12a0d7','#ffffff'];
+ROMA.stadium = 'Stadio Olimpico'; ROMA.fans = ['#8e1f2f','#f0bc42','#8e1f2f'];
+PSG.stadium = 'Prinzenpark'; PSG.fans = ['#0f1f4b','#e30613','#ffffff'];
+OM.stadium = 'Vélodrome'; OM.fans = ['#ffffff','#2faee0','#ffffff'];
+LYON.stadium = 'Groupama Stadium'; LYON.fans = ['#ffffff','#1b3a8c','#e30613'];
+MONACO.stadium = 'Stade Louis II'; MONACO.fans = ['#e30613','#ffffff','#e30613'];
+LILLE.stadium = 'Stade Pierre-Mauroy'; LILLE.fans = ['#c8102e','#c8102e','#1b2a5c'];
 GERMANY.stadium = 'Olympiastadion Berlin'; GERMANY.fans = ['#111111', '#dd0000', '#ffcc00', '#ffffff'];
 SWEDEN.stadium  = 'Strawberry Arena';    SWEDEN.fans  = ['#fecc00', '#fecc00', '#006aa7'];
 ENGLAND.stadium = 'Wembley';             ENGLAND.fans = ['#ffffff', '#ffffff', '#ce1124'];
@@ -3337,7 +3485,7 @@ const subPage = () => showControls || showTrophies;
 // ── Pokal-Vitrine: jeder gewonnene Titel bleibt im Browser gespeichert ──
 const TROPHY_KEY = 'kickit-trophies';
 const TROPHY_NAMES = { cl:'Champions League', wm:'Weltmeister', em:'Europameister', de:'Deutscher Meister',
-  en:'Englischer Meister', es:'Spanischer Meister', fantasy:'Fantasy-Meister', eu:'Länderturnier Europa', world:'Länderturnier Welt' };
+  en:'Englischer Meister', es:'Spanischer Meister', it:'Italienischer Meister', fr:'Französischer Meister', fantasy:'Fantasy-Meister', eu:'Länderturnier Europa', world:'Länderturnier Welt' };
 let trophies = [];
 try { trophies = JSON.parse(localStorage.getItem(TROPHY_KEY)) || []; } catch (e) {}
 function addTrophy(kind, club) {
@@ -3428,7 +3576,7 @@ const CAREER_KEY = 'kickit-career';
 const OFFER_AT = [3, 7, 12, 18, 25, 33];   // so viele Tore insgesamt bringen die nächsten Angebote
 const offerAt = i => i < OFFER_AT.length ? OFFER_AT[i] : OFFER_AT[OFFER_AT.length - 1] + 8 * (i - OFFER_AT.length + 1);
 // Größe der Vereine: 1 klein, 4 ganz groß; nicht aufgeführte sind 1
-const CLUB_TIERS = { 'Dortmund':2, 'Chelsea':2, 'Atlético':2, 'Liverpool':2, 'Bayern':3, 'Arsenal':3, 'Man City':3, 'Barcelona':4, 'Real Madrid':4 };
+const CLUB_TIERS = { 'Dortmund':2, 'Chelsea':2, 'Atlético':2, 'Liverpool':2, 'Napoli':2, 'Milan':2, 'Juventus':2, 'Inter':3, 'PSG':3, 'Bayern':3, 'Arsenal':3, 'Man City':3, 'Barcelona':4, 'Real Madrid':4 };
 const clubTier = label => CLUB_TIERS[label] || 1;
 const SKINS = [['#f1c8a5', '#d9a47f'], ['#e0aa80', '#c08860'], ['#c99470', '#a06e4c'], ['#9a6440', '#744627'], ['#6b4128', '#4a2b18']];
 const HAIRS = ['#141414', '#5a3a20', '#8a6a45', '#d8c070', '#c0392b', '#f0e0b0'];
