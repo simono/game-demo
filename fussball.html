@@ -692,6 +692,37 @@ function drawSociedadCrest(cx, cy, s) {
   ctx.restore();
 }
 
+// Nationalteams tragen ihre Flagge als Wappen
+function drawFlagCrest(cx, cy, s, paint) {
+  const fw=s*0.84, fh=s*0.56;
+  ctx.save();
+  ctx.translate(cx-fw/2, cy-fh/2);
+  roundRect(0, 0, fw, fh, s*0.05);
+  ctx.shadowColor='rgba(0,0,0,0.45)'; ctx.shadowBlur=s*0.12;
+  ctx.fillStyle='#fff'; ctx.fill(); ctx.shadowBlur=0;
+  ctx.save(); roundRect(0, 0, fw, fh, s*0.05); ctx.clip();
+  paint(fw, fh);
+  ctx.restore();
+  roundRect(0, 0, fw, fh, s*0.05);
+  ctx.strokeStyle='rgba(255,255,255,0.8)'; ctx.lineWidth=s*0.02; ctx.stroke();
+  ctx.restore();
+}
+const drawGermanyCrest = (cx, cy, s) => drawFlagCrest(cx, cy, s, (fw, fh) => {
+  ['#111111', '#dd0000', '#ffcc00'].forEach((c, i) => { ctx.fillStyle=c; ctx.fillRect(0, i*fh/3, fw, fh/3+1); });
+});
+const drawSwedenCrest = (cx, cy, s) => drawFlagCrest(cx, cy, s, (fw, fh) => {
+  ctx.fillStyle='#006aa7'; ctx.fillRect(0, 0, fw, fh);
+  ctx.fillStyle='#fecc00'; ctx.fillRect(fw*0.31, 0, fw*0.125, fh); ctx.fillRect(0, fh*0.4, fw, fh*0.2);
+});
+const drawEnglandCrest = (cx, cy, s) => drawFlagCrest(cx, cy, s, (fw, fh) => {
+  ctx.fillStyle='#ffffff'; ctx.fillRect(0, 0, fw, fh);
+  ctx.fillStyle='#ce1124'; ctx.fillRect(fw/2-fh*0.1, 0, fh*0.2, fh); ctx.fillRect(0, fh*0.4, fw, fh*0.2);
+});
+const drawSpainCrest = (cx, cy, s) => drawFlagCrest(cx, cy, s, (fw, fh) => {
+  ctx.fillStyle='#aa151b'; ctx.fillRect(0, 0, fw, fh);
+  ctx.fillStyle='#f1bf00'; ctx.fillRect(0, fh/4, fw, fh/2);
+});
+
 function drawSchalkeCrest(cx, cy, s) {
   ctx.save();
   ctx.translate(cx, cy);
@@ -887,7 +918,7 @@ function paintStands(f, w, h, padX, padY) {
   const leagues = new Set([clubEntry(playerClub).league, clubEntry(opponentClub).league]);
   const COUNTRY = { de:'DEUTSCHLAND', en:'ENGLAND', es:'SPANIEN' };
   const DUEL = { de:'BUNDESLIGA-DUELL', en:'PREMIER LEAGUE', es:'LALIGA' };
-  const duel = leagues.size > 1 ? [...leagues].map(l => COUNTRY[l]).join(' VS ') : DUEL[[...leagues][0]];
+  const duel = leagues.has('nat') ? 'LÄNDERSPIEL' : leagues.size > 1 ? [...leagues].map(l => COUNTRY[l]).join(' VS ') : DUEL[[...leagues][0]];
   const ads = [home.stadium, 'KICK IT!', home.name, 'TOOOR!', duel];
   f.font = `bold ${boardH * 0.7}px system-ui`;
   f.textAlign = 'center';
@@ -2461,6 +2492,46 @@ const SOCIEDAD = { name: 'Real Sociedad', short: 'RSO', color: '#0067b1', light:
   keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#6b4a2b', hairStyle:'short', beard:'full' }
 };
 
+const GERMANY = { name: 'Deutschland', short: 'GER', color: '#f4f4f4', light: '#ffffff', numColor:'#111', nums:['11','10','17'], names:['Woltemade','Musiala','Wirtz'], keeperName:'Neuer',
+  style:{shortsColor:'#111111', shortSleeves:true, socksColor:'#ffffff', socksStripe:'#111111', trim:'#111111', shortsStripe:'#ffffff'},
+  appearances:[
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#7a5a3a', hairStyle:'short' },
+    { skin:'#9a6440', skinDark:'#744627', hair:'#141414', hairStyle:'top' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#8a6a45', hairStyle:'top' },
+  ],
+  keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#c8a060', hairStyle:'short', beard:'stubble' }
+};
+
+const SWEDEN = { name: 'Schweden', short: 'SWE', color: '#fecc00', light: '#ffe04d', numColor:'#005b99', nums:['18','17','9'], names:['Ayari','Gyökeres','Isak'], keeperName:'Widell Zetterström',
+  style:{shortsColor:'#005b99', shortSleeves:true, socksColor:'#fecc00', socksStripe:'#005b99', trim:'#005b99', shortsStripe:'#fecc00'},
+  appearances:[
+    { skin:'#c99470', skinDark:'#a06e4c', hair:'#141414', hairStyle:'short' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#2a1a10', hairStyle:'top', beard:'stubble' },
+    { skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'top' },
+  ],
+  keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#b08850', hairStyle:'short' }
+};
+
+const ENGLAND = { name: 'England', short: 'ENG', color: '#ffffff', light: '#ffffff', numColor:'#1d2a5c', nums:['9','10','18'], names:['Kane','Bellingham','Gordon'], keeperName:'Pickford',
+  style:{shortsColor:'#1d2a5c', shortSleeves:true, socksColor:'#ffffff', socksStripe:'#1d2a5c', trim:'#1d2a5c', shortsStripe:'#ffffff'},
+  appearances:[
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#6b4a2b', hairStyle:'short', beard:'stubble' },
+    { skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'buzz' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#5a3a20', hairStyle:'top' },
+  ],
+  keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#8a5a30', hairStyle:'short', beard:'full' }
+};
+
+const SPAIN = { name: 'Spanien', short: 'ESP', color: '#c60b1e', light: '#ff3b4e', numColor:'#f1bf00', nums:['24','19','10'], names:['Cucurella','Lamine Yamal','Oyarzabal'], keeperName:'Unai Simón', keeperNum:'23',
+  style:{shortsColor:'#1d2a5c', shortSleeves:true, socksColor:'#1d2a5c', socksStripe:'#f1bf00', trim:'#f1bf00', shortsStripe:'#f1bf00'},
+  appearances:[
+    { skin:'#e8b890', skinDark:'#c8946a', hair:'#3a2516', hairStyle:'curly' },
+    { skin:'#9a6440', skinDark:'#744627', hair:'#111111', hairStyle:'top' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#2a1a10', hairStyle:'short', beard:'stubble' },
+  ],
+  keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#2a1a10', hairStyle:'short', beard:'full' }
+};
+
 // Auswärtstrikots für Vereine mit ähnlicher Farbe (Köln und Bayern sind beide rot)
 KOELN.away  = { color:'#ffffff', numColor:'#e3000f', style:{shortsColor:'#ffffff', shortSleeves:true, socksColor:'#ffffff', socksStripe:'#e3000f', trim:'#e3000f', shortsStripe:'#e3000f'} };
 BAYERN.away = { color:'#f2f2f2', numColor:'#dc052d', style:{shortsColor:'#f2f2f2', shortSleeves:true, socksColor:'#f2f2f2', socksStripe:'#dc052d', trim:'#dc052d', sidePanel:'rgba(220,5,45,0.85)', shortsStripe:'#dc052d'} };
@@ -2473,6 +2544,10 @@ BARCA.away     = { color:'#e8c66a', numColor:'#a50044', style:{shortsColor:'#e8c
 ATLETICO.away  = { color:'#272e61', numColor:'#ffffff', style:{shortsColor:'#272e61', shortSleeves:true, socksColor:'#272e61', socksStripe:'#cb3524', trim:'#cb3524', shortsStripe:'#cb3524'} };
 REALMADRID.away= { color:'#1d1d3a', numColor:'#d4a017', style:{shortsColor:'#1d1d3a', shortSleeves:true, socksColor:'#1d1d3a', socksStripe:'#d4a017', trim:'#d4a017', shortsStripe:'#d4a017'} };
 SOCIEDAD.away  = { color:'#1a1a1a', numColor:'#ffffff', style:{shortsColor:'#1a1a1a', shortSleeves:true, socksColor:'#1a1a1a', socksStripe:'#0067b1', trim:'#0067b1', shortsStripe:'#0067b1'} };
+GERMANY.away   = { color:'#1a1a1a', numColor:'#ffffff', style:{shortsColor:'#1a1a1a', shortSleeves:true, socksColor:'#1a1a1a', socksStripe:'#dd0000', trim:'#ffcc00', shortsStripe:'#dd0000'} };
+SWEDEN.away    = { color:'#005b99', numColor:'#fecc00', style:{shortsColor:'#005b99', shortSleeves:true, socksColor:'#005b99', socksStripe:'#fecc00', trim:'#fecc00', shortsStripe:'#fecc00'} };
+ENGLAND.away   = { color:'#c8102e', numColor:'#ffffff', style:{shortsColor:'#c8102e', shortSleeves:true, socksColor:'#c8102e', socksStripe:'#ffffff', trim:'#ffffff', shortsStripe:'#ffffff'} };
+SPAIN.away     = { color:'#f2f2f2', numColor:'#c60b1e', style:{shortsColor:'#f2f2f2', shortSleeves:true, socksColor:'#f2f2f2', socksStripe:'#c60b1e', trim:'#c60b1e', shortsStripe:'#c60b1e'} };
 CHELSEA.away   = { color:'#f2f2f2', numColor:'#034694', style:{shortsColor:'#f2f2f2', shortSleeves:true, socksColor:'#f2f2f2', socksStripe:'#034694', trim:'#034694', shortsStripe:'#034694'} };
 
 function colorDistance(a, b) {
@@ -2503,6 +2578,10 @@ const CLUB_LIST = [
   { club:REALMADRID, team:'blue', crest:drawRealMadridCrest, label:'Real Madrid', league:'es' },
   { club:BETIS,   team:'red',  crest:drawBetisCrest,   label:'Betis', league:'es' },
   { club:SOCIEDAD, team:'blue', crest:drawSociedadCrest, label:'Sociedad', league:'es' },
+  { club:GERMANY, team:'red',  crest:drawGermanyCrest, label:'Deutschland', league:'nat' },
+  { club:SWEDEN,  team:'blue', crest:drawSwedenCrest,  label:'Schweden', league:'nat' },
+  { club:ENGLAND, team:'blue', crest:drawEnglandCrest, label:'England', league:'nat' },
+  { club:SPAIN,   team:'red',  crest:drawSpainCrest,   label:'Spanien', league:'nat' },
 ];
 const clubEntry = club => CLUB_LIST.find(e => e.club === club);
 
@@ -2510,17 +2589,21 @@ const LEAGUES = [
   { id:'de', label:'Bundesliga',     flag:'🇩🇪' },
   { id:'en', label:'Premier League', flag:'🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
   { id:'es', label:'LaLiga',         flag:'🇪🇸' },
+  { id:'nat', label:'Länder',        flag:'🌍' },
 ];
 let menuLeague = 'de';
+// In der Champions League spielen nur Vereine
+const menuLeagues = () => LEAGUES.filter(l => mode !== 'cl' || l.id !== 'nat');
 // Vereine, die gerade als Karten zur Auswahl stehen
 function menuClubs() {
   return CLUB_LIST.filter(e => e.league === menuLeague && !(teamChosen && e.club === playerClub));
 }
 function leagueTabLayout() {
   const w=W(), h=H();
-  const gap=8, tw=Math.min((w-32-gap*(LEAGUES.length-1))/LEAGUES.length, 190), th=Math.min(h*0.075, 34);
-  const x0=w/2-(tw*LEAGUES.length+gap*(LEAGUES.length-1))/2;
-  return LEAGUES.map((l, i) => ({ league:l, x:x0+i*(tw+gap), y:h*0.29-th/2, w:tw, h:th }));
+  const lgs=menuLeagues();
+  const gap=8, tw=Math.min((w-32-gap*(lgs.length-1))/lgs.length, 190), th=Math.min(h*0.075, 34);
+  const x0=w/2-(tw*lgs.length+gap*(lgs.length-1))/2;
+  return lgs.map((l, i) => ({ league:l, x:x0+i*(tw+gap), y:h*0.29-th/2, w:tw, h:th }));
 }
 
 // Karten der Vereinsauswahl: bis 4 in einer Reihe, sonst zwei Reihen
@@ -2555,6 +2638,10 @@ ATLETICO.stadium = 'Metropolitano';      ATLETICO.fans = ['#cb3524', '#ffffff', 
 REALMADRID.stadium = 'Santiago Bernabéu'; REALMADRID.fans = ['#ffffff', '#ffffff', '#3d195b'];
 BETIS.stadium   = 'Benito Villamarín';   BETIS.fans   = ['#0bb363', '#ffffff'];
 SOCIEDAD.stadium = 'Reale Arena';        SOCIEDAD.fans = ['#0067b1', '#ffffff'];
+GERMANY.stadium = 'Olympiastadion Berlin'; GERMANY.fans = ['#111111', '#dd0000', '#ffcc00', '#ffffff'];
+SWEDEN.stadium  = 'Strawberry Arena';    SWEDEN.fans  = ['#fecc00', '#fecc00', '#006aa7'];
+ENGLAND.stadium = 'Wembley';             ENGLAND.fans = ['#ffffff', '#ffffff', '#ce1124'];
+SPAIN.stadium   = 'La Cartuja';          SPAIN.fans   = ['#c60b1e', '#c60b1e', '#f1bf00'];
 let stadiumBannerUntil = 0;
 
 let ball  = { x: 0.5, y: 0.5, vx: 0, vy: 0 };
@@ -2961,7 +3048,7 @@ function chooseClub(entry) {
 }
 
 function startCup() {
-  const others = shuffle(CLUB_LIST.map(e => e.club).filter(c => c !== playerClub)).slice(0, 7);
+  const others = shuffle(CLUB_LIST.filter(e => e.league !== 'nat').map(e => e.club).filter(c => c !== playerClub)).slice(0, 7);
   cup = { rounds:[pairUp(shuffle([playerClub, ...others]))], round:0, out:false, won:false, champion:null };
   gameState = 'cup';
   announce('Willkommen zur Champions League! Acht Teams, nur einer holt den Pokal.', 3);
@@ -3006,7 +3093,7 @@ function startSeason() {
   rounds.sort((x, y) => (x.some(isMine) ? 0 : 1) - (y.some(isMine) ? 0 : 1));
   season = { league, clubs, rounds, day:0, done:false };
   gameState = 'season';
-  announce(`Die Saison beginnt! Wer wird Meister in der ${LEAGUES.find(l => l.id === league).label}?`, 3);
+  announce(league === 'nat' ? 'Das Länderturnier beginnt! Welches Land holt den Titel?' : `Die Saison beginnt! Wer wird Meister in der ${LEAGUES.find(l => l.id === league).label}?`, 3);
 }
 function advanceSeason() {
   const ms = season.rounds[season.day];
@@ -3068,6 +3155,7 @@ function modeHit(tx, ty) {
 }
 function pickMode(id) {
   mode = id; cup = null; season = null; commentLine = '';
+  if (id === 'cl' && menuLeague === 'nat') menuLeague = 'de';
   gameState = 'menu'; teamChosen = false; opponentChosen = false;
 }
 function compBtn() {
@@ -3469,8 +3557,8 @@ window.addEventListener('keydown', e=>{
     if (e.key==='Escape') { gameState='title'; teamChosen=false; opponentChosen=false; return; }
     const n = parseInt(e.key, 10) - 1;
     if (!opponentChosen && (e.key==='ArrowLeft' || e.key==='ArrowRight')) {
-      const i = LEAGUES.findIndex(l => l.id === menuLeague);
-      menuLeague = LEAGUES[(i + (e.key==='ArrowRight' ? 1 : LEAGUES.length-1)) % LEAGUES.length].id;
+      const lgs = menuLeagues(), i = lgs.findIndex(l => l.id === menuLeague);
+      menuLeague = lgs[(i + (e.key==='ArrowRight' ? 1 : lgs.length-1)) % lgs.length].id;
     } else if (!teamChosen) {
       const pick = menuClubs()[n];
       if (pick) chooseClub(pick);
@@ -4241,7 +4329,8 @@ function drawUI() {
     drawGameLogo(w/2, h*0.08, Math.min(w,h)*0.09, t, 1);
 
     if (!teamChosen) {
-      heading(mode === 'cl' ? '🏆 Wähle deinen Verein' : mode === 'season' ? '📊 Wähle deinen Verein' : 'Wähle deinen Verein');
+      const pickWhat = menuLeague === 'nat' ? 'Wähle dein Land' : 'Wähle deinen Verein';
+      heading(mode === 'cl' ? '🏆 ' + pickWhat : mode === 'season' ? '📊 ' + pickWhat : pickWhat);
       leagueTabs();
       clubCardLayout(menuClubs()).forEach(c => drawClubCard(c));
 
@@ -4602,7 +4691,7 @@ function loop() {
     if (p.isKeeper) {
       const kClub = p.team===playerTeam ? playerClub : opponentClub;
       const keeperStyle = {shortsColor:'#1a6b1a', shortSleeves:false, socksColor:'#1a6b1a', socksStripe:'#fff', gloves:true, trim:'#111111', pattern:'hoops', patternColor:'rgba(0,0,0,0.12)'};
-      drawPlayer(px, py, ps, '#27ae60', p.num, cel, '#fff', keeperStyle, kClub.keeperLook || p, motion);
+      drawPlayer(px, py, ps, '#27ae60', kClub.keeperNum || p.num, cel, '#fff', keeperStyle, kClub.keeperLook || p, motion);
       const kName = kClub.keeperName;
       if (kName) {
         ctx.save();
