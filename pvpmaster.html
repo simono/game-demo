@@ -117,7 +117,7 @@ function buildIsland() {
 
 // ── Spieler und Bots ────────────────────────────────────────────────
 const PROG_KEY = 'pvpmaster';
-let prefs = { char: 'ninja', wins: 0 };
+let prefs = { char: 'ninja', wins: 0, view: 'fp' };
 try { prefs = { ...prefs, ...JSON.parse(localStorage.getItem(PROG_KEY)) }; } catch (e) {}
 const savePrefs = () => { try { localStorage.setItem(PROG_KEY, JSON.stringify(prefs)); } catch (e) {} };
 const char = () => CHARS.find(c => c.id === prefs.char) || CHARS[0];
@@ -354,9 +354,10 @@ addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
   keys[k] = true;
   if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'tab'].includes(k)) e.preventDefault();
-  if (state === 'title') { if (k === 'enter' || k === ' ') startMatch(); const i = CHARS.indexOf(char()); if (k === 'arrowright') { prefs.char = CHARS[(i + 1) % 5].id; savePrefs(); } if (k === 'arrowleft') { prefs.char = CHARS[(i + 4) % 5].id; savePrefs(); } return; }
+  if (state === 'title') { if (k === 'v') toggleView(); if (k === 'enter' || k === ' ') startMatch(); const i = CHARS.indexOf(char()); if (k === 'arrowright') { prefs.char = CHARS[(i + 1) % 5].id; savePrefs(); } if (k === 'arrowleft') { prefs.char = CHARS[(i + 4) % 5].id; savePrefs(); } return; }
   if (state === 'drop' && (k === ' ' || k === 'enter')) { land(player.x, player.y); return; }
   if (state === 'end' && (k === 'enter' || k === ' ')) { state = 'title'; return; }
+  if (k === 'v') toggleView();
   if (state !== 'play') return;
   const n = parseInt(k, 10);
   if (n >= 1 && n <= 4 && player.slots[n - 1]) player.slot = n - 1;
@@ -372,11 +373,14 @@ function charButtons() {
   const w = W(), h = H(), n = 5, cw = Math.min((w - 40) / n - 10, 130), ch = Math.min(h * 0.24, 140), x0 = w / 2 - (n * (cw + 10) - 10) / 2;
   return CHARS.map((c, i) => ({ c, x: x0 + i * (cw + 10), y: h * 0.36, w: cw, h: ch }));
 }
+const viewButton = () => { const w = W(), h = H(), bw = Math.min(w * 0.5, 280), bh = Math.min(h * 0.07, 40); return { x: w / 2 - bw / 2, y: h * 0.62, w: bw, h: bh }; };
 const startButton = () => { const w = W(), h = H(), bw = Math.min(w * 0.6, 340), bh = Math.min(h * 0.1, 60); return { x: w / 2 - bw / 2, y: h * 0.72, w: bw, h: bh }; };
 function touchButtons() {
   if (!touchUI) return [];
-  const w = W(), h = H(), s = Math.min(w, h) * 0.11, m = 12;
-  return [
+  const w = W(), h = H(), s = Math.min(w, h) * 0.11, m = 12, ms = Math.min(w, h) * 0.2;
+  const extra = [{ id: 'view', x: w - ms - 12 - s - m, y: 12, w: s, h: s, label: isFP() ? '🗺️' : '👁️' }];
+  if (isFP()) extra.push({ id: 'fire', x: w - s * 1.6 - m, y: h * 0.42 + (s + m) * 2, w: s * 1.6, h: s * 1.6, label: '🔫' });
+  return [...extra,
     { id: 'build',  x: w - s - m,         y: h * 0.42, w: s, h: s, label: '🧱' },
     { id: 'heal',   x: w - s - m,         y: h * 0.42 + s + m, w: s, h: s, label: '💊' },
     { id: 'swap',   x: w - s * 2 - m * 2, y: h * 0.42, w: s, h: s, label: '✋' },
@@ -390,6 +394,7 @@ canvas.addEventListener('pointerdown', e => {
   mouse.x = x; mouse.y = y;
   if (state === 'title') {
     for (const b of charButtons()) if (hit(b, x, y)) { prefs.char = b.c.id; savePrefs(); return; }
+    if (hit(viewButton(), x, y)) { toggleView(); return; }
     if (hit(startButton(), x, y)) startMatch();
     return;
   }
@@ -397,6 +402,8 @@ canvas.addEventListener('pointerdown', e => {
   if (state === 'end') { state = 'title'; return; }
   if (touchUI) {
     for (const b of touchButtons()) if (hit(b, x, y)) {
+      if (b.id === 'fire') { fireTouch = e.pointerId; return; }
+      if (b.id === 'view') { toggleView(); return; }
       if (b.id === 'build') build(player);
       if (b.id === 'heal') heal(player);
       if (b.id === 'swap') swapGun(player);
@@ -410,12 +417,15 @@ canvas.addEventListener('pointerdown', e => {
   }
   for (const sl of slotRects()) if (hit(sl, x, y) && player.slots[sl.i]) { player.slot = sl.i; return; }
   if (e.button === 2) build(player); else mouse.down = true;
+  // In der Augensicht fängt der Klick die Maus ein, damit man sich frei umschauen kann
+  if (isFP() && document.pointerLockElement !== canvas && canvas.requestPointerLock) { try { canvas.requestPointerLock(); } catch (err) {} }
 }, { passive: false });
 canvas.addEventListener('pointermove', e => {
   mouse.x = e.clientX; mouse.y = e.clientY;
+  if (state === 'play' && isFP() && document.pointerLockElement === canvas) turnBy(e.movementX * 0.0028);
   for (const j of [joyMove, joyAim]) if (j && j.id === e.pointerId) { j.x = e.clientX; j.y = e.clientY; }
 });
-const release = e => { if (joyMove && joyMove.id === e.pointerId) joyMove = null; if (joyAim && joyAim.id === e.pointerId) joyAim = null; if (e.button === 0 || touchUI) mouse.down = false; };
+const release = e => { if (fireTouch === e.pointerId) fireTouch = null; if (joyMove && joyMove.id === e.pointerId) joyMove = null; if (joyAim && joyAim.id === e.pointerId) joyAim = null; if (e.button === 0 || touchUI) mouse.down = false; };
 canvas.addEventListener('pointerup', release); canvas.addEventListener('pointercancel', release);
 
 // ── Absprung ────────────────────────────────────────────────────────
@@ -426,9 +436,186 @@ function land(x, y) {
   feed.unshift({ text: '🪂 Gelandet! Such dir Truhen 📦', t: 5 });
 }
 
+// ── Augensicht: die Insel aus den Augen der Figur, mit Strahlen für Wände und flachen Bildern für alles andere ──
+const FOV = 1.15, EYE = 30, COL = 2, FAR = 1600;
+const isFP = () => prefs.view !== 'top';
+let zbuf = [];
+const focal = () => (W() / 2) / Math.tan(FOV / 2);
+// Abstand entlang des Strahls bis zur ersten Wand, oder Infinity
+function rayWall(px, py, dx, dy) {
+  let best = Infinity, hitW = null, side = 0;
+  for (const w of walls) {
+    let t0 = -Infinity, t1 = Infinity, s0 = 0;
+    for (const [p, d, lo, hi, s] of [[px, dx, w.x, w.x + w.w, 0], [py, dy, w.y, w.y + w.h, 1]]) {
+      if (Math.abs(d) < 1e-9) { if (p < lo || p > hi) { t0 = Infinity; break; } continue; }
+      let a = (lo - p) / d, b = (hi - p) / d;
+      if (a > b) [a, b] = [b, a];
+      if (a > t0) { t0 = a; s0 = s; }
+      t1 = Math.min(t1, b);
+    }
+    if (t0 <= t1 && t0 > 0.5 && t0 < best) { best = t0; hitW = w; side = s0; }
+  }
+  return { t: best, w: hitW, side };
+}
+// Austritt aus einem Kreis, in dem man steht
+function rayCircleExit(px, py, dx, dy, cx, cy, r) {
+  const ox = px - cx, oy = py - cy, b = ox * dx + oy * dy, c = ox * ox + oy * oy - r * r, disc = b * b - c;
+  if (disc < 0) return Infinity;
+  const t = -b + Math.sqrt(disc);
+  return t > 0 ? t : Infinity;
+}
+function project(x, y) {
+  const p = player, rx = x - p.x, ry = y - p.y, ca = Math.cos(p.aim), sa = Math.sin(p.aim);
+  const z = rx * ca + ry * sa, side = -rx * sa + ry * ca;
+  if (z < 8) return null;
+  const f = focal();
+  return { z, sx: W() / 2 + side * f / z, s: f / z };
+}
+// Ein Bild nur dort zeichnen, wo keine Wand davor steht
+function withOcclusion(x0, x1, z, draw) {
+  const c0 = Math.max(0, Math.floor(x0 / COL)), c1 = Math.min(zbuf.length - 1, Math.ceil(x1 / COL));
+  let start = -1;
+  const flush = end => { ctx.save(); ctx.beginPath(); ctx.rect(start * COL, 0, (end - start) * COL, H()); ctx.clip(); draw(); ctx.restore(); };
+  for (let c = c0; c <= c1 + 1; c++) {
+    const vis = c <= c1 && zbuf[c] > z;
+    if (vis && start < 0) start = c;
+    if (!vis && start >= 0) { flush(c); start = -1; }
+  }
+}
+function drawFirstPerson() {
+  const w = W(), h = H(), p = player, f = focal(), hor = h / 2;
+  const sky = ctx.createLinearGradient(0, 0, 0, hor); sky.addColorStop(0, '#4aa3e8'); sky.addColorStop(1, '#bfe6ff');
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, w, hor);
+  const ground = ctx.createLinearGradient(0, hor, 0, h); ground.addColorStop(0, '#5aa83c'); ground.addColorStop(1, '#78c95a');
+  ctx.fillStyle = ground; ctx.fillRect(0, hor, w, h - hor);
+  const cols = Math.ceil(w / COL);
+  zbuf = new Array(cols);
+  for (let c = 0; c < cols; c++) {
+    const sx = c * COL + COL / 2, rel = Math.atan((sx - w / 2) / f), ang = p.aim + rel, dx = Math.cos(ang), dy = Math.sin(ang), cosr = Math.cos(rel);
+    // Meer hinter dem Strand
+    const ti = rayCircleExit(p.x, p.y, dx, dy, CX, CY, ISLAND + 40), zi = ti * cosr;
+    if (zi < FAR * 3) { const yi = hor + EYE * f / zi; ctx.fillStyle = '#2b88c9'; ctx.fillRect(c * COL, hor, COL, Math.max(0, yi - hor)); }
+    const hitR = rayWall(p.x, p.y, dx, dy), z = hitR.t * cosr;
+    zbuf[c] = z;
+    if (hitR.w && z < FAR) {
+      const wh = hitR.w.built ? 70 : 85, top = hor - (wh - EYE) * f / z, bot = hor + EYE * f / z;
+      const shade = Math.max(0.35, 1 - z / FAR) * (hitR.side ? 0.82 : 1);
+      const base = hitR.w.built ? [176, 122, 60] : [122, 78, 42];
+      ctx.fillStyle = `rgb(${base.map(v => Math.round(v * shade)).join(',')})`;
+      ctx.fillRect(c * COL, top, COL, bot - top);
+      if (hitR.w.built && Math.floor((hitR.side ? p.y + dy * hitR.t : p.x + dx * hitR.t) / 22) % 2) { ctx.fillStyle = 'rgba(0,0,0,0.12)'; ctx.fillRect(c * COL, top, COL, bot - top); }
+    }
+  }
+  // Alles, was keine Wand ist, von hinten nach vorne
+  const sprites = [];
+  const add = (x, y, kind, o) => { const pr = project(x, y); if (pr && pr.z < FAR) sprites.push({ ...pr, kind, o }); };
+  for (const t of trees) add(t.x, t.y, 'tree', t);
+  for (const r of rocks) add(r.x, r.y, 'rock', r);
+  for (const c of chests) add(c.x, c.y, 'chest', c);
+  for (const l of loot) add(l.x, l.y, 'loot', l);
+  for (const a of actors) if (a.alive && a !== p) add(a.x, a.y, 'actor', a);
+  for (const b of balloons) add(b.x, b.y, 'balloon', b);
+  for (const b of bullets) if (b.owner !== p || dist(b, p) > 40) add(b.x, b.y, 'bullet', b);
+  sprites.sort((a, b) => b.z - a.z);
+  for (const s of sprites) {
+    const gy = hor + EYE * s.s, k = s.s, o = s.o, fade = Math.max(0.4, 1 - s.z / FAR);
+    let half = 20 * k;
+    if (s.kind === 'tree') half = o.r * 1.3 * k; else if (s.kind === 'rock') half = o.r * k; else if (s.kind === 'chest') half = 18 * k;
+    withOcclusion(s.sx - half, s.sx + half, s.z, () => {
+      ctx.globalAlpha = 1;
+      if (s.kind === 'tree') {
+        ctx.fillStyle = '#7a4e2a'; ctx.fillRect(s.sx - 6 * k, gy - 60 * k, 12 * k, 60 * k);
+        ctx.fillStyle = `rgb(${Math.round(47 * fade)},${Math.round(125 * fade)},${Math.round(50 * fade)})`;
+        ctx.beginPath(); ctx.arc(s.sx, gy - 90 * k, o.r * 1.3 * k, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = `rgba(90,180,80,${0.5 * fade})`; ctx.beginPath(); ctx.arc(s.sx - o.r * 0.4 * k, gy - 100 * k, o.r * 0.6 * k, 0, Math.PI * 2); ctx.fill();
+      } else if (s.kind === 'rock') {
+        ctx.fillStyle = '#8d949b'; ctx.beginPath(); ctx.ellipse(s.sx, gy, o.r * k, o.r * 1.1 * k, 0, Math.PI, 0); ctx.fill();
+      } else if (s.kind === 'chest') {
+        ctx.fillStyle = o.open ? '#8a6a3a' : '#f1c40f';
+        if (!o.open) { ctx.shadowColor = '#ffe066'; ctx.shadowBlur = 20; }
+        ctx.fillRect(s.sx - 18 * k, gy - 24 * k, 36 * k, 24 * k); ctx.shadowBlur = 0;
+        ctx.fillStyle = '#7a4e2a'; ctx.fillRect(s.sx - 18 * k, gy - 14 * k, 36 * k, 3 * k);
+      } else if (s.kind === 'loot') {
+        const col = o.gun ? RARITY[o.gun.rarity].color : o.item === 'med' ? '#ff6b6b' : '#48dbfb', bob = Math.sin(matchTime * 3 + o.x) * 4 * k;
+        ctx.fillStyle = col; ctx.globalAlpha = 0.45; ctx.beginPath(); ctx.ellipse(s.sx, gy, 18 * k, 6 * k, 0, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+        ctx.font = `${Math.max(8, 26 * k)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(o.gun ? o.gun.icon : o.item === 'med' ? '💊' : '🛡️', s.sx, gy - 22 * k + bob);
+      } else if (s.kind === 'actor') {
+        const lk = o.look;
+        ctx.fillStyle = o.flash > 0 ? '#fff' : lk.shirt; ctx.beginPath(); ctx.roundRect(s.sx - 14 * k, gy - 44 * k, 28 * k, 44 * k, 10 * k); ctx.fill();
+        ctx.fillStyle = lk.face || '#f1c8a5'; ctx.beginPath(); ctx.arc(s.sx, gy - 54 * k, 11 * k, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = lk.hair; ctx.beginPath(); ctx.arc(s.sx, gy - 56 * k, 11 * k, Math.PI, 0); ctx.fill();
+        const g = o.slots[o.slot]; if (g && g.kind !== 'pickaxe') { ctx.fillStyle = RARITY[g.rarity].color; ctx.fillRect(s.sx + 6 * k, gy - 30 * k, 18 * k, 6 * k); }
+        if (s.z < 900) {
+          ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(s.sx - 22 * k, gy - 74 * k, 44 * k, 5 * k);
+          ctx.fillStyle = '#2ecc71'; ctx.fillRect(s.sx - 22 * k, gy - 74 * k, 44 * k * o.hp / 100, 5 * k);
+          if (o.shield > 0) { ctx.fillStyle = '#48dbfb'; ctx.fillRect(s.sx - 22 * k, gy - 80 * k, 44 * k * o.shield / 100, 4 * k); }
+          ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(9, 12 * k)}px system-ui`; ctx.textAlign = 'center'; ctx.fillText(o.name, s.sx, gy - 88 * k);
+        }
+      } else if (s.kind === 'balloon') {
+        const y = gy - (60 + o.t * 90) * k; ctx.globalAlpha = 1 - o.t / 4;
+        ctx.fillStyle = o.look.shirt; ctx.beginPath(); ctx.arc(s.sx, y - 50 * k, 16 * k, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.beginPath(); ctx.moveTo(s.sx, y - 34 * k); ctx.lineTo(s.sx, y); ctx.stroke();
+        ctx.globalAlpha = 1;
+      } else if (s.kind === 'bullet') {
+        ctx.fillStyle = o.color; ctx.beginPath(); ctx.arc(s.sx, hor + (EYE - 24) * k, Math.max(1.5, 5 * k), 0, Math.PI * 2); ctx.fill();
+      }
+    });
+  }
+  // Sturmwand: lila, durchsichtig, hinter allem was näher ist
+  const st = storm;
+  for (let c = 0; c < cols; c++) {
+    const sx = c * COL + COL / 2, rel = Math.atan((sx - w / 2) / f), ang = p.aim + rel, cosr = Math.cos(rel);
+    const t = inStorm(p) ? 0 : rayCircleExit(p.x, p.y, Math.cos(ang), Math.sin(ang), st.cx, st.cy, Math.max(1, st.r)), z = t * cosr;
+    if (z < zbuf[c] && z < FAR * 2 && t > 0) { const top = hor - 400 * f / Math.max(z, 1), bot = hor + EYE * f / Math.max(z, 1); ctx.fillStyle = 'rgba(150,60,220,0.35)'; ctx.fillRect(c * COL, top, COL, bot - top); }
+  }
+  if (inStorm(p)) { ctx.fillStyle = 'rgba(150,60,220,0.3)'; ctx.fillRect(0, 0, w, h); }
+  drawViewModel();
+  // Fadenkreuz
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(w / 2 - 12, hor); ctx.lineTo(w / 2 - 4, hor); ctx.moveTo(w / 2 + 4, hor); ctx.lineTo(w / 2 + 12, hor);
+  ctx.moveTo(w / 2, hor - 12); ctx.lineTo(w / 2, hor - 4); ctx.moveTo(w / 2, hor + 4); ctx.lineTo(w / 2, hor + 12); ctx.stroke();
+}
+// Waffe in der Hand unten rechts, mit Rückstoß beim Schießen
+function drawViewModel() {
+  const w = W(), h = H(), p = player, g = p.slots[p.slot], s = Math.min(w, h) / 500;
+  const kick = g && g.kind !== 'pickaxe' && p.cool > g.rate - 0.08 ? 12 * s : 0, bob = Math.sin((p.walk || 0) * 0.8) * 4 * s;
+  ctx.save(); ctx.translate(w * 0.62, h + bob + kick);
+  if (!g) { ctx.restore(); return; }
+  if (g.kind === 'pickaxe') {
+    ctx.rotate(p.swing > 0 ? -0.9 + p.swing * 4 : -0.25);
+    ctx.fillStyle = '#8a5a2e'; ctx.fillRect(-8 * s, -150 * s, 16 * s, 150 * s);
+    ctx.fillStyle = '#9aa4ad'; ctx.beginPath(); ctx.moveTo(-60 * s, -140 * s); ctx.quadraticCurveTo(0, -175 * s, 60 * s, -140 * s); ctx.lineTo(0, -155 * s); ctx.fill();
+  } else {
+    const col = RARITY[g.rarity].color, len = g.kind === 'long' ? 200 : g.kind === 'pump' ? 150 : 120;
+    ctx.fillStyle = '#f1c8a5'; ctx.beginPath(); ctx.roundRect(-30 * s, -70 * s, 60 * s, 70 * s, 14 * s); ctx.fill();
+    ctx.fillStyle = col; ctx.beginPath(); ctx.roundRect(-26 * s, -70 * s - len * s, 52 * s, len * s, 10 * s); ctx.fill();
+    ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(-26 * s, -70 * s - len * s, 52 * s, 14 * s);
+    ctx.fillStyle = '#333'; ctx.fillRect(-10 * s, -84 * s - len * s, 20 * s, 18 * s);
+    if (kick) { ctx.fillStyle = '#fff3a0'; ctx.beginPath(); ctx.arc(0, -96 * s - len * s, 16 * s, 0, Math.PI * 2); ctx.fill(); }
+  }
+  ctx.restore();
+}
+function turnBy(rad) { player.aim += rad; }
+function toggleView() { prefs.view = isFP() ? 'top' : 'fp'; savePrefs(); if (!isFP() && document.pointerLockElement) document.exitPointerLock(); }
+
 // ── Spielschleife ───────────────────────────────────────────────────
 function cam() { const s = clamp(Math.min(W(), H()) / 760, 0.55, 1.2); return { s, x: W() / 2 - player.x * s, y: H() / 2 - player.y * s }; }
+let fireTouch = null;
+function stepPlayerFP(dt) {
+  let fw = 0, st = 0;
+  if (keys['w'] || keys['arrowup']) fw += 1; if (keys['s'] || keys['arrowdown']) fw -= 1;
+  if (keys['a']) st -= 1; if (keys['d']) st += 1;
+  if (keys['arrowleft']) turnBy(-2.6 * dt); if (keys['arrowright']) turnBy(2.6 * dt);
+  if (joyMove) { const dx = joyMove.x - joyMove.ox, dy = joyMove.y - joyMove.oy, d = Math.hypot(dx, dy); if (d > 8) { st = dx / Math.max(d, joyRadius()); fw = -dy / Math.max(d, joyRadius()); } }
+  // Rechts wischen dreht den Blick, so weit wie der Finger seit dem letzten Bild gewandert ist
+  if (joyAim) { turnBy((joyAim.x - (joyAim.lx ?? joyAim.ox)) * 0.008); joyAim.lx = joyAim.x; }
+  const ca = Math.cos(player.aim), sa = Math.sin(player.aim);
+  moveActor(player, ca * fw - sa * st, sa * fw + ca * st, dt);
+  if (mouse.down || fireTouch !== null) fire(player);
+}
 function stepPlayer(dt) {
+  if (isFP()) { stepPlayerFP(dt); return; }
   let mx = 0, my = 0;
   if (keys['a'] || keys['arrowleft']) mx -= 1; if (keys['d'] || keys['arrowright']) mx += 1;
   if (keys['w'] || keys['arrowup']) my -= 1; if (keys['s'] || keys['arrowdown']) my += 1;
@@ -579,6 +766,7 @@ function drawHUD() {
   ctx.strokeStyle = '#c77dff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(mx + storm.cx * k, my + storm.cy * k, Math.max(0, storm.r) * k, 0, Math.PI * 2); ctx.stroke();
   ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.arc(mx + storm.toX * k, my + storm.toY * k, storm.toR * k, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
   ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.arc(mx + p.x * k, my + p.y * k, 4, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(mx + p.x * k, my + p.y * k); ctx.lineTo(mx + p.x * k + Math.cos(p.aim) * 12, my + p.y * k + Math.sin(p.aim) * 12); ctx.stroke();
   ctx.textAlign = 'right'; ctx.fillStyle = '#fff'; ctx.font = 'bold 15px system-ui';
   const left = actors.filter(a => a.alive).length;
   ctx.fillText(`👥 ${left}   🎈 ${p.kills}`, w - 14, my + ms + 18);
@@ -592,7 +780,8 @@ function drawHUD() {
   ctx.globalAlpha = 1;
   if (!touchUI && matchTime < 12) {
     ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.font = '13px system-ui';
-    ctx.fillText('WASD laufen · Maus zielen · Klick schießen · Rechtsklick/Q Wand bauen · E heilen · F Waffe tauschen · 1-4 Waffe', w / 2, s0.y - 36);
+    ctx.fillText(isFP() ? 'Klick ins Bild: Maus fangen · WASD laufen · Maus umschauen · Klick schießen · Q bauen · E heilen · F tauschen · V Ansicht'
+      : 'WASD laufen · Maus zielen · Klick schießen · Rechtsklick/Q Wand bauen · E heilen · F Waffe tauschen · 1-4 Waffe · V Ansicht', w / 2, s0.y - 36, w - 20);
   }
   // Handy: Joysticks und Knöpfe
   if (touchUI) {
@@ -605,7 +794,7 @@ function drawHUD() {
       ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 2; ctx.stroke();
       ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.font = `${b.h * 0.45}px system-ui`; ctx.fillText(b.label, b.x + b.w / 2, b.y + b.h / 2 + 2);
     }
-    if (matchTime < 10) { ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.font = '13px system-ui'; ctx.fillText('Links wischen: laufen · Rechts wischen: zielen und schießen', w / 2, s0.y - 36, w - 20); }
+    if (matchTime < 10) { ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.font = '13px system-ui'; ctx.fillText(isFP() ? 'Links wischen: laufen · Rechts wischen: umschauen · 🔫 schießen' : 'Links wischen: laufen · Rechts wischen: zielen und schießen', w / 2, s0.y - 36, w - 20); }
   }
 }
 function drawDrop() {
@@ -653,7 +842,12 @@ function drawTitle() {
   ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.stroke();
   ctx.fillStyle = '#fff'; ctx.font = `900 ${sb.h * 0.42}px system-ui`; ctx.fillText('🪂 Los geht’s!', sb.x + sb.w / 2, sb.y + sb.h / 2 + 1);
   ctx.font = '13px system-ui'; ctx.fillStyle = 'rgba(255,255,255,0.8)';
-  ctx.fillText(touchUI ? 'Tippe einen Skin an und dann auf Los' : '← → Skin wählen · Enter: Los', w / 2, h * 0.86);
+  ctx.fillText(touchUI ? 'Tippe einen Skin an und dann auf Los' : '← → Skin wählen · V Ansicht · Enter: Los', w / 2, h * 0.86);
+  const vb = viewButton();
+  ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.roundRect(vb.x, vb.y, vb.w, vb.h, 12); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.fillStyle = '#fff'; ctx.font = `bold ${vb.h * 0.42}px system-ui`;
+  ctx.fillText(isFP() ? '👁️ Ansicht: Augensicht' : '🗺️ Ansicht: Von oben', vb.x + vb.w / 2, vb.y + vb.h / 2 + 1);
 }
 function drawEnd() {
   const w = W(), h = H(), e = endInfo;
@@ -678,7 +872,8 @@ function loop(now) {
   else {
     step(dt);
     const c = cam();
-    drawIsland(c);
+    if (isFP()) drawFirstPerson(); else drawIsland(c);
+    if (state === 'end' && document.pointerLockElement) document.exitPointerLock();
     drawHUD();
     if (state === 'end') drawEnd();
   }
