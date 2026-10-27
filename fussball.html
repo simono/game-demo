@@ -2814,14 +2814,6 @@ function drawTitle() {
     });
     ctx.textAlign='center';
   } else {
-    // Wappen im Halbkreis über dem Titel
-    const CS=Math.min(w,h)*0.085;
-    const crests=CLUB_LIST.map(e=>e.crest);
-    crests.forEach((fn,i)=>{
-      const cx=w/2+(i-(crests.length-1)/2)*CS*1.5;
-      fn(cx, h*0.1+Math.sin(t*2+i)*4, CS);
-    });
-
     const ts=Math.min(w*0.13,84);
     ctx.font=`900 ${ts}px system-ui`;
     ctx.shadowColor='#27ae60'; ctx.shadowBlur=25+Math.sin(t*3)*10;
