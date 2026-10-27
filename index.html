@@ -5,98 +5,186 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Spielesammlung</title>
+<title>Spielhalle</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { min-height: 100%; }
   body {
-    background: radial-gradient(ellipse at top, #2a1a5e 0%, #0a0a2e 60%) fixed, #0a0a2e;
+    background: #0b0620;
     color: #fff;
     font-family: system-ui, -apple-system, sans-serif;
-    padding: max(32px, env(safe-area-inset-top)) 16px max(32px, env(safe-area-inset-bottom));
+    padding: max(28px, env(safe-area-inset-top)) 16px max(40px, env(safe-area-inset-bottom));
     -webkit-tap-highlight-color: transparent;
+    overflow-x: hidden;
   }
+  /* Farbige Lichter, die langsam über den Hintergrund ziehen */
+  .glow { position: fixed; inset: -20%; z-index: -2; filter: blur(80px); opacity: 0.55;
+    background: radial-gradient(circle at 20% 30%, #7b3fe4 0, transparent 35%), radial-gradient(circle at 80% 20%, #ff3d9a 0, transparent 30%),
+                radial-gradient(circle at 60% 80%, #00c2ff 0, transparent 35%), radial-gradient(circle at 15% 85%, #ffb43b 0, transparent 25%);
+    animation: drift 18s ease-in-out infinite alternate; }
+  @keyframes drift { to { transform: translate(6%, -5%) rotate(8deg) scale(1.08); } }
+  .floaters { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+  .floaters span { position: absolute; bottom: -60px; font-size: 32px; opacity: 0.18; animation: rise linear infinite; }
+  @keyframes rise { to { transform: translateY(-115vh) rotate(360deg); } }
+
+  header { text-align: center; margin-bottom: 22px; }
   h1 {
-    text-align: center;
-    font-size: clamp(2rem, 8vw, 3.5rem);
-    letter-spacing: 0.02em;
-    background: linear-gradient(90deg, #ffd34d, #ff6bb5, #6bd5ff);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
+    font-size: clamp(2.2rem, 9vw, 4.2rem); font-weight: 900; letter-spacing: 0.03em;
+    background: linear-gradient(90deg, #ffd34d, #ff6bb5, #6bd5ff, #ffd34d); background-size: 300% 100%;
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: shine 6s linear infinite; filter: drop-shadow(0 4px 18px rgba(255, 107, 181, 0.35));
   }
-  .sub { text-align: center; opacity: 0.7; margin: 8px 0 32px; }
-  .games {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 20px;
-    max-width: 960px;
-    margin: 0 auto;
+  @keyframes shine { to { background-position: 300% 0; } }
+  .sub { opacity: 0.8; margin-top: 6px; font-size: 1.05rem; }
+
+  .bar { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; max-width: 980px; margin: 0 auto 24px; }
+  .chip, .random {
+    border: 2px solid rgba(255, 255, 255, 0.25); background: rgba(255, 255, 255, 0.08); color: #fff;
+    font: 700 0.95rem system-ui, sans-serif; padding: 9px 16px; border-radius: 999px; cursor: pointer;
+    transition: transform 0.12s, background 0.12s, border-color 0.12s;
   }
+  .chip:hover, .chip:focus-visible { transform: translateY(-2px); border-color: rgba(255, 255, 255, 0.6); outline: none; }
+  .chip[aria-pressed="true"] { background: #fff; color: #1b1240; border-color: #fff; }
+  .random { background: linear-gradient(90deg, #ff9f1a, #ff3d9a); border-color: transparent; padding: 9px 20px; }
+  .random:hover, .random:focus-visible { transform: translateY(-2px) scale(1.04); outline: none; }
+
+  .games { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 22px; max-width: 980px; margin: 0 auto; }
   a.game {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    padding: 28px 20px;
-    border-radius: 20px;
-    color: #fff;
-    text-decoration: none;
-    background: var(--bg);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2);
-    transition: transform 0.15s, box-shadow 0.15s;
+    position: relative; display: flex; flex-direction: column; align-items: center; text-align: center;
+    padding: 30px 20px 22px; border-radius: 24px; color: #fff; text-decoration: none; overflow: hidden;
+    background: var(--bg); border: 2px solid rgba(255, 255, 255, 0.18);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    transition: transform 0.18s, box-shadow 0.18s, opacity 0.25s;
   }
-  a.game:hover, a.game:focus-visible {
-    transform: translateY(-4px) scale(1.02);
-    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.3);
-    outline: none;
-  }
+  /* Lichtstreifen, der beim Drüberfahren über die Karte huscht */
+  a.game::after { content: ''; position: absolute; top: 0; left: -60%; width: 40%; height: 100%;
+    background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.35), transparent); transform: skewX(-20deg); transition: left 0.5s; }
+  a.game:hover::after, a.game:focus-visible::after { left: 130%; }
+  a.game:hover, a.game:focus-visible { transform: translateY(-6px) scale(1.03); box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55), 0 0 30px var(--glow); outline: none; }
   a.game:active { transform: scale(0.97); }
-  .icon { font-size: 4rem; line-height: 1; margin-bottom: 14px; filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.4)); }
-  .name { font-size: 1.5rem; font-weight: 800; }
-  .desc { margin-top: 6px; opacity: 0.85; font-size: 0.95rem; }
-  .fussball  { --bg: linear-gradient(160deg, #2e9e48, #135e26); }
-  .cosmic    { --bg: linear-gradient(160deg, #5b3bd6, #1d1063); }
-  .abenteuer { --bg: linear-gradient(160deg, #d6633b, #6e1d3a); }
-  .flug      { --bg: linear-gradient(160deg, #3b9ad6, #1f4fd1); }
-  .jump      { --bg: linear-gradient(160deg, #ffb43b, #d6453b); }
-  .pvp       { --bg: linear-gradient(160deg, #7b3fe4, #2b9bd6); }
+  a.game.hidden { display: none; }
+  .icon { font-size: 4.4rem; line-height: 1; margin-bottom: 12px; filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.45)); transition: transform 0.2s; }
+  a.game:hover .icon, a.game:focus-visible .icon { animation: hop 0.6s ease-in-out infinite alternate; }
+  @keyframes hop { to { transform: translateY(-10px) rotate(-6deg) scale(1.1); } }
+  .name { font-size: 1.5rem; font-weight: 900; }
+  .desc { margin-top: 6px; opacity: 0.9; font-size: 0.95rem; }
+  .tag { margin-top: 14px; font-size: 0.8rem; font-weight: 800; padding: 4px 12px; border-radius: 999px; background: rgba(0, 0, 0, 0.3); }
+  .badge { position: absolute; top: 12px; right: 12px; font-size: 0.72rem; font-weight: 900; padding: 4px 9px; border-radius: 999px; }
+  .badge.new { background: #ffd34d; color: #3a2400; }
+  .badge.last { background: #fff; color: #1b1240; top: auto; bottom: 12px; right: 50%; transform: translateX(50%); display: none; }
+  a.game.was-last .badge.last { display: block; }
+  a.game.was-last { border-color: #fff; }
+  a.game.was-last .tag { margin-bottom: 26px; }
+
+  .fussball  { --bg: linear-gradient(160deg, #2e9e48, #135e26); --glow: #2ecc71; }
+  .cosmic    { --bg: linear-gradient(160deg, #5b3bd6, #1d1063); --glow: #8e6bff; }
+  .abenteuer { --bg: linear-gradient(160deg, #d6633b, #6e1d3a); --glow: #ff8a5c; }
+  .flug      { --bg: linear-gradient(160deg, #3b9ad6, #1f4fd1); --glow: #48a7ff; }
+  .jump      { --bg: linear-gradient(160deg, #ffb43b, #d6453b); --glow: #ffb43b; }
+  .pvp       { --bg: linear-gradient(160deg, #7b3fe4, #2b9bd6); --glow: #b07bff; }
+  footer { text-align: center; margin-top: 30px; opacity: 0.55; font-size: 0.85rem; }
+  @media (prefers-reduced-motion: reduce) { .glow, .floaters span, h1, a.game:hover .icon { animation: none; } }
 </style>
 </head>
 <body>
-  <h1>Unsere Spiele</h1>
-  <p class="sub">Such dir ein Spiel aus!</p>
+  <div class="glow"></div>
+  <div class="floaters" aria-hidden="true"></div>
+  <header>
+    <h1>🎮 Spielhalle</h1>
+    <p class="sub">Such dir ein Spiel aus!</p>
+  </header>
+  <nav class="bar" aria-label="Spiele filtern">
+    <button class="chip" data-cat="alle" aria-pressed="true">⭐ Alle</button>
+    <button class="chip" data-cat="sport" aria-pressed="false">⚽ Sport</button>
+    <button class="chip" data-cat="action" aria-pressed="false">💥 Action</button>
+    <button class="chip" data-cat="huepfen" aria-pressed="false">🏃 Hüpfen</button>
+    <button class="chip" data-cat="fliegen" aria-pressed="false">✈️ Fliegen</button>
+    <button class="chip" data-cat="raetsel" aria-pressed="false">🧩 Rätsel</button>
+    <button class="random" type="button">🎲 Überrasch mich!</button>
+  </nav>
   <main class="games">
-    <a class="game fussball" href="fussball.html">
+    <a class="game fussball" href="fussball.html" data-cat="sport">
       <div class="icon">⚽</div>
       <div class="name">Kick it!</div>
-      <div class="desc">Fußball mit deinem Lieblingsverein</div>
+      <div class="desc">Fußball mit WM, EM, Karriere und deinem Lieblingsverein</div>
+      <div class="tag">⚽ Sport</div>
+      <div class="badge last">▶ Zuletzt gespielt</div>
     </a>
-    <a class="game cosmic" href="cosmic-breaker.html">
-      <div class="icon">🚀</div>
-      <div class="name">Cosmic Breaker</div>
-      <div class="desc">Zerschlag alle Steine im Weltall</div>
-    </a>
-    <a class="game abenteuer" href="abenteuer.html">
-      <div class="icon">🎁</div>
-      <div class="name">Das Geheimnis der Geburtstagsparty</div>
-      <div class="desc">Ein Abenteuer zum Rätseln</div>
-    </a>
-    <a class="game flug" href="flugsimulator.html">
-      <div class="icon">✈️</div>
-      <div class="name">A380 Flugsimulator</div>
-      <div class="desc">Flieg mit Henrik Airlines um die Welt</div>
-    </a>
-    <a class="game jump" href="familyjump.html">
-      <div class="icon">🏃</div>
-      <div class="name">Family Jump and Run</div>
-      <div class="desc">Spring durch Wiese, Höhle und Wolkenland</div>
-    </a>
-    <a class="game pvp" href="pvpmaster.html">
+    <a class="game pvp" href="pvpmaster.html" data-cat="action">
+      <div class="badge new">NEU</div>
       <div class="icon">🪂</div>
       <div class="name">PVP Master</div>
       <div class="desc">20 Spieler, eine Insel: hol dir den Victory Royale</div>
+      <div class="tag">💥 Action</div>
+      <div class="badge last">▶ Zuletzt gespielt</div>
+    </a>
+    <a class="game jump" href="familyjump.html" data-cat="huepfen">
+      <div class="badge new">NEU</div>
+      <div class="icon">🏃</div>
+      <div class="name">Family Jump and Run</div>
+      <div class="desc">3 Welten, 15 Level und der klingelnde Lucas</div>
+      <div class="tag">🏃 Hüpfen</div>
+      <div class="badge last">▶ Zuletzt gespielt</div>
+    </a>
+    <a class="game cosmic" href="cosmic-breaker.html" data-cat="action">
+      <div class="icon">🚀</div>
+      <div class="name">Cosmic Breaker</div>
+      <div class="desc">Zerschlag alle Steine im Weltall</div>
+      <div class="tag">💥 Action</div>
+      <div class="badge last">▶ Zuletzt gespielt</div>
+    </a>
+    <a class="game flug" href="flugsimulator.html" data-cat="fliegen">
+      <div class="icon">✈️</div>
+      <div class="name">A380 Flugsimulator</div>
+      <div class="desc">Flieg mit Henrik Airlines um die Welt</div>
+      <div class="tag">✈️ Fliegen</div>
+      <div class="badge last">▶ Zuletzt gespielt</div>
+    </a>
+    <a class="game abenteuer" href="abenteuer.html" data-cat="raetsel">
+      <div class="icon">🎁</div>
+      <div class="name">Das Geheimnis der Geburtstagsparty</div>
+      <div class="desc">Ein Abenteuer zum Rätseln</div>
+      <div class="tag">🧩 Rätsel</div>
+      <div class="badge last">▶ Zuletzt gespielt</div>
     </a>
   </main>
+  <footer>🎮 6 Spiele · viel Spaß!</footer>
+<script>
+const cards = [...document.querySelectorAll('a.game')];
+const LAST_KEY = 'spielhalle-last';
+
+// Schwebende Spiele-Symbole im Hintergrund
+const floaters = document.querySelector('.floaters');
+['⚽', '🚀', '🎁', '✈️', '🏃', '🪂', '🏆', '⭐', '🎮', '🔔'].forEach((e, i) => {
+  const s = document.createElement('span');
+  s.textContent = e;
+  s.style.left = `${(i * 10 + 3) % 100}%`;
+  s.style.animationDuration = `${16 + (i * 7) % 14}s`;
+  s.style.animationDelay = `${-i * 2.3}s`;
+  floaters.appendChild(s);
+});
+
+// Zuletzt gespielt merken und markieren
+try {
+  const last = localStorage.getItem(LAST_KEY);
+  const card = cards.find(c => c.getAttribute('href') === last);
+  if (card) card.classList.add('was-last');
+} catch (e) {}
+cards.forEach(c => c.addEventListener('click', () => { try { localStorage.setItem(LAST_KEY, c.getAttribute('href')); } catch (e) {} }));
+
+// Filter nach Kategorie
+document.querySelectorAll('.chip').forEach(chip => chip.addEventListener('click', () => {
+  document.querySelectorAll('.chip').forEach(c => c.setAttribute('aria-pressed', c === chip ? 'true' : 'false'));
+  const cat = chip.dataset.cat;
+  cards.forEach(c => c.classList.toggle('hidden', cat !== 'alle' && c.dataset.cat !== cat));
+}));
+
+// Zufälliges Spiel aus den gerade gezeigten
+document.querySelector('.random').addEventListener('click', () => {
+  const shown = cards.filter(c => !c.classList.contains('hidden'));
+  const card = shown[Math.floor(Math.random() * shown.length)];
+  card.click();
+});
+</script>
 </body>
 </html>
