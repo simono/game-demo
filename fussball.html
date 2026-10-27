@@ -216,6 +216,90 @@ function drawBayernCrest(cx, cy, s) {
   ctx.restore();
 }
 
+function drawCityCrest(cx, cy, s) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  const R=s*0.52, inner=s*0.34;
+
+  // Dunkelblauer Ring mit Schatten
+  ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI*2);
+  ctx.shadowColor='rgba(0,0,0,0.45)'; ctx.shadowBlur=s*0.12;
+  ctx.fillStyle='#1c2c5b'; ctx.fill(); ctx.shadowBlur=0;
+  ctx.strokeStyle='#6cabdd'; ctx.lineWidth=s*0.02;
+  ctx.beginPath(); ctx.arc(0, 0, R-s*0.025, 0, Math.PI*2); ctx.stroke();
+
+  // Schrift im Bogen: oben MANCHESTER CITY, unten 1894
+  ctx.fillStyle='#fff';
+  ctx.font=`900 ${s*0.075}px system-ui`;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  const textR=(R+inner)/2;
+  function arcText(text, mid, spread, bottom) {
+    for (let i=0; i<text.length; i++) {
+      const f=(i+0.5)/text.length;
+      const ang=bottom ? mid+spread/2-spread*f : mid-spread/2+spread*f;
+      ctx.save();
+      ctx.translate(Math.cos(ang)*textR, Math.sin(ang)*textR);
+      ctx.rotate(bottom ? ang-Math.PI/2 : ang+Math.PI/2);
+      ctx.fillText(text[i], 0, 0);
+      ctx.restore();
+    }
+  }
+  arcText('MANCHESTER CITY', -Math.PI/2, Math.PI*0.95, false);
+  ctx.font=`900 ${s*0.09}px system-ui`;
+  arcText('1894', Math.PI/2, Math.PI*0.25, true);
+
+  // Innen himmelblau
+  ctx.beginPath(); ctx.arc(0, 0, inner, 0, Math.PI*2);
+  ctx.fillStyle='#6cabdd'; ctx.fill();
+  ctx.strokeStyle='#fff'; ctx.lineWidth=s*0.02; ctx.stroke();
+
+  // Wappenschild
+  const sw=s*0.2, st=-s*0.24, sb=s*0.26;
+  function shield() {
+    ctx.beginPath();
+    ctx.moveTo(-sw, st); ctx.lineTo(sw, st); ctx.lineTo(sw, s*0.06);
+    ctx.quadraticCurveTo(sw, sb*0.8, 0, sb);
+    ctx.quadraticCurveTo(-sw, sb*0.8, -sw, s*0.06);
+    ctx.closePath();
+  }
+  shield(); ctx.fillStyle='#6cabdd'; ctx.fill();
+  ctx.save(); shield(); ctx.clip();
+  // Oben: goldenes Schiff
+  ctx.fillStyle='#f2c230';
+  ctx.beginPath();
+  ctx.moveTo(-s*0.14, -s*0.08); ctx.lineTo(s*0.14, -s*0.08);
+  ctx.lineTo(s*0.1, -s*0.02); ctx.lineTo(-s*0.1, -s*0.02);
+  ctx.closePath(); ctx.fill();
+  ctx.fillRect(-s*0.008, -s*0.21, s*0.016, s*0.13);
+  ctx.beginPath();
+  ctx.moveTo(s*0.015, -s*0.2); ctx.lineTo(s*0.11, -s*0.1); ctx.lineTo(s*0.015, -s*0.1);
+  ctx.closePath(); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(-s*0.015, -s*0.17); ctx.lineTo(-s*0.09, -s*0.1); ctx.lineTo(-s*0.015, -s*0.1);
+  ctx.closePath(); ctx.fill();
+  // Unten: drei Flüsse
+  ctx.strokeStyle='#f2c230'; ctx.lineWidth=s*0.025;
+  for (let i=0; i<3; i++) {
+    const o=i*s*0.06;
+    ctx.beginPath(); ctx.moveTo(s*0.02+o, s*0.02); ctx.lineTo(-s*0.12+o, s*0.26); ctx.stroke();
+  }
+  // Rote Rose
+  ctx.fillStyle='#d5121e';
+  for (let i=0; i<5; i++) {
+    const a=-Math.PI/2+i*Math.PI*2/5;
+    ctx.beginPath(); ctx.arc(-s*0.08+Math.cos(a)*s*0.035, s*0.09+Math.sin(a)*s*0.035, s*0.035, 0, Math.PI*2); ctx.fill();
+  }
+  ctx.fillStyle='#f2c230';
+  ctx.beginPath(); ctx.arc(-s*0.08, s*0.09, s*0.018, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+  // Trennlinie und Rand
+  ctx.strokeStyle='#1c2c5b'; ctx.lineWidth=s*0.02;
+  ctx.beginPath(); ctx.moveTo(-sw, 0); ctx.lineTo(sw, 0); ctx.stroke();
+  shield(); ctx.lineWidth=s*0.025; ctx.stroke();
+
+  ctx.restore();
+}
+
 function drawSchalkeCrest(cx, cy, s) {
   ctx.save();
   ctx.translate(cx, cy);
@@ -944,6 +1028,14 @@ function drawPlayer(x, y, size, color, label, celebrate=false, numColor='rgba(25
     ctx.closePath();
     ctx.fill();
     ctx.globalAlpha = 1;
+  } else if (hairStyle === 'bun') {
+    // Haare nach hinten gebunden, Dutt oben auf dem Kopf
+    ctx.beginPath();
+    ctx.ellipse(hx, hy - s * 0.03, s * 0.2, s * 0.21, 0, Math.PI * 1.02, Math.PI * 1.98);
+    ctx.closePath(); ctx.fill();
+    ctx.beginPath();
+    ctx.arc(hx - s * 0.02, hy - s * 0.25, s * 0.08, 0, Math.PI * 2);
+    ctx.fill();
   } else if (hairStyle === 'top') {
     // Seiten kurz, oben länger
     ctx.globalAlpha = 0.7;
@@ -1115,6 +1207,11 @@ const CHANTS = {
       ['Borussia! Borussia!', 'de-DE', 'o1:0 u1:2 i1:4 a2:0 -1 o1:0 u1:2 i1:4 a2:0'],
       ['Gladbach! Gladbach!', 'de-DE', 'a1:4 a2:0 -1 a1:4 a2:0']],
     goal:['Tooor! Die Fohlen!', 'de-DE', 'o4:7 -1 i1:0 o1:4 e2:2'] },
+  'MCI': { songs:[
+      ['Blue Moon!', 'en-GB', 'u2:0 u2:4 -1 u2:0 u2:4'],
+      ['City! City!', 'en-GB', 'i1:4 i2:0 -1 i1:4 i2:0'],
+      ['Come on, City!', 'en-GB', 'o1:0 o1:2 i1:4 i2:0 -1 o1:0 o1:2 i1:4 i2:0']],
+    goal:['Goal! Man City!', 'en-GB', 'o4:7 -1 a1:4 i1:2 i2:0'] },
 };
 let nextChantAt = 0;
 
@@ -1508,6 +1605,16 @@ const BAYERN  = { name: 'FC Bayern München',      short: 'FCB', color: '#dc052d
   keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#c8a060', hairStyle:'short', beard:'stubble' }
 };
 
+const CITY    = { name: 'Manchester City',        short: 'MCI', color: '#6cabdd', light: '#9fd0f5', numColor:'#fff', nums:['9','8','10'], names:['Haaland','Anderson','Cherki'], keeperName:'Donnarumma',
+  style:{shortsColor:'#ffffff', shortSleeves:true, socksColor:'#6cabdd', socksStripe:'#1c2c5b', trim:'#1c2c5b', shortsStripe:'#6cabdd'},
+  appearances:[
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#d8c070', hairStyle:'bun', beard:'stubble' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#5a3a20', hairStyle:'short' },
+    { skin:'#c99470', skinDark:'#a06e4c', hair:'#141414', hairStyle:'curly', beard:'stubble' },
+  ],
+  keeperLook:{ skin:'#e8b58e', skinDark:'#c98f68', hair:'#151515', hairStyle:'short', beard:'stubble' }
+};
+
 // Auswärtstrikots für Vereine mit ähnlicher Farbe (Köln und Bayern sind beide rot)
 KOELN.away  = { color:'#ffffff', numColor:'#e3000f', style:{shortsColor:'#ffffff', shortSleeves:true, socksColor:'#ffffff', socksStripe:'#e3000f', trim:'#e3000f', shortsStripe:'#e3000f'} };
 BAYERN.away = { color:'#f2f2f2', numColor:'#dc052d', style:{shortsColor:'#f2f2f2', shortSleeves:true, socksColor:'#f2f2f2', socksStripe:'#dc052d', trim:'#dc052d', sidePanel:'rgba(220,5,45,0.85)', shortsStripe:'#dc052d'} };
@@ -1530,6 +1637,7 @@ const CLUB_LIST = [
   { club:SCHALKE, team:'blue', crest:drawSchalkeCrest, label:'Schalke' },
   { club:BMG,     team:'red',  crest:drawBMGCrest,     label:'M\'gladbach' },
   { club:BAYERN,  team:'red',  crest:drawBayernCrest,  label:'Bayern' },
+  { club:CITY,    team:'blue', crest:drawCityCrest,    label:'Man City' },
 ];
 const clubEntry = club => CLUB_LIST.find(e => e.club === club);
 
@@ -1555,6 +1663,7 @@ BVB.stadium     = 'Signal Iduna Park';   BVB.fans     = ['#ffe500', '#ffe500', '
 SCHALKE.stadium = 'Veltins-Arena';       SCHALKE.fans = ['#004c9f', '#ffffff'];
 BMG.stadium     = 'Borussia-Park';       BMG.fans     = ['#111111', '#ffffff', '#00a650'];
 BAYERN.stadium  = 'Allianz Arena';       BAYERN.fans  = ['#dc052d', '#ffffff'];
+CITY.stadium    = 'Etihad Stadium';      CITY.fans    = ['#6cabdd', '#6cabdd', '#ffffff', '#1c2c5b'];
 let stadiumBannerUntil = 0;
 
 let ball  = { x: 0.5, y: 0.5, vx: 0, vy: 0 };
