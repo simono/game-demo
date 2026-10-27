@@ -782,6 +782,79 @@ const drawMexicoCrest = (cx, cy, s) => drawFlagCrest(cx, cy, s, (fw, fh) => {
   ['#006847', '#ffffff', '#ce1126'].forEach((c, i) => { ctx.fillStyle=c; ctx.fillRect(i*fw/3, 0, fw/3+1, fh); });
   ctx.fillStyle='#8b5a2b'; ctx.beginPath(); ctx.arc(fw/2, fh/2, fh*0.12, 0, Math.PI*2); ctx.fill();
 });
+const nordicCross = (fw, fh, bg, cross, inner) => {
+  ctx.fillStyle=bg; ctx.fillRect(0, 0, fw, fh);
+  ctx.fillStyle=cross; ctx.fillRect(fw*0.28, 0, fw*0.16, fh); ctx.fillRect(0, fh*0.38, fw, fh*0.24);
+  if (inner) { ctx.fillStyle=inner; ctx.fillRect(fw*0.32, 0, fw*0.08, fh); ctx.fillRect(0, fh*0.44, fw, fh*0.12); }
+};
+const bands = (fw, fh, colors, vertical) => colors.forEach((c, i) => {
+  ctx.fillStyle=c;
+  if (vertical) ctx.fillRect(i*fw/colors.length, 0, fw/colors.length+1, fh); else ctx.fillRect(0, i*fh/colors.length, fw, fh/colors.length+1);
+});
+const dot = (x, y, r, c) => { ctx.fillStyle=c; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.fill(); };
+const drawUruguayCrest = (cx, cy, s) => drawFlagCrest(cx, cy, s, (fw, fh) => {
+  bands(fw, fh, ['#ffffff', '#0038a8', '#ffffff', '#0038a8', '#ffffff', '#0038a8', '#ffffff', '#0038a8', '#ffffff']);
+  ctx.fillStyle='#ffffff'; ctx.fillRect(0, 0, fw*0.4, fh*5/9);
+  dot(fw*0.2, fh*5/18, fh*0.15, '#fcd116');
+});
+const drawColombiaCrest = (cx, cy, s) => drawFlagCrest(cx, cy, s, (fw, fh) => {
+  ctx.fillStyle='#fcd116'; ctx.fillRect(0, 0, fw, fh/2);
+  ctx.fillStyle='#003893'; ctx.fillRect(0, fh/2, fw, fh/4);
+  ctx.fillStyle='#ce1126'; ctx.fillRect(0, fh*3/4, fw, fh/4+1);
+});
+const drawEcuadorCrest = (cx, cy, s) => drawFlagCrest(cx, cy, s, (fw, fh) => {
+  ctx.fillStyle='#ffdd00'; ctx.fillRect(0, 0, fw, fh/2);
+  ctx.fillStyle='#034ea2'; ctx.fillRect(0, fh/2, fw, fh/4);
+  ctx.fillStyle='#ed1c24'; ctx.fillRect(0, fh*3/4, fw, fh/4+1);
+  dot(fw/2, fh/2, fh*0.13, '#8b5a2b');
+});
+const drawCanadaCrest = (cx, cy, s) => drawFlagCrest(cx, cy, s, (fw, fh) => {
+  bands(fw, fh, ['#d80621', '#ffffff', '#ffffff', '#d80621'], true);
+  // Ahornblatt, vereinfacht als Stern mit Stiel
+  ctx.fillStyle='#d80621'; ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const a = -Math.PI/2 + i*Math.PI/5, r = i % 2 ? fh*0.12 : fh*0.28;
+    ctx.lineTo(fw/2 + Math.cos(a)*r, fh*0.48 + Math.sin(a)*r);
+  }
+  ctx.closePath(); ctx.fill();
+  ctx.fillRect(fw/2 - fh*0.02, fh*0.6, fh*0.04, fh*0.2);
+});
+const drawDenmarkCrest = (cx, cy, s) => drawFlagCrest(cx, cy, s, (fw, fh) => nordicCross(fw, fh, '#c60c30', '#ffffff'));
+const drawSwitzerlandCrest = (cx, cy, s) => drawFlagCrest(cx, cy, s, (fw, fh) => {
+  ctx.fillStyle='#d52b1e'; ctx.fillRect(0, 0, fw, fh);
+  ctx.fillStyle='#ffffff'; ctx.fillRect(fw/2 - fh*0.09, fh*0.18, fh*0.18, fh*0.64); ctx.fillRect(fw/2 - fh*0.32, fh*0.41, fh*0.64, fh*0.18);
+});
+const drawAustriaCrest = (cx, cy, s) => drawFlagCrest(cx, cy, s, (fw, fh) => bands(fw, fh, ['#ed2939', '#ffffff', '#ed2939']));
+const drawPolandCrest = (cx, cy, s) => drawFlagCrest(cx, cy, s, (fw, fh) => bands(fw, fh, ['#ffffff', '#dc143c']));
+const drawNorwayCrest = (cx, cy, s) => drawFlagCrest(cx, cy, s, (fw, fh) => nordicCross(fw, fh, '#ba0c2f', '#ffffff', '#00205b'));
+const drawTurkeyCrest = (cx, cy, s) => drawFlagCrest(cx, cy, s, (fw, fh) => {
+  ctx.fillStyle='#e30a17'; ctx.fillRect(0, 0, fw, fh);
+  dot(fw*0.4, fh/2, fh*0.25, '#ffffff');
+  dot(fw*0.45, fh/2, fh*0.2, '#e30a17');
+  dot(fw*0.62, fh/2, fh*0.07, '#ffffff');
+});
+const drawScotlandCrest = (cx, cy, s) => drawFlagCrest(cx, cy, s, (fw, fh) => {
+  ctx.fillStyle='#005eb8'; ctx.fillRect(0, 0, fw, fh);
+  ctx.strokeStyle='#ffffff'; ctx.lineWidth=fh*0.16;
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(fw, fh); ctx.moveTo(fw, 0); ctx.lineTo(0, fh); ctx.stroke();
+});
+const drawUkraineCrest = (cx, cy, s) => drawFlagCrest(cx, cy, s, (fw, fh) => bands(fw, fh, ['#0057b7', '#ffd500']));
+const drawSenegalCrest = (cx, cy, s) => drawFlagCrest(cx, cy, s, (fw, fh) => {
+  bands(fw, fh, ['#00853f', '#fdef42', '#e31b23'], true);
+  dot(fw/2, fh/2, fh*0.12, '#00853f');
+});
+const drawEgyptCrest = (cx, cy, s) => drawFlagCrest(cx, cy, s, (fw, fh) => {
+  bands(fw, fh, ['#ce1126', '#ffffff', '#111111']);
+  dot(fw/2, fh/2, fh*0.1, '#c09300');
+});
+const drawNigeriaCrest = (cx, cy, s) => drawFlagCrest(cx, cy, s, (fw, fh) => bands(fw, fh, ['#008751', '#ffffff', '#008751'], true));
+const drawKoreaCrest = (cx, cy, s) => drawFlagCrest(cx, cy, s, (fw, fh) => {
+  ctx.fillStyle='#ffffff'; ctx.fillRect(0, 0, fw, fh);
+  ctx.fillStyle='#cd2e3a'; ctx.beginPath(); ctx.arc(fw/2, fh/2, fh*0.22, Math.PI, 0); ctx.fill();
+  ctx.fillStyle='#0047a0'; ctx.beginPath(); ctx.arc(fw/2, fh/2, fh*0.22, 0, Math.PI); ctx.fill();
+  ctx.fillStyle='#111111';
+  [[0.15, 0.2], [0.85, 0.2], [0.15, 0.8], [0.85, 0.8]].forEach(([x, y]) => ctx.fillRect(fw*x - fh*0.07, fh*y - fh*0.08, fh*0.14, fh*0.16));
+});
 
 function drawSchalkeCrest(cx, cy, s) {
   ctx.save();
@@ -978,7 +1051,7 @@ function paintStands(f, w, h, padX, padY) {
   const leagues = new Set([clubEntry(playerClub).league, clubEntry(opponentClub).league]);
   const COUNTRY = { de:'DEUTSCHLAND', en:'ENGLAND', es:'SPANIEN' };
   const DUEL = { de:'BUNDESLIGA-DUELL', en:'PREMIER LEAGUE', es:'LALIGA' };
-  const duel = leagues.has('nat') ? 'LÄNDERSPIEL' : leagues.size > 1 ? [...leagues].map(l => COUNTRY[l]).join(' VS ') : DUEL[[...leagues][0]];
+  const duel = isNation(playerClub) || isNation(opponentClub) ? 'LÄNDERSPIEL' : leagues.size > 1 ? [...leagues].map(l => COUNTRY[l]).join(' VS ') : DUEL[[...leagues][0]];
   const ads = [home.stadium, 'KICK IT!', home.name, 'TOOOR!', duel];
   f.font = `bold ${boardH * 0.7}px system-ui`;
   f.textAlign = 'center';
@@ -2732,6 +2805,166 @@ const MEXICO = { name: 'Mexiko', short: 'MEX', color: '#006847', light: '#2e9a6e
   keeperLook:{ skin:'#d9a47f', skinDark:'#b8845f', hair:'#141414', hairStyle:'curly' }
 };
 
+const URUGUAY = { name: 'Uruguay', short: 'URU', color: '#5cb8e6', light: '#8fd3f5', numColor:'#111', nums:['15','19','4'], names:['Valverde','Darwin Núñez','Araújo'], keeperName:'Rochet', keeperNum:'23',
+  style:{shortsColor:'#111111', shortSleeves:true, socksColor:'#111111', socksStripe:'#5cb8e6', trim:'#111111', shortsStripe:'#5cb8e6'},
+  appearances:[
+    { skin:'#e0aa80', skinDark:'#c08860', hair:'#141414', hairStyle:'short' },
+    { skin:'#c99470', skinDark:'#a06e4c', hair:'#141414', hairStyle:'top' },
+    { skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'buzz' },
+  ],
+  keeperLook:{ skin:'#e0aa80', skinDark:'#c08860', hair:'#141414', hairStyle:'short', beard:'stubble' }
+};
+
+const COLOMBIA = { name: 'Kolumbien', short: 'COL', color: '#fcd116', light: '#ffe55c', numColor:'#003893', nums:['7','10','9'], names:['Luis Díaz','James Rodríguez','Durán'], keeperName:'Vargas', keeperNum:'12',
+  style:{shortsColor:'#003893', shortSleeves:true, socksColor:'#ce1126', socksStripe:'#fcd116', trim:'#003893', shortsStripe:'#fcd116'},
+  appearances:[
+    { skin:'#9a6440', skinDark:'#744627', hair:'#141414', hairStyle:'curly' },
+    { skin:'#e0aa80', skinDark:'#c08860', hair:'#141414', hairStyle:'top', beard:'stubble' },
+    { skin:'#9a6440', skinDark:'#744627', hair:'#141414', hairStyle:'buzz' },
+  ],
+  keeperLook:{ skin:'#d9a47f', skinDark:'#b8845f', hair:'#141414', hairStyle:'short' }
+};
+
+const ECUADOR = { name: 'Ecuador', short: 'ECU', color: '#ffdd00', light: '#ffe95c', numColor:'#034ea2', nums:['23','13','3'], names:['Caicedo','Enner Valencia','Hincapié'], keeperName:'Galíndez', keeperNum:'1',
+  style:{shortsColor:'#034ea2', shortSleeves:true, socksColor:'#034ea2', socksStripe:'#ffdd00', trim:'#034ea2', shortsStripe:'#ffdd00'},
+  appearances:[
+    { skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'short' },
+    { skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'buzz', beard:'stubble' },
+    { skin:'#9a6440', skinDark:'#744627', hair:'#141414', hairStyle:'curly' },
+  ],
+  keeperLook:{ skin:'#c99470', skinDark:'#a06e4c', hair:'#141414', hairStyle:'short' }
+};
+
+const CANADA = { name: 'Kanada', short: 'CAN', color: '#d80621', light: '#ff4455', numColor:'#fff', nums:['19','20','17'], names:['Davies','Jonathan David','Buchanan'], keeperName:'Crépeau', keeperNum:'16',
+  style:{shortsColor:'#d80621', shortSleeves:true, socksColor:'#d80621', socksStripe:'#ffffff', trim:'#ffffff', shortsStripe:'#ffffff'},
+  appearances:[
+    { skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'top' },
+    { skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'short', beard:'stubble' },
+    { skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'buzz' },
+  ],
+  keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#5a3a20', hairStyle:'short' }
+};
+
+const DENMARK = { name: 'Dänemark', short: 'DEN', color: '#c60c30', light: '#ff4d6a', numColor:'#fff', nums:['10','9','21'], names:['Eriksen','Højlund','Hjulmand'], keeperName:'Schmeichel', keeperNum:'1',
+  style:{shortsColor:'#ffffff', shortSleeves:true, socksColor:'#c60c30', socksStripe:'#ffffff', trim:'#ffffff', shortsStripe:'#ffffff'},
+  appearances:[
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#8a6a45', hairStyle:'short' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#d8c070', hairStyle:'top' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#5a3a20', hairStyle:'short', beard:'stubble' },
+  ],
+  keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#d8c070', hairStyle:'short', beard:'stubble' }
+};
+
+const SWITZERLAND = { name: 'Schweiz', short: 'SUI', color: '#d52b1e', light: '#ff5a4d', numColor:'#fff', nums:['10','7','5'], names:['Xhaka','Embolo','Akanji'], keeperName:'Kobel', keeperNum:'1',
+  style:{shortsColor:'#ffffff', shortSleeves:true, socksColor:'#d52b1e', socksStripe:'#ffffff', trim:'#ffffff', shortsStripe:'#ffffff'},
+  appearances:[
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#141414', hairStyle:'top', beard:'full' },
+    { skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'buzz' },
+    { skin:'#9a6440', skinDark:'#744627', hair:'#141414', hairStyle:'short' },
+  ],
+  keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#6b4a2b', hairStyle:'short' }
+};
+
+const AUSTRIA = { name: 'Österreich', short: 'AUT', color: '#ed2939', light: '#ff5a66', numColor:'#fff', nums:['9','19','8'], names:['Sabitzer','Baumgartner','Alaba'], keeperName:'Pentz', keeperNum:'13',
+  style:{shortsColor:'#ffffff', shortSleeves:true, socksColor:'#ed2939', socksStripe:'#ffffff', trim:'#ffffff', shortsStripe:'#ffffff'},
+  appearances:[
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#6b4a2b', hairStyle:'short', beard:'stubble' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#5a3a20', hairStyle:'top' },
+    { skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'buzz', beard:'stubble' },
+  ],
+  keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#5a3a20', hairStyle:'short' }
+};
+
+const POLAND = { name: 'Polen', short: 'POL', color: '#ffffff', light: '#ffffff', numColor:'#dc143c', nums:['9','10','14'], names:['Lewandowski','Zieliński','Kiwior'], keeperName:'Szczęsny', keeperNum:'1',
+  style:{shortsColor:'#dc143c', shortSleeves:true, socksColor:'#ffffff', socksStripe:'#dc143c', trim:'#dc143c', shortsStripe:'#dc143c'},
+  appearances:[
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#3a2516', hairStyle:'short' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#2a1a10', hairStyle:'top', beard:'stubble' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#2a1a10', hairStyle:'short' },
+  ],
+  keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#2a1a10', hairStyle:'short', beard:'stubble' }
+};
+
+const NORWAY = { name: 'Norwegen', short: 'NOR', color: '#ba0c2f', light: '#ff4d6a', numColor:'#fff', nums:['9','10','7'], names:['Haaland','Ødegaard','Sørloth'], keeperName:'Nyland', keeperNum:'1',
+  style:{shortsColor:'#ffffff', shortSleeves:true, socksColor:'#00205b', socksStripe:'#ffffff', trim:'#00205b', shortsStripe:'#ffffff'},
+  appearances:[
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#d8c070', hairStyle:'bun' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#6b4a2b', hairStyle:'top' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#d8c070', hairStyle:'short', beard:'stubble' },
+  ],
+  keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#8a6a45', hairStyle:'short', beard:'full' }
+};
+
+const TURKEY = { name: 'Türkei', short: 'TUR', color: '#e30a17', light: '#ff4d55', numColor:'#fff', nums:['8','10','19'], names:['Arda Güler','Çalhanoğlu','Kenan Yıldız'], keeperName:'Mert Günok', keeperNum:'1',
+  style:{shortsColor:'#ffffff', shortSleeves:true, socksColor:'#e30a17', socksStripe:'#ffffff', trim:'#ffffff', shortsStripe:'#ffffff'},
+  appearances:[
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#141414', hairStyle:'curly' },
+    { skin:'#e8b58e', skinDark:'#c98f68', hair:'#141414', hairStyle:'short', beard:'stubble' },
+    { skin:'#e8b58e', skinDark:'#c98f68', hair:'#141414', hairStyle:'top' },
+  ],
+  keeperLook:{ skin:'#e8b58e', skinDark:'#c98f68', hair:'#141414', hairStyle:'short', beard:'full' }
+};
+
+const SCOTLAND = { name: 'Schottland', short: 'SCO', color: '#1d2c5e', light: '#4a5f9e', numColor:'#fff', nums:['4','3','7'], names:['McTominay','Robertson','McGinn'], keeperName:'Gunn', keeperNum:'1',
+  style:{shortsColor:'#ffffff', shortSleeves:true, socksColor:'#1d2c5e', socksStripe:'#ffffff', trim:'#ffffff', shortsStripe:'#ffffff'},
+  appearances:[
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#2a1a10', hairStyle:'short' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#2a1a10', hairStyle:'short', beard:'full' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#8a5a30', hairStyle:'short', beard:'full' },
+  ],
+  keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#2a1a10', hairStyle:'short' }
+};
+
+const UKRAINE = { name: 'Ukraine', short: 'UKR', color: '#ffd500', light: '#ffe55c', numColor:'#0057b7', nums:['10','11','17'], names:['Mudryk','Dovbyk','Zinchenko'], keeperName:'Trubin', keeperNum:'12',
+  style:{shortsColor:'#ffd500', shortSleeves:true, socksColor:'#ffd500', socksStripe:'#0057b7', trim:'#0057b7', shortsStripe:'#0057b7'},
+  appearances:[
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#2a1a10', hairStyle:'curly' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#2a1a10', hairStyle:'short', beard:'stubble' },
+    { skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#d8c070', hairStyle:'top' },
+  ],
+  keeperLook:{ skin:'#f1c8a5', skinDark:'#d9a47f', hair:'#2a1a10', hairStyle:'short' }
+};
+
+const SENEGAL = { name: 'Senegal', short: 'SEN', color: '#ffffff', light: '#ffffff', numColor:'#00853f', nums:['10','11','3'], names:['Mané','Nicolas Jackson','Koulibaly'], keeperName:'Mendy', keeperNum:'16',
+  style:{shortsColor:'#ffffff', shortSleeves:true, socksColor:'#ffffff', socksStripe:'#00853f', trim:'#00853f', shortsStripe:'#00853f'},
+  appearances:[
+    { skin:'#5a3520', skinDark:'#3d2412', hair:'#111111', hairStyle:'buzz', beard:'stubble' },
+    { skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'top' },
+    { skin:'#5a3520', skinDark:'#3d2412', hair:'#111111', hairStyle:'buzz', beard:'full' },
+  ],
+  keeperLook:{ skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'buzz' }
+};
+
+const EGYPT = { name: 'Ägypten', short: 'EGY', color: '#c8102e', light: '#ff4455', numColor:'#fff', nums:['10','7','17'], names:['Salah','Marmoush','Trezeguet'], keeperName:'El Shenawy', keeperNum:'1',
+  style:{shortsColor:'#ffffff', shortSleeves:true, socksColor:'#111111', socksStripe:'#ffffff', trim:'#111111', shortsStripe:'#ffffff'},
+  appearances:[
+    { skin:'#c99470', skinDark:'#a06e4c', hair:'#141414', hairStyle:'curly', beard:'full' },
+    { skin:'#e0aa80', skinDark:'#c08860', hair:'#141414', hairStyle:'short', beard:'stubble' },
+    { skin:'#c99470', skinDark:'#a06e4c', hair:'#141414', hairStyle:'short', beard:'stubble' },
+  ],
+  keeperLook:{ skin:'#c99470', skinDark:'#a06e4c', hair:'#141414', hairStyle:'short', beard:'stubble' }
+};
+
+const NIGERIA = { name: 'Nigeria', short: 'NGA', color: '#008751', light: '#2eb87a', numColor:'#fff', nums:['9','18','11'], names:['Osimhen','Lookman','Chukwueze'], keeperName:'Nwabali', keeperNum:'23',
+  style:{shortsColor:'#008751', shortSleeves:true, socksColor:'#008751', socksStripe:'#ffffff', trim:'#ffffff', shortsStripe:'#ffffff'},
+  appearances:[
+    { skin:'#5a3520', skinDark:'#3d2412', hair:'#d8c070', hairStyle:'top' },
+    { skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'buzz' },
+    { skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'short' },
+  ],
+  keeperLook:{ skin:'#6b4128', skinDark:'#4a2b18', hair:'#111111', hairStyle:'buzz' }
+};
+
+const KOREA = { name: 'Südkorea', short: 'KOR', color: '#c60c30', light: '#ff4d6a', numColor:'#fff', nums:['7','18','4'], names:['Son','Lee Kang-in','Kim Min-jae'], keeperName:'Jo Hyeon-woo', keeperNum:'21',
+  style:{shortsColor:'#1a1a1a', shortSleeves:true, socksColor:'#c60c30', socksStripe:'#1a1a1a', trim:'#1a1a1a', shortsStripe:'#1a1a1a'},
+  appearances:[
+    { skin:'#f0cfa8', skinDark:'#d4ab82', hair:'#141414', hairStyle:'short' },
+    { skin:'#f0cfa8', skinDark:'#d4ab82', hair:'#141414', hairStyle:'top' },
+    { skin:'#f0cfa8', skinDark:'#d4ab82', hair:'#141414', hairStyle:'short' },
+  ],
+  keeperLook:{ skin:'#f0cfa8', skinDark:'#d4ab82', hair:'#141414', hairStyle:'short' }
+};
+
 GERMANY.away   = { color:'#1a1a1a', numColor:'#ffffff', style:{shortsColor:'#1a1a1a', shortSleeves:true, socksColor:'#1a1a1a', socksStripe:'#dd0000', trim:'#ffcc00', shortsStripe:'#dd0000'} };
 SWEDEN.away    = { color:'#005b99', numColor:'#fecc00', style:{shortsColor:'#005b99', shortSleeves:true, socksColor:'#005b99', socksStripe:'#fecc00', trim:'#fecc00', shortsStripe:'#fecc00'} };
 ENGLAND.away   = { color:'#c8102e', numColor:'#ffffff', style:{shortsColor:'#c8102e', shortSleeves:true, socksColor:'#c8102e', socksStripe:'#ffffff', trim:'#ffffff', shortsStripe:'#ffffff'} };
@@ -2747,6 +2980,22 @@ BELGIUM.away   = { color:'#f2f2f2', numColor:'#e30613', style:{shortsColor:'#f2f
 CROATIA.away   = { color:'#1a1f5c', numColor:'#ffffff', style:{shortsColor:'#1a1f5c', shortSleeves:true, socksColor:'#1a1f5c', socksStripe:'#e30613', trim:'#e30613', shortsStripe:'#e30613'} };
 MOROCCO.away   = { color:'#f2f2f2', numColor:'#c1272d', style:{shortsColor:'#f2f2f2', shortSleeves:true, socksColor:'#f2f2f2', socksStripe:'#006233', trim:'#c1272d', shortsStripe:'#c1272d'} };
 USA.away       = { color:'#0a3161', numColor:'#ffffff', style:{shortsColor:'#0a3161', shortSleeves:true, socksColor:'#0a3161', socksStripe:'#b22234', trim:'#b22234', shortsStripe:'#ffffff'} };
+URUGUAY.away = { color:'#f2f2f2', numColor:'#5cb8e6', style:{shortsColor:'#f2f2f2', shortSleeves:true, socksColor:'#f2f2f2', socksStripe:'#5cb8e6', trim:'#5cb8e6', shortsStripe:'#5cb8e6'} };
+COLOMBIA.away = { color:'#f2f2f2', numColor:'#003893', style:{shortsColor:'#f2f2f2', shortSleeves:true, socksColor:'#f2f2f2', socksStripe:'#003893', trim:'#003893', shortsStripe:'#003893'} };
+ECUADOR.away = { color:'#034ea2', numColor:'#ffdd00', style:{shortsColor:'#034ea2', shortSleeves:true, socksColor:'#034ea2', socksStripe:'#ffdd00', trim:'#ffdd00', shortsStripe:'#ffdd00'} };
+CANADA.away = { color:'#f2f2f2', numColor:'#d80621', style:{shortsColor:'#f2f2f2', shortSleeves:true, socksColor:'#f2f2f2', socksStripe:'#d80621', trim:'#d80621', shortsStripe:'#d80621'} };
+DENMARK.away = { color:'#f2f2f2', numColor:'#c60c30', style:{shortsColor:'#f2f2f2', shortSleeves:true, socksColor:'#f2f2f2', socksStripe:'#c60c30', trim:'#c60c30', shortsStripe:'#c60c30'} };
+SWITZERLAND.away = { color:'#f2f2f2', numColor:'#d52b1e', style:{shortsColor:'#f2f2f2', shortSleeves:true, socksColor:'#f2f2f2', socksStripe:'#d52b1e', trim:'#d52b1e', shortsStripe:'#d52b1e'} };
+AUSTRIA.away = { color:'#1a1a1a', numColor:'#ffffff', style:{shortsColor:'#1a1a1a', shortSleeves:true, socksColor:'#1a1a1a', socksStripe:'#ffffff', trim:'#ffffff', shortsStripe:'#ffffff'} };
+POLAND.away = { color:'#dc143c', numColor:'#ffffff', style:{shortsColor:'#dc143c', shortSleeves:true, socksColor:'#dc143c', socksStripe:'#ffffff', trim:'#ffffff', shortsStripe:'#ffffff'} };
+NORWAY.away = { color:'#f2f2f2', numColor:'#ba0c2f', style:{shortsColor:'#f2f2f2', shortSleeves:true, socksColor:'#f2f2f2', socksStripe:'#ba0c2f', trim:'#ba0c2f', shortsStripe:'#ba0c2f'} };
+TURKEY.away = { color:'#f2f2f2', numColor:'#e30a17', style:{shortsColor:'#f2f2f2', shortSleeves:true, socksColor:'#f2f2f2', socksStripe:'#e30a17', trim:'#e30a17', shortsStripe:'#e30a17'} };
+SCOTLAND.away = { color:'#f4a6c6', numColor:'#1d2c5e', style:{shortsColor:'#f4a6c6', shortSleeves:true, socksColor:'#f4a6c6', socksStripe:'#1d2c5e', trim:'#1d2c5e', shortsStripe:'#1d2c5e'} };
+UKRAINE.away = { color:'#0057b7', numColor:'#ffd500', style:{shortsColor:'#0057b7', shortSleeves:true, socksColor:'#0057b7', socksStripe:'#ffd500', trim:'#ffd500', shortsStripe:'#ffd500'} };
+SENEGAL.away = { color:'#00853f', numColor:'#fdef42', style:{shortsColor:'#00853f', shortSleeves:true, socksColor:'#00853f', socksStripe:'#fdef42', trim:'#fdef42', shortsStripe:'#fdef42'} };
+EGYPT.away = { color:'#f2f2f2', numColor:'#c8102e', style:{shortsColor:'#f2f2f2', shortSleeves:true, socksColor:'#f2f2f2', socksStripe:'#c8102e', trim:'#c8102e', shortsStripe:'#c8102e'} };
+NIGERIA.away = { color:'#f2f2f2', numColor:'#008751', style:{shortsColor:'#f2f2f2', shortSleeves:true, socksColor:'#f2f2f2', socksStripe:'#008751', trim:'#008751', shortsStripe:'#008751'} };
+KOREA.away = { color:'#f2f2f2', numColor:'#c60c30', style:{shortsColor:'#f2f2f2', shortSleeves:true, socksColor:'#f2f2f2', socksStripe:'#c60c30', trim:'#c60c30', shortsStripe:'#c60c30'} };
 MEXICO.away    = { color:'#1a1a1a', numColor:'#ffffff', style:{shortsColor:'#1a1a1a', shortSleeves:true, socksColor:'#1a1a1a', socksStripe:'#006847', trim:'#006847', shortsStripe:'#ce1126'} };
 CHELSEA.away   = { color:'#f2f2f2', numColor:'#034694', style:{shortsColor:'#f2f2f2', shortSleeves:true, socksColor:'#f2f2f2', socksStripe:'#034694', trim:'#034694', shortsStripe:'#034694'} };
 
@@ -2778,22 +3027,38 @@ const CLUB_LIST = [
   { club:REALMADRID, team:'blue', crest:drawRealMadridCrest, label:'Real Madrid', league:'es' },
   { club:BETIS,   team:'red',  crest:drawBetisCrest,   label:'Betis', league:'es' },
   { club:SOCIEDAD, team:'blue', crest:drawSociedadCrest, label:'Sociedad', league:'es' },
-  { club:GERMANY, team:'red',  crest:drawGermanyCrest, label:'Deutschland', league:'nat' },
-  { club:SWEDEN,  team:'blue', crest:drawSwedenCrest,  label:'Schweden', league:'nat' },
-  { club:ENGLAND, team:'blue', crest:drawEnglandCrest, label:'England', league:'nat' },
-  { club:SPAIN,   team:'red',  crest:drawSpainCrest,   label:'Spanien', league:'nat' },
-  { club:FRANCE,    team:'blue', crest:drawFranceCrest,    label:'Frankreich', league:'nat' },
-  { club:BRAZIL,    team:'red',  crest:drawBrazilCrest,    label:'Brasilien', league:'nat' },
-  { club:ARGENTINA, team:'blue', crest:drawArgentinaCrest, label:'Argentinien', league:'nat' },
-  { club:PORTUGAL,  team:'red',  crest:drawPortugalCrest,  label:'Portugal', league:'nat' },
-  { club:JAPAN,     team:'blue', crest:drawJapanCrest,     label:'Japan', league:'nat' },
-  { club:NETHERLANDS, team:'red',  crest:drawNetherlandsCrest, label:'Niederlande', league:'nat' },
-  { club:ITALY,       team:'blue', crest:drawItalyCrest,       label:'Italien', league:'nat' },
-  { club:BELGIUM,     team:'red',  crest:drawBelgiumCrest,     label:'Belgien', league:'nat' },
-  { club:CROATIA,     team:'blue', crest:drawCroatiaCrest,     label:'Kroatien', league:'nat' },
-  { club:MOROCCO,     team:'red',  crest:drawMoroccoCrest,     label:'Marokko', league:'nat' },
-  { club:USA,         team:'blue', crest:drawUsaCrest,         label:'USA', league:'nat' },
-  { club:MEXICO,      team:'red',  crest:drawMexicoCrest,      label:'Mexiko', league:'nat' },
+  { club:GERMANY, team:'red',  crest:drawGermanyCrest, label:'Deutschland', league:'eu' },
+  { club:SWEDEN,  team:'blue', crest:drawSwedenCrest,  label:'Schweden', league:'eu' },
+  { club:ENGLAND, team:'blue', crest:drawEnglandCrest, label:'England', league:'eu' },
+  { club:SPAIN,   team:'red',  crest:drawSpainCrest,   label:'Spanien', league:'eu' },
+  { club:FRANCE,    team:'blue', crest:drawFranceCrest,    label:'Frankreich', league:'eu' },
+  { club:BRAZIL,    team:'red',  crest:drawBrazilCrest,    label:'Brasilien', league:'world' },
+  { club:ARGENTINA, team:'blue', crest:drawArgentinaCrest, label:'Argentinien', league:'world' },
+  { club:PORTUGAL,  team:'red',  crest:drawPortugalCrest,  label:'Portugal', league:'eu' },
+  { club:JAPAN,     team:'blue', crest:drawJapanCrest,     label:'Japan', league:'world' },
+  { club:NETHERLANDS, team:'red',  crest:drawNetherlandsCrest, label:'Niederlande', league:'eu' },
+  { club:ITALY,       team:'blue', crest:drawItalyCrest,       label:'Italien', league:'eu' },
+  { club:BELGIUM,     team:'red',  crest:drawBelgiumCrest,     label:'Belgien', league:'eu' },
+  { club:CROATIA,     team:'blue', crest:drawCroatiaCrest,     label:'Kroatien', league:'eu' },
+  { club:MOROCCO,     team:'red',  crest:drawMoroccoCrest,     label:'Marokko', league:'world' },
+  { club:USA,         team:'blue', crest:drawUsaCrest,         label:'USA', league:'world' },
+  { club:MEXICO,      team:'red',  crest:drawMexicoCrest,      label:'Mexiko', league:'world' },
+  { club:URUGUAY, team:'red', crest:drawUruguayCrest, label:'Uruguay', league:'world' },
+  { club:COLOMBIA, team:'blue', crest:drawColombiaCrest, label:'Kolumbien', league:'world' },
+  { club:ECUADOR, team:'red', crest:drawEcuadorCrest, label:'Ecuador', league:'world' },
+  { club:CANADA, team:'blue', crest:drawCanadaCrest, label:'Kanada', league:'world' },
+  { club:DENMARK, team:'red', crest:drawDenmarkCrest, label:'Dänemark', league:'eu' },
+  { club:SWITZERLAND, team:'blue', crest:drawSwitzerlandCrest, label:'Schweiz', league:'eu' },
+  { club:AUSTRIA, team:'red', crest:drawAustriaCrest, label:'Österreich', league:'eu' },
+  { club:POLAND, team:'blue', crest:drawPolandCrest, label:'Polen', league:'eu' },
+  { club:NORWAY, team:'red', crest:drawNorwayCrest, label:'Norwegen', league:'eu' },
+  { club:TURKEY, team:'blue', crest:drawTurkeyCrest, label:'Türkei', league:'eu' },
+  { club:SCOTLAND, team:'red', crest:drawScotlandCrest, label:'Schottland', league:'eu' },
+  { club:UKRAINE, team:'blue', crest:drawUkraineCrest, label:'Ukraine', league:'eu' },
+  { club:SENEGAL, team:'red', crest:drawSenegalCrest, label:'Senegal', league:'world' },
+  { club:EGYPT, team:'blue', crest:drawEgyptCrest, label:'Ägypten', league:'world' },
+  { club:NIGERIA, team:'red', crest:drawNigeriaCrest, label:'Nigeria', league:'world' },
+  { club:KOREA, team:'blue', crest:drawKoreaCrest, label:'Südkorea', league:'world' },
 ];
 const clubEntry = club => CLUB_LIST.find(e => e.club === club);
 
@@ -2801,11 +3066,12 @@ const LEAGUES = [
   { id:'de', label:'Bundesliga',     flag:'🇩🇪' },
   { id:'en', label:'Premier League', flag:'🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
   { id:'es', label:'LaLiga',         flag:'🇪🇸' },
-  { id:'nat', label:'Länder',        flag:'🌍' },
+  { id:'eu',    label:'Europa',       flag:'🇪🇺' },
+  { id:'world', label:'Welt',         flag:'🌍' },
 ];
 let menuLeague = 'de';
-// In der Champions League spielen nur Vereine
-const menuLeagues = () => LEAGUES.filter(l => mode !== 'cl' || l.id !== 'nat');
+const NATION_LEAGUES = ['eu', 'world'];
+const menuLeagues = () => LEAGUES;
 // Vereine, die gerade als Karten zur Auswahl stehen
 function menuClubs() {
   return CLUB_LIST.filter(e => e.league === menuLeague && !(teamChosen && e.club === playerClub));
@@ -2867,6 +3133,22 @@ CROATIA.stadium   = 'Stadion Maksimir';       CROATIA.fans   = ['#ff0000', '#fff
 MOROCCO.stadium   = 'Stade Mohammed V';       MOROCCO.fans   = ['#c1272d', '#c1272d', '#006233'];
 USA.stadium       = 'MetLife Stadium';        USA.fans       = ['#ffffff', '#b22234', '#0a3161'];
 MEXICO.stadium    = 'Estadio Azteca';         MEXICO.fans    = ['#006847', '#ffffff', '#ce1126'];
+URUGUAY.stadium = 'Estadio Centenario'; URUGUAY.fans = ['#5cb8e6','#5cb8e6','#ffffff'];
+COLOMBIA.stadium = 'Estadio Metropolitano'; COLOMBIA.fans = ['#fcd116','#fcd116','#003893','#ce1126'];
+ECUADOR.stadium = 'Estadio Atahualpa'; ECUADOR.fans = ['#ffdd00','#ffdd00','#034ea2','#ed1c24'];
+CANADA.stadium = 'BMO Field'; CANADA.fans = ['#d80621','#ffffff','#d80621'];
+DENMARK.stadium = 'Parken'; DENMARK.fans = ['#c60c30','#c60c30','#ffffff'];
+SWITZERLAND.stadium = 'Stade de Suisse'; SWITZERLAND.fans = ['#d52b1e','#d52b1e','#ffffff'];
+AUSTRIA.stadium = 'Ernst-Happel-Stadion'; AUSTRIA.fans = ['#ed2939','#ed2939','#ffffff'];
+POLAND.stadium = 'Nationalstadion Warschau'; POLAND.fans = ['#ffffff','#dc143c','#dc143c'];
+NORWAY.stadium = 'Ullevaal Stadion'; NORWAY.fans = ['#ba0c2f','#ffffff','#00205b'];
+TURKEY.stadium = 'Atatürk-Olympiastadion'; TURKEY.fans = ['#e30a17','#e30a17','#ffffff'];
+SCOTLAND.stadium = 'Hampden Park'; SCOTLAND.fans = ['#1d2c5e','#1d2c5e','#ffffff'];
+UKRAINE.stadium = 'Olympiastadion Kiew'; UKRAINE.fans = ['#ffd500','#0057b7','#ffd500'];
+SENEGAL.stadium = 'Stade Abdoulaye Wade'; SENEGAL.fans = ['#00853f','#fdef42','#e31b23'];
+EGYPT.stadium = 'Cairo International Stadium'; EGYPT.fans = ['#ce1126','#ffffff','#111111'];
+NIGERIA.stadium = 'Moshood Abiola Stadium'; NIGERIA.fans = ['#008751','#ffffff','#008751'];
+KOREA.stadium = 'WM-Stadion Seoul'; KOREA.fans = ['#c60c30','#ffffff','#0047a0'];
 let stadiumBannerUntil = 0;
 
 let ball  = { x: 0.5, y: 0.5, vx: 0, vy: 0 };
@@ -3355,10 +3637,10 @@ const MODES = [
   { id:'season',   emoji:'📊', label:'Liga-Saison',        sub:['Jeder gegen jeden', 'mit Tabelle'],        color:'#c0392b' },
   { id:'shootout', emoji:'🥅', label:'Elfmeterschießen',   sub:['5 Schüsse für jeden,', 'dann K.-o.'],       color:'#8e44ad' },
 ];
-const WM_MODE = { id:'cl', emoji:'🌍', label:'Weltmeisterschaft', sub:['16 Länder,', 'K.-o. bis zum Finale'], color:'#b8860b' };
+const WM_MODE = { id:'cl', emoji:'🌍', label:'Weltmeisterschaft', sub:['32 Länder,', 'K.-o. bis zum Finale'], color:'#b8860b' };
 const modeCards = () => MODES.map(m => m.id === 'cl' && isNation(playerClub) ? WM_MODE : m);
-const CUP_ROUNDS = ['Viertelfinale', 'Halbfinale', 'Finale'];
-const cupRounds = () => cup.wm ? ['Achtelfinale', ...CUP_ROUNDS] : CUP_ROUNDS;
+const ROUND_NAMES = ['Sechzehntelfinale', 'Achtelfinale', 'Viertelfinale', 'Halbfinale', 'Finale'];
+const cupRounds = () => ROUND_NAMES.slice(-Math.log2(cup.rounds[0].length * 2));
 let mode = 'friendly', modeSel = 0, cup = null, season = null;
 
 const shuffle = a => { a = [...a]; for (let i = a.length-1; i > 0; i--) { const j = Math.floor(Math.random()*(i+1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
@@ -3387,7 +3669,7 @@ function chooseClub(entry) {
   playerTeam = entry.team; playerClub = entry.club; teamChosen = true;
   gameState = 'title'; titleSel = 0;
 }
-const isNation = club => clubEntry(club).league === 'nat';
+const isNation = club => NATION_LEAGUES.includes(clubEntry(club).league);
 function backToTeamPick() {
   mode = 'friendly'; cup = null; season = null; showControls = false;
   gameState = 'menu'; teamChosen = false; opponentChosen = false;
@@ -3396,10 +3678,10 @@ function backToTeamPick() {
 
 function startCup() {
   const wm = isNation(playerClub);
-  const others = shuffle(CLUB_LIST.filter(e => (e.league === 'nat') === wm).map(e => e.club).filter(c => c !== playerClub)).slice(0, wm ? 15 : 7);
+  const others = shuffle(CLUB_LIST.filter(e => isNation(e.club) === wm).map(e => e.club).filter(c => c !== playerClub)).slice(0, wm ? 31 : 7);
   cup = { rounds:[pairUp(shuffle([playerClub, ...others]))], round:0, out:false, won:false, champion:null, wm };
   gameState = 'cup';
-  announce(wm ? 'Willkommen zur Weltmeisterschaft! Sechzehn Länder, nur einer wird Weltmeister.' : 'Willkommen zur Champions League! Acht Teams, nur einer holt den Pokal.', 3);
+  announce(wm ? 'Willkommen zur Weltmeisterschaft! Zweiunddreißig Länder, nur einer wird Weltmeister.' : 'Willkommen zur Champions League! Acht Teams, nur einer holt den Pokal.', 3);
 }
 function advanceCup() {
   const ms = cup.rounds[cup.round], mine = ms.find(isMine);
@@ -3441,7 +3723,7 @@ function startSeason() {
   rounds.sort((x, y) => (x.some(isMine) ? 0 : 1) - (y.some(isMine) ? 0 : 1));
   season = { league, clubs, rounds, day:0, done:false };
   gameState = 'season';
-  announce(league === 'nat' ? 'Das Länderturnier beginnt! Welches Land holt den Titel?' : `Die Saison beginnt! Wer wird Meister in der ${LEAGUES.find(l => l.id === league).label}?`, 3);
+  announce(NATION_LEAGUES.includes(league) ? 'Das Länderturnier beginnt! Welches Land holt den Titel?' : `Die Saison beginnt! Wer wird Meister in der ${LEAGUES.find(l => l.id === league).label}?`, 3);
 }
 function advanceSeason() {
   const ms = season.rounds[season.day];
@@ -3661,17 +3943,21 @@ function drawCupScreen() {
     ctx.fillStyle = `rgba(255,255,255,${0.2 + 0.5 * Math.abs(Math.sin(t + i))})`;
     ctx.beginPath(); ctx.arc((i * 137.5) % w, (i * 71.3) % h, 1 + (i % 3) * 0.5, 0, Math.PI * 2); ctx.fill();
   }
-  screenHeading(cup.wm ? '🌍 Weltmeisterschaft' : '🏆 Champions League', h * 0.08);
+  const rounds = cupRounds(), R = rounds.length;
+  // Ab 32 Teams passt der ganze Baum nicht drauf: nur die Hälfte mit dem eigenen Team, dazu das Finale
+  const split = R > 4, half = split && cup.rounds[0].findIndex(isMine) >= 1 << (R - 2) ? 1 : 0;
+  const firstCount = 1 << (R - (split ? 2 : 1));
+  screenHeading(cup.wm ? (split ? '🌍 WM · deine Turnierhälfte' : '🌍 Weltmeisterschaft') : '🏆 Champions League', h * 0.08);
 
   const top = h * 0.17, bottom = compBtn().y - h * 0.04, colGap = 10;
-  const rounds = cupRounds(), R = rounds.length, firstCount = 1 << (R - 1);
   const colW = (w - 24 - colGap * (R - 1)) / R;
   rounds.forEach((name, r) => {
-    const x = 12 + r * (colW + colGap), count = firstCount >> r, ms = cup.rounds[r] || [];
+    const last = r === R - 1, count = last ? 1 : firstCount >> r, off = split && !last ? half * count : 0;
+    const x = 12 + r * (colW + colGap), ms = (cup.rounds[r] || []).slice(off, off + count);
     ctx.fillStyle = r === cup.round && !compFinished() ? '#feca57' : 'rgba(255,255,255,0.7)';
     ctx.font = `bold ${Math.min(w * 0.03, 14)}px system-ui`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(name, x + colW / 2, top);
+    ctx.fillText(name, x + colW / 2, top, colW);
     const area = bottom - top - 18, bh = Math.min(area / firstCount * 0.86, 60);
     for (let i = 0; i < count; i++) {
       const m = ms[i], cy = top + 18 + (i + 0.5) * area / count, by = cy - bh / 2;
@@ -3707,7 +3993,7 @@ function drawCupScreen() {
         if (room >= ctx.measureText(name).width * 0.7) ctx.fillText(name, x + cs * 1.5, ry, room);
         if (played) {
           ctx.textAlign = 'right';
-          ctx.fillText(pens != null ? `${goals} (${pens})` : `${goals}`, x + colW - 6, ry);
+          ctx.fillText(pens != null ? `${goals} (${pens})` : `${goals}`, x + colW - 6, ry, colW - cs * 1.6 - 6);
         }
         ctx.globalAlpha = 1;
       });
@@ -4729,7 +5015,7 @@ function drawUI() {
     drawGameLogo(w/2, h*0.08, Math.min(w,h)*0.09, t, 1);
 
     if (!teamChosen) {
-      const pickWhat = menuLeague === 'nat' ? 'Wähle dein Land' : 'Wähle deinen Verein';
+      const pickWhat = NATION_LEAGUES.includes(menuLeague) ? 'Wähle dein Land' : 'Wähle deinen Verein';
       heading(mode === 'cl' ? '🏆 ' + pickWhat : mode === 'season' ? '📊 ' + pickWhat : pickWhat);
       leagueTabs();
       clubCardLayout(menuClubs()).forEach(c => drawClubCard(c));
