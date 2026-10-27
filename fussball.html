@@ -2950,7 +2950,7 @@ function drawUI() {
     ctx.fillStyle='#fff';
     ctx.font=`bold ${Math.min(w*0.08,34)}px system-ui`;
     const lC=playerTeam==='red'?playerClub:opponentClub, rC=playerTeam==='red'?opponentClub:playerClub;
-    const lS=playerTeam==='red'?score.red:score.blue, rS=playerTeam==='red'?score.blue:score.red;
+    const lS=score.red, rS=score.blue;
     ctx.fillStyle=lC.light; ctx.textAlign='right';  ctx.fillText(lS, w/2-18, h*0.45);
     ctx.fillStyle='#fff';   ctx.textAlign='center'; ctx.fillText(':', w/2, h*0.45);
     ctx.fillStyle=rC.light; ctx.textAlign='left';   ctx.fillText(rS, w/2+18, h*0.45);
@@ -2971,7 +2971,7 @@ function drawUI() {
     ctx.font=`bold ${Math.min(w*0.1,44)}px system-ui`;
     ctx.fillText('Spielende! 🏁', w/2, h*0.22);
     const lC=playerTeam==='red'?playerClub:opponentClub, rC=playerTeam==='red'?opponentClub:playerClub;
-    const lS=playerTeam==='red'?score.red:score.blue, rS=playerTeam==='red'?score.blue:score.red;
+    const lS=score.red, rS=score.blue;
     // Vereinsnamen
     ctx.font=`bold ${Math.min(w*0.05,21)}px system-ui`;
     ctx.fillStyle=lC.light; ctx.textAlign='right';  ctx.fillText(lC.short, w/2-30, h*0.36);
@@ -3015,8 +3015,9 @@ function drawUI() {
   ctx.textBaseline='middle';
   const lClub = playerTeam==='red' ? playerClub : opponentClub;
   const rClub = playerTeam==='red' ? opponentClub : playerClub;
-  const lScore = playerTeam==='red' ? score.red : score.blue;
-  const rScore = playerTeam==='red' ? score.blue : score.red;
+  // Rot spielt immer links, Blau rechts
+  const lScore = score.red;
+  const rScore = score.blue;
   const secs = Math.ceil(halfTimeLeft);
   const timerStr = `${Math.floor(secs/60)}:${String(secs%60).padStart(2,'0')}`;
   ctx.textAlign='center';
