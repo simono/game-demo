@@ -92,7 +92,7 @@ const makeGun = (kind, rarity) => ({ kind, rarity, ...GUNS[kind] });
 const randomGun = () => { const r = Math.random(); return makeGun(pick(Object.keys(GUNS)), r < 0.35 ? 0 : r < 0.62 ? 1 : r < 0.82 ? 2 : r < 0.95 ? 3 : 4); };
 
 // ── Insel ───────────────────────────────────────────────────────────
-const MAP = 2400, CX = MAP / 2, CY = MAP / 2, ISLAND = 1120, R = 16;
+const MAP = 3600, CX = MAP / 2, CY = MAP / 2, ISLAND = 1700, R = 16;
 let trees = [], rocks = [], walls = [], chests = [], loot = [], houses = [];
 function buildIsland() {
   seed = Math.floor(Math.random() * 1e9);
@@ -100,7 +100,7 @@ function buildIsland() {
   const free = (x, y, pad) => Math.hypot(x - CX, y - CY) < ISLAND - 80 - pad && !houses.some(h => x > h.x - pad && x < h.x + h.w + pad && y > h.y - pad && y < h.y + h.h + pad);
   const spot = pad => { for (let i = 0; i < 200; i++) { const a = rnd() * Math.PI * 2, d = Math.sqrt(rnd()) * (ISLAND - 100); const x = CX + Math.cos(a) * d, y = CY + Math.sin(a) * d; if (free(x, y, pad)) return [x, y]; } return [CX, CY]; };
   // Häuser mit Türlücke und einer Truhe drin
-  for (let i = 0; i < 9; i++) {
+  for (let i = 0; i < 18; i++) {
     const w = 200 + rnd() * 80, h = 150 + rnd() * 60, [x, y] = spot(220);
     const hx = x - w / 2, hy = y - h / 2, t = 14, door = 64;
     houses.push({ x: hx, y: hy, w, h });
@@ -109,10 +109,10 @@ function buildIsland() {
       { x: hx, y: hy, w: t, h, house: true }, { x: hx + w - t, y: hy, w: t, h, house: true });
     chests.push({ x: x, y: y - 10, open: false });
   }
-  for (let i = 0; i < 9; i++) { const [x, y] = spot(40); chests.push({ x, y, open: false }); }
-  for (let i = 0; i < 90; i++) { const [x, y] = spot(30); trees.push({ x, y, r: 22 + rnd() * 10, hp: 60 }); }
-  for (let i = 0; i < 35; i++) { const [x, y] = spot(30); rocks.push({ x, y, r: 18 + rnd() * 16 }); }
-  for (let i = 0; i < 25; i++) { const [x, y] = spot(20); loot.push(rnd() < 0.6 ? { x, y, gun: randomGun() } : { x, y, item: rnd() < 0.5 ? 'med' : 'shield' }); }
+  for (let i = 0; i < 18; i++) { const [x, y] = spot(40); chests.push({ x, y, open: false }); }
+  for (let i = 0; i < 200; i++) { const [x, y] = spot(30); trees.push({ x, y, r: 22 + rnd() * 10, hp: 60 }); }
+  for (let i = 0; i < 80; i++) { const [x, y] = spot(30); rocks.push({ x, y, r: 18 + rnd() * 16 }); }
+  for (let i = 0; i < 55; i++) { const [x, y] = spot(20); loot.push(rnd() < 0.6 ? { x, y, gun: randomGun() } : { x, y, item: rnd() < 0.5 ? 'med' : 'shield' }); }
 }
 
 // ── Spieler und Bots ────────────────────────────────────────────────
@@ -143,8 +143,8 @@ function startMatch() {
   state = 'drop'; dropTimer = 8;
 }
 // Sturm: warten, dann schrumpfen; jede Runde kleiner, draußen tut es mehr weh
-const STORM = [{ wait: 35, shrink: 20, r: 850, dps: 1 }, { wait: 30, shrink: 18, r: 520, dps: 2 }, { wait: 25, shrink: 15, r: 300, dps: 4 },
-               { wait: 20, shrink: 14, r: 150, dps: 6 }, { wait: 15, shrink: 12, r: 60, dps: 8 }, { wait: 10, shrink: 12, r: 0, dps: 12 }];
+const STORM = [{ wait: 45, shrink: 25, r: 1280, dps: 1 }, { wait: 35, shrink: 22, r: 780, dps: 2 }, { wait: 28, shrink: 18, r: 450, dps: 4 },
+               { wait: 22, shrink: 15, r: 230, dps: 6 }, { wait: 15, shrink: 12, r: 90, dps: 8 }, { wait: 10, shrink: 12, r: 0, dps: 12 }];
 function nextStormPhase(first) {
   const s = storm, p = STORM[Math.min(s.phase, STORM.length - 1)];
   const room = Math.max(0, (first ? ISLAND * 0.4 : s.r) - p.r), a = Math.random() * Math.PI * 2, d = Math.random() * room;
