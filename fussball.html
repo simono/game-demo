@@ -1820,7 +1820,7 @@ let commentOn = true;
 try { commentOn = localStorage.getItem('kickit-comment') !== 'off'; } catch (e) {}
 let commentLine = '', commentShownUntil = 0, commentBusyUntil = 0, commentQuietUntil = 0, commentPrio = 0, commentId = 0;
 const pick = a => a[Math.floor(Math.random() * a.length)];
-const MENU_STATES = ['title', 'menu', 'mode', 'cup', 'season'];
+const MENU_STATES = ['start', 'title', 'menu', 'mode', 'cup', 'season'];
 const inMatch = () => !MENU_STATES.includes(gameState);
 
 // Es ist immer höchstens ein Satz unterwegs. Ob gerade gesprochen wird, sagt die
@@ -2116,7 +2116,7 @@ function drawReplayUI() {
 }
 
 function drawCommentary() {
-  if (!commentOn || !commentLine || ['title', 'menu', 'mode'].includes(gameState)) return;
+  if (!commentOn || !commentLine || ['start', 'title', 'menu', 'mode'].includes(gameState)) return;
   const left = commentShownUntil - Date.now();
   if (left <= 0) return;
   const w = W();
@@ -2230,7 +2230,7 @@ function playMusicStep(step, t) {
 }
 
 function musicScheduler() {
-  if (gameState !== 'menu' && gameState !== 'title') { stopMenuMusic(); return; }
+  if (!['start', 'title', 'menu'].includes(gameState)) { stopMenuMusic(); return; }
   const ac = getAC();
   // Nach einem Hänger (z.B. Tab im Hintergrund) nicht alle verpassten Noten auf einmal spielen
   if (musicNextTime < ac.currentTime - 0.2) musicNextTime = ac.currentTime + 0.05;
@@ -2649,7 +2649,7 @@ let ballOwner = redP;
 let score = { red: 0, blue: 0 };
 let goalTeam = '';
 let goalScorer = null; // Spieler-Objekt das das Tor geschossen hat
-let gameState = 'title';
+let gameState = 'start';   // Startbild mit Intro, danach Teamwahl und Hauptmenü
 let titleSel = 0;          // markierter Knopf im Hauptmenü
 let showControls = false;  // Steuerung-Seite im Hauptmenü
 let playerTeam = 'red';
@@ -3043,8 +3043,13 @@ const announce = (text, prio = 4) => setTimeout(() => say(text, prio, true), 400
 
 function chooseClub(entry) {
   playerTeam = entry.team; playerClub = entry.club; teamChosen = true;
-  if (mode === 'cl') startCup();
-  else if (mode === 'season') startSeason();
+  gameState = 'title'; titleSel = 0;
+}
+const isNation = club => clubEntry(club).league === 'nat';
+function backToTeamPick() {
+  mode = 'friendly'; cup = null; season = null; showControls = false;
+  gameState = 'menu'; teamChosen = false; opponentChosen = false;
+  menuLeague = clubEntry(playerClub).league;
 }
 
 function startCup() {
@@ -3154,9 +3159,12 @@ function modeHit(tx, ty) {
   for (const c of modeCardLayout()) if (tx >= c.x && tx <= c.x + c.w && ty >= c.y && ty <= c.y + c.h) { pickMode(c.m.id); return; }
 }
 function pickMode(id) {
+  // In der Champions League spielen nur Vereine
+  if (id === 'cl' && isNation(playerClub)) return;
   mode = id; cup = null; season = null; commentLine = '';
-  if (id === 'cl' && menuLeague === 'nat') menuLeague = 'de';
-  gameState = 'menu'; teamChosen = false; opponentChosen = false;
+  if (id === 'cl') startCup();
+  else if (id === 'season') startSeason();
+  else { gameState = 'menu'; teamChosen = true; opponentChosen = false; }
 }
 function compBtn() {
   const w = W(), h = H(), bw = Math.min(w * 0.7, 420), bh = Math.min(h * 0.1, 52);
@@ -3182,7 +3190,9 @@ function drawModeScreen() {
   const wide = w > h;
   for (const c of modeCardLayout()) {
     const sel = c.n - 1 === modeSel;
+    const locked = c.m.id === 'cl' && isNation(playerClub);
     ctx.save();
+    if (locked) ctx.globalAlpha = 0.4;
     roundRect(c.x, c.y, c.w, c.h, 16);
     const g = ctx.createLinearGradient(c.x, c.y, c.x, c.y + c.h);
     g.addColorStop(0, shade(c.m.color, 0.2)); g.addColorStop(1, shade(c.m.color, -0.5));
@@ -3199,7 +3209,7 @@ function drawModeScreen() {
     ctx.fillText(c.m.label, tx, ly, (wide ? c.w : c.w - c.h * 1.1) - 16);
     ctx.fillStyle = 'rgba(255,255,255,0.8)';
     ctx.font = `${Math.min(c.w * 0.06, 14)}px system-ui`;
-    c.m.sub.forEach((s, i) => ctx.fillText(s, tx, ly + Math.min(c.h * 0.16, 26) + i * Math.min(c.h * 0.12, 18), c.w - 16));
+    (locked ? ['Nur für Vereine', ''] : c.m.sub).forEach((s, i) => ctx.fillText(s, tx, ly + Math.min(c.h * 0.16, 26) + i * Math.min(c.h * 0.12, 18), c.w - 16));
     ctx.fillStyle = 'rgba(0,0,0,0.45)';
     ctx.beginPath(); ctx.arc(c.x + 18, c.y + 18, 11, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#fff'; ctx.font = 'bold 13px system-ui';
@@ -3405,6 +3415,10 @@ function drawSeasonScreen() {
 // Knöpfe im Hauptmenü: gleiche Rechtecke fürs Zeichnen und Antippen
 function getTitleButtons() {
   const w=W(), h=H();
+  if (gameState === 'start') {
+    const bw=Math.min(w*0.6, 380), bh=Math.min(h*0.13, 70);
+    return [{ id:'start', label:'▶  Spiel starten', x:w/2-bw/2, y:h*0.62, w:bw, h:bh }];
+  }
   const bw=Math.min(w*0.42, 320), bh=Math.min(h*0.1, 56), x=w/2-bw/2;
   if (showControls) return [{ id:'back', label:'← Zurück', x, y:h*0.84, w:bw, h:bh }];
   const y0=h*0.46, gap=bh*1.22;
@@ -3417,6 +3431,8 @@ function getTitleButtons() {
 }
 
 function titleAction(id) {
+  if (id==='start')    { backToTeamPick(); }
+  if (id==='team')     { backToTeamPick(); }
   if (id==='play')     { gameState='mode'; modeSel=0; }
   if (id==='difficulty') { difficulty=DIFFICULTIES[(DIFFICULTIES.indexOf(difficulty)+1)%DIFFICULTIES.length]; }
   if (id==='duration') { halfSecs=HALF_OPTIONS[(HALF_OPTIONS.indexOf(halfSecs)+1)%HALF_OPTIONS.length]; }
@@ -3426,6 +3442,8 @@ function titleAction(id) {
 
 function titleButtonHit(tx, ty) {
   if (introRunning()) { introStart=0; return; }
+  const chip = myTeamChip();
+  if (gameState==='title' && !showControls && tx>=chip.x && tx<=chip.x+chip.w && ty>=chip.y && ty<=chip.y+chip.h) { titleAction('team'); return; }
   for (const b of getTitleButtons()) {
     if (tx>=b.x && tx<=b.x+b.w && ty>=b.y && ty<=b.y+b.h) { titleAction(b.id); return; }
   }
@@ -3468,7 +3486,7 @@ function menuButtonHit(tx, ty) {
 
 function onPointerDown(tx, ty, id) {
   getAC(); // AudioContext beim ersten Touch starten
-  if (gameState === 'title') { titleButtonHit(tx, ty); return; }
+  if (gameState === 'title' || gameState === 'start') { titleButtonHit(tx, ty); return; }
   if (gameState === 'menu') { menuButtonHit(tx, ty); return; }
   if (gameState === 'mode') { modeHit(tx, ty); return; }
   if (gameState === 'cup' || gameState === 'season') {
@@ -3529,14 +3547,14 @@ canvas.addEventListener('pointercancel', e=>{ onPointerUp(e.pointerId); },{passi
 const keys={};
 window.addEventListener('keydown', e=>{
   if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
-  if (gameState === 'title') {
+  if (gameState === 'title' || gameState === 'start') {
     getAC();
     if (introRunning()) { introStart=0; return; }
     const btns=getTitleButtons();
     if (e.key==='ArrowUp')   titleSel=(titleSel+btns.length-1)%btns.length;
     if (e.key==='ArrowDown') titleSel=(titleSel+1)%btns.length;
     if (e.key==='Enter'||e.key===' ') titleAction(btns[Math.min(titleSel,btns.length-1)].id);
-    if (e.key==='Escape' && showControls) titleAction('back');
+    if (e.key==='Escape') titleAction(showControls ? 'back' : gameState === 'title' ? 'team' : '');
     return;
   }
   if (gameState === 'mode') {
@@ -3554,7 +3572,11 @@ window.addEventListener('keydown', e=>{
     return;
   }
   if (gameState === 'menu') {
-    if (e.key==='Escape') { gameState='title'; teamChosen=false; opponentChosen=false; return; }
+    if (e.key==='Escape') {
+      if (teamChosen) { gameState='title'; opponentChosen=false; }
+      else gameState='start';
+      return;
+    }
     const n = parseInt(e.key, 10) - 1;
     if (!opponentChosen && (e.key==='ArrowLeft' || e.key==='ArrowRight')) {
       const lgs = menuLeagues(), i = lgs.findIndex(l => l.id === menuLeague);
@@ -3958,6 +3980,21 @@ function drawGameLogo(cx, cy, size, t, alpha=0.32, build=1) {
   ctx.restore();
 }
 
+function myTeamChip() {
+  const w=W(), h=H(), cw=Math.min(w*0.3, 180), ch=Math.min(h*0.07, 36);
+  return { x:12, y:12, w:cw, h:ch };
+}
+function drawMyTeamChip(label) {
+  const c = myTeamChip(), me = clubEntry(playerClub);
+  ctx.fillStyle='rgba(0,0,0,0.45)';
+  roundRect(c.x, c.y, c.w, c.h, c.h/2); ctx.fill();
+  me.crest(c.x+c.h*0.6, c.y+c.h/2, c.h*0.8);
+  ctx.fillStyle='#fff';
+  ctx.font=`bold ${c.h*0.42}px system-ui`;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(label, c.x+c.w/2+c.h*0.3, c.y+c.h/2, c.w-c.h*1.4);
+}
+
 function drawTitle() {
   const w=W(), h=H(), t=Date.now()/1000;
   ctx.save();
@@ -4025,9 +4062,10 @@ function drawTitle() {
   }
 
   ctx.globalAlpha=uiIn;
+  if (gameState==='title' && !showControls) { drawMyTeamChip(`${clubEntry(playerClub).label} 🔄`); ctx.textAlign='center'; }
   getTitleButtons().forEach((b,i)=>{
     const sel=i===titleSel;
-    const primary=b.id==='play';
+    const primary=b.id==='play' || b.id==='start';
     ctx.fillStyle=primary?'#27ae60':(sel?'rgba(255,255,255,0.22)':'rgba(255,255,255,0.1)');
     if (primary) { ctx.shadowColor='#27ae60'; ctx.shadowBlur=sel?25:12; }
     roundRect(b.x, b.y, b.w, b.h, b.h*0.3); ctx.fill();
@@ -4045,13 +4083,13 @@ function drawTitle() {
   ctx.globalAlpha=1;
   ctx.font=`${Math.min(w*0.025,13)}px system-ui`;
   ctx.fillStyle='rgba(255,255,255,0.4)';
-  ctx.fillText(showControls?'Esc = zurück':introRunning()?'Tippen oder Taste drücken zum Überspringen':'↑ ↓ auswählen · Enter bestätigen · oder antippen', w/2, h*0.965);
+  ctx.fillText(showControls?'Esc = zurück':introRunning()?'Tippen oder Taste drücken zum Überspringen':gameState==='start'?'Enter drücken oder antippen':'↑ ↓ auswählen · Enter bestätigen · Esc = Team wechseln', w/2, h*0.965);
   ctx.restore();
 }
 
 function drawUI() {
   const w=W(), h=H();
-  if (gameState === 'title') { drawTitle(); return; }
+  if (gameState === 'title' || gameState === 'start') { drawTitle(); return; }
   if (gameState === 'mode') { drawModeScreen(); return; }
   if (gameState === 'cup') { drawCupScreen(); return; }
   if (gameState === 'season') { drawSeasonScreen(); return; }
@@ -4337,15 +4375,7 @@ function drawUI() {
     } else if (!opponentChosen) {
       heading('Gegen wen spielst du?');
       leagueTabs();
-      // Eigener Verein als kleines Schild links oben
-      const me = clubEntry(playerClub);
-      const chipW = Math.min(w*0.3, 180), chipH = Math.min(h*0.07, 36);
-      ctx.fillStyle='rgba(0,0,0,0.45)';
-      roundRect(12, 12, chipW, chipH, chipH/2); ctx.fill();
-      me.crest(12+chipH*0.6, 12+chipH/2, chipH*0.8);
-      ctx.fillStyle='#fff';
-      ctx.font=`bold ${chipH*0.42}px system-ui`;
-      ctx.fillText(`Du: ${me.label}`, 12+chipW/2+chipH*0.3, 12+chipH/2, chipW-chipH*1.4);
+      drawMyTeamChip(`Du: ${clubEntry(playerClub).label}`);
       clubCardLayout(menuClubs()).forEach(c => drawClubCard(c));
 
     } else {
@@ -4745,8 +4775,8 @@ function loop() {
   if (gameState === 'foul' || gameState === 'penalty') drawSetPieceUI();
   drawReplayUI();
   drawCommentary();
-  homeBtn.hidden = gameState !== 'title';
-  micBtn.hidden = gameState !== 'title' || showControls || introRunning();
+  homeBtn.hidden = gameState !== 'start';
+  micBtn.hidden = !['start', 'title'].includes(gameState) || showControls || introRunning();
   micBtn.classList.toggle('off', !commentOn);
   requestAnimationFrame(loop);
 }
