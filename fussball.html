@@ -681,7 +681,9 @@ function paintStands(f, w, h, padX, padY) {
   }
 
   // Werbebanden oben und unten
-  const ads = [home.stadium, 'KICK IT!', home.name, 'TOOOR!', 'BUNDESLIGA-DUELL'];
+  const leagues = new Set([clubEntry(playerClub).league, clubEntry(opponentClub).league]);
+  const duel = leagues.size > 1 ? 'DEUTSCHLAND VS ENGLAND' : leagues.has('en') ? 'PREMIER LEAGUE' : 'BUNDESLIGA-DUELL';
+  const ads = [home.stadium, 'KICK IT!', home.name, 'TOOOR!', duel];
   f.font = `bold ${boardH * 0.7}px system-ui`;
   f.textAlign = 'center';
   f.textBaseline = 'middle';
@@ -1889,18 +1891,33 @@ function kitFor(club) {
 
 // Alle Vereine für Menü und Tastatur; team = Seite, auf der der Verein spielt
 const CLUB_LIST = [
-  { club:KOELN,   team:'red',  crest:drawKoelnCrest,   label:'Köln' },
-  { club:BVB,     team:'red',  crest:drawBVBCrest,     label:'Dortmund' },
-  { club:SCHALKE, team:'blue', crest:drawSchalkeCrest, label:'Schalke' },
-  { club:BMG,     team:'red',  crest:drawBMGCrest,     label:'M\'gladbach' },
-  { club:BAYERN,  team:'red',  crest:drawBayernCrest,  label:'Bayern' },
-  { club:CITY,    team:'blue', crest:drawCityCrest,    label:'Man City' },
-  { club:ARSENAL, team:'red',  crest:drawArsenalCrest, label:'Arsenal' },
-  { club:LIVERPOOL, team:'red', crest:drawLiverpoolCrest, label:'Liverpool' },
-  { club:CHELSEA, team:'blue', crest:drawChelseaCrest, label:'Chelsea' },
-  { club:NEWCASTLE, team:'red', crest:drawNewcastleCrest, label:'Newcastle' },
+  { club:KOELN,   team:'red',  crest:drawKoelnCrest,   label:'Köln', league:'de' },
+  { club:BVB,     team:'red',  crest:drawBVBCrest,     label:'Dortmund', league:'de' },
+  { club:SCHALKE, team:'blue', crest:drawSchalkeCrest, label:'Schalke', league:'de' },
+  { club:BMG,     team:'red',  crest:drawBMGCrest,     label:'M\'gladbach', league:'de' },
+  { club:BAYERN,  team:'red',  crest:drawBayernCrest,  label:'Bayern', league:'de' },
+  { club:CITY,    team:'blue', crest:drawCityCrest,    label:'Man City', league:'en' },
+  { club:ARSENAL, team:'red',  crest:drawArsenalCrest, label:'Arsenal', league:'en' },
+  { club:LIVERPOOL, team:'red', crest:drawLiverpoolCrest, label:'Liverpool', league:'en' },
+  { club:CHELSEA, team:'blue', crest:drawChelseaCrest, label:'Chelsea', league:'en' },
+  { club:NEWCASTLE, team:'red', crest:drawNewcastleCrest, label:'Newcastle', league:'en' },
 ];
 const clubEntry = club => CLUB_LIST.find(e => e.club === club);
+
+const LEAGUES = [
+  { id:'de', label:'Bundesliga',     flag:'🇩🇪' },
+  { id:'en', label:'Premier League', flag:'🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+];
+let menuLeague = 'de';
+// Vereine, die gerade als Karten zur Auswahl stehen
+function menuClubs() {
+  return CLUB_LIST.filter(e => e.league === menuLeague && !(teamChosen && e.club === playerClub));
+}
+function leagueTabLayout() {
+  const w=W(), h=H();
+  const tw=Math.min(w*0.3, 200), th=Math.min(h*0.075, 34);
+  return LEAGUES.map((l, i) => ({ league:l, x:w/2 + (i ? 4 : -tw-4), y:h*0.29-th/2, w:tw, h:th }));
+}
 
 // Karten der Vereinsauswahl: bis 4 in einer Reihe, sonst zwei Reihen
 function clubCardLayout(entries) {
@@ -2324,8 +2341,10 @@ function menuButtonHit(tx, ty) {
   const w=W(), h=H();
 
   if (!teamChosen || !opponentChosen) {
-    const list = teamChosen ? CLUB_LIST.filter(e=>e.club!==playerClub) : CLUB_LIST;
-    for (const b of clubCardLayout(list)) {
+    for (const b of leagueTabLayout()) {
+      if (tx>=b.x && tx<=b.x+b.w && ty>=b.y && ty<=b.y+b.h) { menuLeague=b.league.id; return true; }
+    }
+    for (const b of clubCardLayout(menuClubs())) {
       if (tx>=b.x && tx<=b.x+b.w && ty>=b.y && ty<=b.y+b.h) {
         if (!teamChosen) { playerTeam=b.entry.team; playerClub=b.entry.club; teamChosen=true; }
         else { opponentClub=b.entry.club; opponentChosen=true; }
@@ -2409,11 +2428,14 @@ window.addEventListener('keydown', e=>{
   if (gameState === 'menu') {
     if (e.key==='Escape') { gameState='title'; teamChosen=false; opponentChosen=false; return; }
     const n = parseInt(e.key, 10) - 1;
-    if (!teamChosen) {
-      const pick = CLUB_LIST[n];
+    if (!opponentChosen && (e.key==='ArrowLeft' || e.key==='ArrowRight')) {
+      const i = LEAGUES.findIndex(l => l.id === menuLeague);
+      menuLeague = LEAGUES[(i + (e.key==='ArrowRight' ? 1 : LEAGUES.length-1)) % LEAGUES.length].id;
+    } else if (!teamChosen) {
+      const pick = menuClubs()[n];
       if (pick) { playerTeam=pick.team; playerClub=pick.club; teamChosen=true; }
     } else if (!opponentChosen) {
-      const pick = CLUB_LIST.filter(c=>c.club!==playerClub)[n];
+      const pick = menuClubs()[n];
       if (pick) { opponentClub=pick.club; opponentChosen=true; }
     } else if (e.key==='Enter'||e.key===' ') {
       startMatch();
@@ -3083,24 +3105,39 @@ function drawUI() {
       }
     }
 
+    // Reiter für die Ligen
+    function leagueTabs() {
+      for (const b of leagueTabLayout()) {
+        const on = b.league.id === menuLeague;
+        roundRect(b.x, b.y, b.w, b.h, b.h/2);
+        ctx.fillStyle = on ? '#27ae60' : 'rgba(0,0,0,0.5)'; ctx.fill();
+        ctx.strokeStyle = on ? '#fff' : 'rgba(255,255,255,0.35)'; ctx.lineWidth = on ? 2 : 1; ctx.stroke();
+        ctx.fillStyle = on ? '#fff' : 'rgba(255,255,255,0.7)';
+        ctx.font = `bold ${b.h*0.45}px system-ui`;
+        ctx.fillText(`${b.league.flag} ${b.league.label}`, b.x+b.w/2, b.y+b.h/2+1, b.w-10);
+      }
+    }
+
     drawGameLogo(w/2, h*0.08, Math.min(w,h)*0.09, t, 1);
 
     if (!teamChosen) {
-      heading('Wähle deinen Verein', 'Tippe auf eine Karte oder drücke 1 bis ' + CLUB_LIST.length);
-      clubCardLayout(CLUB_LIST).forEach(c => drawClubCard(c, { float:true }));
+      heading('Wähle deinen Verein');
+      leagueTabs();
+      clubCardLayout(menuClubs()).forEach(c => drawClubCard(c, { float:true }));
 
     } else if (!opponentChosen) {
       heading('Gegen wen spielst du?');
+      leagueTabs();
       // Eigener Verein als kleines Schild links oben
       const me = clubEntry(playerClub);
       const chipW = Math.min(w*0.3, 180), chipH = Math.min(h*0.07, 36);
       ctx.fillStyle='rgba(0,0,0,0.45)';
-      roundRect(w/2-chipW/2, h*0.27-chipH/2, chipW, chipH, chipH/2); ctx.fill();
-      me.crest(w/2-chipW/2+chipH*0.6, h*0.27, chipH*0.8);
+      roundRect(12, 12, chipW, chipH, chipH/2); ctx.fill();
+      me.crest(12+chipH*0.6, 12+chipH/2, chipH*0.8);
       ctx.fillStyle='#fff';
       ctx.font=`bold ${chipH*0.42}px system-ui`;
-      ctx.fillText(`Du: ${me.label}`, w/2+chipH*0.3, h*0.27, chipW-chipH*1.4);
-      clubCardLayout(CLUB_LIST.filter(e=>e.club!==playerClub)).forEach(c => drawClubCard(c, { float:true }));
+      ctx.fillText(`Du: ${me.label}`, 12+chipW/2+chipH*0.3, 12+chipH/2, chipW-chipH*1.4);
+      clubCardLayout(menuClubs()).forEach(c => drawClubCard(c, { float:true }));
 
     } else {
       heading('Anpfiff!', `im ${playerClub.stadium} · Halbzeit ${halfSecs/60} Min · ${difficulty.name}`);
@@ -3131,7 +3168,8 @@ function drawUI() {
 
     ctx.fillStyle='rgba(255,255,255,0.4)';
     ctx.font=`${Math.min(w*0.025,13)}px system-ui`;
-    ctx.fillText('Esc = zurück zum Hauptmenü', w/2, h*0.975);
+    ctx.fillText(opponentChosen ? 'Esc = zurück zum Hauptmenü'
+      : `Tippe auf eine Karte oder drücke 1 bis ${menuClubs().length} · ← → Liga wechseln · Esc = zurück`, w/2, h*0.975);
     ctx.restore();
     return;
   }
