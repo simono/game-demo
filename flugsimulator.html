@@ -76,7 +76,7 @@ const BLUE = '#1f4fd1', GREEN = '#1fb84f';
 
 // ── Spielzustand ───────────────────────────────────────────────────
 let state = 'menu';       // menu, flying, crashed, done
-let p, cam, particles = [], contrail = [], result = null;
+let p, cam, pax, particles = [], contrail = [], result = null;
 let resultT = 0, welcomeT = 0, shake = 0, farX = 0, time = 0;
 
 function newFlight() {
@@ -84,6 +84,7 @@ function newFlight() {
   p = { x: 120, y: 0, z: 0, hdg: 0, roll: 0, v: 0, vy: 0, pitch: 0, throttle: 0, gear: 1, gearDown: true,
         onGround: true, flown: false, rwy: RWY_A, touchSink: 0, sinkAnim: 0, tilt: 0, drop: 0 };
   cam = { a: 0, init: false };
+  pax = newPax();
   particles = []; contrail = []; result = null;
   state = 'flying'; welcomeT = 4; shake = 0;
   pointers.clear();
@@ -457,6 +458,7 @@ function localToWorld(lx, ly) {
 }
 
 function update(dt) {
+  updatePax(dt);
   const up = held('up'), dn = held('dn');
   p.throttle = clamp(p.throttle + ((held('thrUp') ? 1 : 0) - (held('thrDn') ? 1 : 0)) * 0.45 * dt, 0, 1);
   p.gear += clamp((p.gearDown ? 1 : 0) - p.gear, -0.4 * dt, 0.4 * dt);
@@ -541,6 +543,7 @@ function touchdown() {
   const rwy = !onStrip ? null : inside(p.x, RWY_A) ? RWY_A : inside(p.x, RWY_B) ? RWY_B : null;
   if (!rwy) return crash('field', onStrip ? 'Daneben! Du bist vor oder hinter der Landebahn aufgesetzt.' : 'Daneben! Du bist neben der Landebahn aufgesetzt. Schau aufs Radar und lenk mit ◀ ▶.');
   p.onGround = true; p.vy = 0; p.rwy = rwy; p.touchSink = sink;
+  paxTouchdown(sink);
   if (p.flown) p.throttle = 0;   // nach der Landung geht der Schub automatisch auf Leerlauf
   shake = Math.min(8, 2 + sink * 1.5);
   thump();
@@ -556,14 +559,15 @@ function landed() {
   }
   const s = p.touchSink;
   const stars = s < 3 ? 3 : s < 5 ? 2 : 1;
-  const text = stars === 3 ? 'Butterweich aufgesetzt! Die Passagiere klatschen.'
+  const text = stars === 3 ? 'Butterweich aufgesetzt!'
              : stars === 2 ? `Gute Landung! Willkommen ${R.in}. ${R.icon}`
              : 'Etwas hart, aber alle sind heil angekommen!';
   finish({ ok: true, stars, title: `Gelandet ${R.in}!`, text });
-  applause();
+  if (pax.mood > 45) applause();
 }
 
 function finish(r) {
+  r.pax = paxVerdict(r);
   result = r;
   state = 'done';
   resultT = 0.6;
@@ -572,6 +576,8 @@ function finish(r) {
 
 function crash(kind, text) {
   result = { ok: false, title: kind === 'sea' ? 'Platsch!' : 'Bumm!', text };
+  result.pax = kind === 'sea' ? `🛟 Alle ${pax.n} Passagiere sind mit Schwimmwesten an Land geschwommen.`
+                              : `🛝 Alle ${pax.n} Passagiere sind über die Notrutsche raus. Puh!`;
   state = 'crashed';
   resultT = 1.8;
   p.crash = kind;
@@ -594,6 +600,102 @@ function crash(kind, text) {
                        color: fire ? '255,150,40' : '90,90,95' });
     }
   }
+}
+
+// ── Passagiere ─────────────────────────────────────────────────────
+const PEOPLE = ['👧', '👦', '👩', '👨', '👵', '👴', '🧒', '👱‍♀️'];
+const CHATTER = [
+  'Wann gibt es Essen? 🍕', 'Ich muss mal aufs Klo! 🚽', 'Mama, sind wir bald da?', 'Tolle Aussicht! 😍',
+  'Das Baby schläft endlich 👶💤', 'Darf ich ans Fenster?', 'Ich will auch mal Pilot werden! 👨‍✈️',
+  'Noch ein Saft, bitte 🧃', 'Ich gucke einen Film 🎬', 'Henrik Airlines ist die beste! 💚💙',
+];
+
+function newPax() {
+  return { n: 420 + Math.floor(Math.random() * 130), mood: 80, text: '', who: '', t: 0, wait: 5, said: new Set(), ouch: 0 };
+}
+
+function say(text, key) {
+  if (key && pax.said.has(key)) return;
+  if (pax.t > 0.8) return;   // erst ausreden lassen
+  if (key) pax.said.add(key);
+  pax.text = text;
+  pax.who = PEOPLE[Math.floor(Math.random() * PEOPLE.length)];
+  pax.t = 3.5;
+  pax.wait = 7 + Math.random() * 6;
+}
+
+function updatePax(dt) {
+  pax.t -= dt; pax.wait -= dt; pax.ouch -= dt;
+  // wildes Fliegen mögen die Passagiere nicht
+  let bad = 0, why = '';
+  if (!p.onGround) {
+    if (Math.abs(p.pitch) > 15) { bad += (Math.abs(p.pitch) - 15) * 1.5; why = p.pitch > 0 ? 'Huiii, nicht so steil! 😱' : 'Mir wird schlecht! 🤢'; }
+    if (Math.abs(p.roll) > 28) { bad += Math.abs(p.roll) - 28; why = 'Uiii, alles kippt um! 😵'; }
+    if (p.vy < -25) { bad += (-p.vy - 25) * 0.6; why = 'Mein Saft fliegt durch die Luft! 🧃'; }
+    if (p.v < 66) { bad += 6; why = 'Warum ist es so leise? 😨'; }
+  }
+  if (bad > 0) {
+    pax.mood -= bad * dt;
+    if (pax.ouch <= 0) { pax.t = 0; say(why); pax.ouch = 4; }
+  } else if (p.flown && !p.onGround) {
+    pax.mood += 1.2 * dt;   // ruhiger Flug: langsam wieder gute Laune
+  }
+  pax.mood = clamp(pax.mood, 0, 100);
+
+  const dist = DEST - p.x;
+  if (welcomeT < 2.5) say(`Juhu, wir fliegen nach ${R.name}! ${R.icon}`, 'start');
+  if (p.flown) say('Wir heben ab! 🎉', 'lift');
+  if (p.y > 600) say('Schau mal, wir sind über den Wolken! ☁️', 'high');
+  if (p.x > SEA_FROM && p.x < SEA_TO) say(`Da unten ist ${R.seaName}! 🌊`, 'sea');
+  if (R.desert && p.x > DEST_FROM) say('Ich sehe Kamele! 🐪', 'desert');
+  if (dist < 9000 && dist > 0) say(`Ich kann schon ${R.name} sehen! ${R.icon}`, 'see');
+  if (p.flown && p.gearDown && p.gear > 0.95 && dist < 9000) say('Was hat da so gerumpelt? Ach, das Fahrwerk!', 'gear');
+  if (pax.wait <= 0 && p.flown && !p.onGround && bad === 0) {
+    say(CHATTER[Math.floor(Math.random() * CHATTER.length)]);
+  }
+}
+
+function paxTouchdown(sink) {
+  pax.mood = clamp(pax.mood - Math.max(0, sink - 2) * 6, 0, 100);
+}
+
+function paxFace(m) {
+  return m > 85 ? '😍' : m > 65 ? '😀' : m > 45 ? '🙂' : m > 25 ? '😟' : '😱';
+}
+
+function paxVerdict(r) {
+  if (!r.ok) return `😤 Die ${pax.n} Passagiere wollten doch nach ${R.name}!`;
+  if (!r.stars) return `😅 Die Passagiere wundern sich: Das ist ja wieder Frankfurt!`;
+  const m = pax.mood;
+  const how = m > 85 ? 'sind begeistert' : m > 65 ? 'sind froh' : m > 45 ? 'sind zufrieden' : m > 25 ? 'sind ein bisschen sauer' : 'hatten große Angst';
+  return `${paxFace(m)} ${pax.n} Passagiere ${how}!`;
+}
+
+function drawBubble() {
+  if (pax.t <= 0) return;
+  const u = clamp(Math.min(W(), H()) / 400, 0.8, 1.4);
+  const fs = 14 * u;
+  const str = `${pax.who} ${pax.text}`;
+  ctx.font = `bold ${fs}px system-ui, -apple-system, sans-serif`;
+  const bw = Math.min(W() - 24, ctx.measureText(str).width + 22), bh = fs * 2;
+  let tx, ty, bx, by;
+  if (view === 'cockpit') {
+    // im Cockpit hört man die Passagiere durch die Tür
+    bx = W() / 2 - bw / 2; by = H() * 0.2;
+  } else {
+    tx = sx(p.x) + 6 * S; ty = sy(p.y) - 6 * S;
+    bx = clamp(tx - bw * 0.3, 12, W() - 12 - bw);
+    by = clamp(ty - bh - 14 * u, 12, H() - bh - 12);
+  }
+  ctx.globalAlpha = clamp(pax.t * 3, 0, 1);
+  ctx.fillStyle = 'rgba(255,255,255,0.95)';
+  ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 12); ctx.fill();
+  if (tx !== undefined && ty > by + bh) {
+    const fx = clamp(tx, bx + 14, bx + bw - 14);
+    ctx.beginPath(); ctx.moveTo(fx - 7, by + bh - 1); ctx.lineTo(fx + 7, by + bh - 1); ctx.lineTo(tx, Math.min(ty, by + bh + 14 * u)); ctx.fill();
+  }
+  txt(str, bx + bw / 2, by + bh / 2, fs, '#1d2433');
+  ctx.globalAlpha = 1;
 }
 
 function updateParticles(dt) {
@@ -1349,8 +1451,9 @@ function drawHUD() {
   const dist = kmLeft();
   const rw = 150 * u;
   panel(W() - m - rw, m, rw, ph);
-  txt(`${R.icon} ${R.name}`, W() - m - rw / 2, m + fs * 1.1, fs, '#fff');
-  txt(`noch ${Math.round(dist)} km`, W() - m - rw / 2, m + fs * 2.6, fs * 1.05, '#ffd34d');
+  txt(`${R.icon} ${R.name}`, W() - m - rw / 2, m + fs * 0.95, fs, '#fff');
+  txt(`noch ${Math.round(dist)} km`, W() - m - rw / 2, m + fs * 2.05, fs * 1.05, '#ffd34d');
+  txt(`👥 ${pax.n} ${paxFace(pax.mood)}`, W() - m - rw / 2, m + fs * 3.15, fs, '#fff');
 
   // Strecke als kleine Karte von der Seite
   const my = m + ph + 8, mw = W() - 2 * m, mh = 30 * u;
@@ -1407,6 +1510,8 @@ function drawHUD() {
   ctx.fillStyle = g;
   ctx.fillRect(bx + 3, by + bh - 3 - fh, bw - 6, fh);
   txt(`${Math.round(p.throttle * 100)}%`, bx + bw + 4, by + bh - 3 - fh, 11 * u, '#fff', 'left', 'rgba(0,0,0,0.6)');
+
+  drawBubble();
 }
 
 function drawRadar(x, y, R, RH = R) {
@@ -1442,7 +1547,8 @@ function drawResult() {
   const cw = Math.min(440, W() - 32);
   const lines = wrap(result.text, cw - 40, 16 * u);
   const hasStars = result.ok && result.stars > 0;
-  const ch = 60 * u + (hasStars ? 48 * u : 0) + lines.length * 22 * u + 90 * u;
+  const paxLines = result.pax ? wrap(result.pax, cw - 40, 16 * u) : [];
+  const ch = 60 * u + (hasStars ? 48 * u : 0) + (lines.length + paxLines.length) * 22 * u + (paxLines.length ? 10 * u : 0) + 90 * u;
   const cx = W() / 2 - cw / 2, cy = H() / 2 - ch / 2;
   ctx.fillStyle = result.ok ? 'rgba(20,60,140,0.95)' : 'rgba(120,30,30,0.95)';
   ctx.beginPath(); ctx.roundRect(cx, cy, cw, ch, 18); ctx.fill();
@@ -1455,6 +1561,8 @@ function drawResult() {
     y += 48 * u;
   }
   for (const l of lines) { txt(l, W() / 2, y, 16 * u, 'rgba(255,255,255,0.92)'); y += 22 * u; }
+  y += 10 * u;
+  for (const l of paxLines) { txt(l, W() / 2, y, 16 * u, '#ffd34d'); y += 22 * u; }
   const bh = 46 * u, bw = (cw - 52) / 2;
   resBtns.again = { x: cx + 20, y: cy + ch - bh - 18, w: bw, h: bh };
   resBtns.menu = { x: cx + 32 + bw, y: cy + ch - bh - 18, w: bw, h: bh };
