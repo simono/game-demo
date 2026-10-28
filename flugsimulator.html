@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>A380 Flugsimulator</title>
+<title>Flugsimulator</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
@@ -42,7 +42,7 @@
 <script>
 const homeBtn = document.getElementById('home');
 const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
+let ctx = canvas.getContext('2d');
 
 function resize() {
   const dpr = window.devicePixelRatio || 1;
@@ -64,10 +64,9 @@ const rand = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x
 
 // ── Strecke ────────────────────────────────────────────────────────
 // Die Spielwelt ist kleiner als die echte Welt, damit ein Flug nur ein paar Minuten dauert.
-const RWY_A = { x0: 0, x1: 2800 };               // Startbahn Frankfurt
+const RWY_A = { x0: 0, x1: 2800, num: '07' };    // Startbahn Frankfurt
 const ALT_SCALE = 10;     // 1 m im Spiel = 10 m Anzeige
 const GEAR_H = 8.2;       // von den Rädern bis zur Rumpfmitte
-const VR = 75;            // Abhebetempo in m/s (270 km/h)
 const CEILING = 1300;
 const GLIDE = 4 * DEG;    // Winkel der grünen Landehilfe
 const GLIDE_LEN = 13000;
@@ -79,14 +78,23 @@ let state = 'menu';       // menu, flying, crashed, done
 let p, cam, pax, particles = [], contrail = [], result = null;
 let resultT = 0, welcomeT = 0, shake = 0, farX = 0, time = 0;
 
+let VR = 75;              // Abhebetempo in m/s, hängt vom Flugzeug ab
+const ROPE = 45, TOW_TOP = 220;
 function newFlight() {
   stopMusic();
+  stopSirens();
+  VR = PT().vr;
   p = { x: 120, y: 0, z: 0, hdg: 0, roll: 0, v: 0, vy: 0, pitch: 0, throttle: 0, gear: 1, gearDown: true,
-        onGround: true, flown: false, rwy: RWY_A, touchSink: 0, sinkAnim: 0, tilt: 0, drop: 0 };
+        onGround: true, flown: false, rwy: RWY_A, touchSink: 0, sinkAnim: 0, tilt: 0, drop: 0, flaps: 0.4, spoil: 0, rev: 0 };
   cam = { a: 0, init: false };
   pax = newPax();
+  if (PT().glider) {
+    // das Schleppflugzeug steht vorne am Seil
+    p.tow = { x: p.x + ROPE, y: 0, free: false, t: 0, v: 0 };
+    p.throttle = 0; p.airbrake = false; p.varioT = 0;
+  }
   particles = []; contrail = []; result = null;
-  state = 'flying'; welcomeT = 4; shake = 0;
+  state = 'flying'; welcomeT = 4; shake = 0; flash = 0; bolt = null; nextBolt = 5;
   pointers.clear();
   startEngine();
   chime();
@@ -95,6 +103,7 @@ function newFlight() {
 function toMenu() {
   state = 'menu';
   stopEngine();
+  stopSirens();
   pointers.clear();
 }
 
@@ -115,6 +124,12 @@ function held(k) {
   return false;
 }
 function toggleGear() {
+  if (PT().glider) {
+    if (p.tow && !p.tow.free) { if (!p.onGround) releaseTow('Ausgeklinkt! Jetzt fliegst du ganz ohne Motor. 🪂'); return; }
+    p.airbrake = !p.airbrake;
+    clunk();
+    return;
+  }
   if (p.onGround) return;
   p.gearDown = !p.gearDown;
   clunk();
@@ -148,22 +163,26 @@ function buttons() {
 const hit = (r, x, y) => r && x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 function buttonAt(x, y) {
   const bs = buttons();
-  for (const k in bs) if (hit(bs[k], x, y)) return k;
+  for (const k in bs) if (hit(bs[k], x, y) && !(PT().glider && (k === 'thrUp' || k === 'thrDn'))) return k;
   return null;
 }
 
-let menuBtn = null, menuPrev = null, menuNext = null, musicBtn = null, resBtns = {};
+let menuBtn = null, menuPrev = null, menuNext = null, musicBtn = null, nightBtn = null, weatherBtn = null, planeBtns = [], resBtns = {};
 canvas.addEventListener('pointerdown', e => {
   e.preventDefault();
   getAC();
   const x = e.clientX, y = e.clientY;
   if (state === 'menu') {
     if (hit(musicBtn, x, y)) toggleMusic();
+    else if (hit(nightBtn, x, y)) setNight(!night);
+    else if (hit(weatherBtn, x, y)) nextWeather();
+    else for (const r of planeBtns) if (hit(r, x, y)) setPlane(r.k);
     else if (hit(menuBtn, x, y)) newFlight();
     else if (hit(menuPrev, x, y)) changeRoute(-1);
     else if (hit(menuNext, x, y)) changeRoute(1);
     return;
   }
+  if (result && resultT > 0 && state === 'crashed') { resultT = Math.min(resultT, 0); return; }
   if (result && resultT <= 0) {
     if (hit(resBtns.again, x, y)) newFlight();
     else if (hit(resBtns.menu, x, y)) toMenu();
@@ -194,6 +213,9 @@ window.addEventListener('keydown', e => {
   if ((e.key === 'g' || e.key === 'G') && state === 'flying') toggleGear();
   if (e.key === 'c' || e.key === 'C') toggleView();
   if (state === 'menu' && (e.key === 'm' || e.key === 'M')) toggleMusic();
+  if (state === 'menu' && (e.key === 'n' || e.key === 'N')) setNight(!night);
+  if (state === 'menu' && (e.key === 'r' || e.key === 'R')) nextWeather();
+  if (state === 'menu' && (e.key === 'f' || e.key === 'F')) setPlane(PLANE_KEYS[(PLANE_KEYS.indexOf(planeKey) + 1) % PLANE_KEYS.length]);
   if (state === 'menu' && e.key === 'ArrowLeft') changeRoute(-1);
   if (state === 'menu' && e.key === 'ArrowRight') changeRoute(1);
   if (e.key === 'Enter' && (state === 'menu' || (result && resultT <= 0))) newFlight();
@@ -237,6 +259,15 @@ function startEngine() {
 }
 function updateEngine() {
   if (!eng) return;
+  if (PT().glider) {
+    // kein Motor: nur Fahrtwind, und solange das Seil hängt, brummt vorne der Propeller
+    const t = AC.currentTime, towing = p.tow && !p.tow.free;
+    eng.lp.frequency.setTargetAtTime(200 + p.v * 18, t, 0.3);
+    eng.g.gain.setTargetAtTime(0.03 + p.v / 40 * 0.12, t, 0.3);
+    eng.whine.frequency.setTargetAtTime(towing ? 150 + p.v * 1.5 : 150, t, 0.3);
+    eng.wg.gain.setTargetAtTime(towing ? 0.05 : 0, t, 0.4);
+    return;
+  }
   const t = AC.currentTime, th = p.throttle;
   eng.lp.frequency.setTargetAtTime(250 + th * 1100, t, 0.3);
   eng.g.gain.setTargetAtTime(0.15 + th * 0.35, t, 0.3);
@@ -390,6 +421,31 @@ function stopMusic() {
   m.g.gain.setTargetAtTime(0, AC.currentTime, 0.25);
   setTimeout(() => m.g.disconnect(), 2000);
 }
+let night = false;
+try { night = localStorage.getItem('flug-nacht') === 'an'; } catch (e) {}
+
+// Wetter: Seitenwind in m/s, Wackeln, wie gut die Bremse greift
+const WEATHER = {
+  sun:   { icon: '🌤️', name: 'Schönes Wetter', wind: 0, turb: 0, brake: 7, tint: 0, rain: 0, snow: 0 },
+  rain:  { icon: '🌧️', name: 'Regen', wind: 2, turb: 1.5, brake: 5, tint: 0.3, rain: 140, snow: 0 },
+  storm: { icon: '⛈️', name: 'Gewitter', wind: 4, turb: 3.5, brake: 5, tint: 0.5, rain: 260, snow: 0 },
+  snow:  { icon: '🌨️', name: 'Schnee', wind: 1.5, turb: 1, brake: 3.5, tint: 0.25, rain: 0, snow: 160 },
+};
+const WEATHER_KEYS = Object.keys(WEATHER);
+let weather = 'sun', flash = 0, nextBolt = 6, bolt = null;
+try { if (WEATHER[localStorage.getItem('flug-wetter')]) weather = localStorage.getItem('flug-wetter'); } catch (e) {}
+const WX = () => WEATHER[weather];
+function nextWeather() {
+  weather = WEATHER_KEYS[(WEATHER_KEYS.indexOf(weather) + 1) % WEATHER_KEYS.length];
+  try { localStorage.setItem('flug-wetter', weather); } catch (e) {}
+  tone(520 + WEATHER_KEYS.indexOf(weather) * 90, 0, 0.12, 0.1);
+}
+function thunder() { noiseBurst(0.5, 2.8, 1.3, 160); tone(38, 0.5, 1.4, 0.3, 'triangle'); }
+function setNight(on) {
+  night = on;
+  try { localStorage.setItem('flug-nacht', night ? 'an' : 'aus'); } catch (e) {}
+  tone(night ? 440 : 880, 0, 0.15, 0.1);
+}
 function toggleMusic() {
   musicOff = !musicOff;
   try { localStorage.setItem('flug-musik', musicOff ? 'aus' : 'an'); } catch (e) {}
@@ -425,19 +481,30 @@ const ROUTES = [
     mountains: null, sky: ['#4f98e0', '#d2e6fa'], terminal: '#b5bcc4',
     landmarks: [['liberty', -6000, -1200], ['skyline', 4000, -3500]] },
 ];
-let R, routeIdx = 0, DEST, RWY_B, SEA_FROM, SEA_TO, DEST_FROM;
+// Segelflieger fliegen nicht nach Paris, sondern zum Segelflugberg in der Rhön
+const GLIDER_ROUTE = { name: 'Wasserkuppe', in: 'auf der Wasserkuppe', code: 'EDER', icon: '⛰️', km: 110, dest: 11000, sea: null, seaName: '',
+  ground: ['#5f9e4c', '#579547'], fields: ['#6aa856', '#5d9e4c', '#7fb062', '#8c9e52', '#679c4a'],
+  trees: 'tree', houses: ['#efe6d4', '#ddd2bd', '#a8443a', '#8c3a32'], hills: 1.8, hill: '#5f8f5e',
+  mountains: [2500, -9000, 7000, 140, '#6f8f6e'], sky: ['#4a9be6', '#d6ebff'], terminal: '#d9c9a8', landmarks: [] };
+let R, routeIdx = 0, DEST, RWY_B, SEA_FROM, SEA_TO, DEST_FROM, THERMALS = [];
 function setRoute(i) {
   routeIdx = i;
-  R = ROUTES[i];
+  R = PT().glider ? GLIDER_ROUTE : ROUTES[i];
   DEST = R.dest;
-  RWY_B = { x0: DEST, x1: DEST + 3200 };
+  RWY_B = { x0: DEST, x1: DEST + 3200, num: { PMI: '24', LHR: '27', CDG: '09', DXB: '30', JFK: '31', EDER: '24' }[R.code] };
+  // Aufwind unter dicken Wolken: dort steigt warme Luft hoch
+  THERMALS = [];
+  for (let x = 2600, i = 0; x < DEST - 4000; i++) {
+    THERMALS.push({ x, w: 380 + rand(i + 0.1) * 150, lift: 5 + rand(i + 0.5) * 2 });
+    x += 1300 + rand(i + 0.3) * 1000;
+  }
   // ohne Meer liegt die Wasserkante weit hinter dem Start, dann ist alles Land
   [SEA_FROM, SEA_TO] = R.sea || [-1e9, -1e9];
   DEST_FROM = R.sea ? SEA_TO : DEST - 8000;
 }
 try { routeIdx = clamp(parseInt(localStorage.getItem('flug-ziel'), 10) || 0, 0, ROUTES.length - 1); } catch (e) {}
-setRoute(routeIdx);
 function changeRoute(dir) {
+  if (PT().glider) return;
   setRoute((routeIdx + dir + ROUTES.length) % ROUTES.length);
   try { localStorage.setItem('flug-ziel', routeIdx); } catch (e) {}
   tone(660 + routeIdx * 60, 0, 0.12, 0.1);
@@ -453,7 +520,7 @@ function treeKind(x, n) {
 const inside = (x, r) => x >= r.x0 && x <= r.x1;
 
 function localToWorld(lx, ly) {
-  const dx = lx + 4, up = GEAR_H - ly, c = Math.cos(p.pitch * DEG), s = Math.sin(p.pitch * DEG);
+  const k = PT().k, dx = (lx + 4) * k, up = (PT().gearH - ly) * k, c = Math.cos(p.pitch * DEG), s = Math.sin(p.pitch * DEG);
   return [p.x + dx * c - up * s, p.y + dx * s + up * c];
 }
 
@@ -462,17 +529,23 @@ function update(dt) {
   const up = held('up'), dn = held('dn');
   p.throttle = clamp(p.throttle + ((held('thrUp') ? 1 : 0) - (held('thrDn') ? 1 : 0)) * 0.45 * dt, 0, 1);
   p.gear += clamp((p.gearDown ? 1 : 0) - p.gear, -0.4 * dt, 0.4 * dt);
+  // Klappen: halb zum Starten, ganz zum Landen; nach dem Aufsetzen Störklappen hoch und Schubumkehr
+  const landing = p.onGround && p.flown;
+  const flapGoal = PT().glider ? 0 : !p.flown ? 0.4 : p.gearDown ? 1 : 0;
+  p.flaps += clamp(flapGoal - p.flaps, -0.25 * dt, 0.25 * dt);
+  p.spoil += clamp((landing || p.airbrake ? 1 : 0) - p.spoil, -2 * dt, 3 * dt);
+  p.rev += clamp((landing && p.v > 15 && !PT().glider ? 1 : 0) - p.rev, -1 * dt, 1.5 * dt);
 
   // Auftrieb: erst ab 55 m/s trägt der Flügel, ab Abhebetempo ganz
-  const lift = clamp((p.v - 55) / (VR - 55), 0, 1);
+  const lift = clamp((p.v - (VR - 20)) / 20, 0, 1);
   const pr = (up ? 1 : 0) - (dn ? 1 : 0);
   if (p.onGround) {
-    if (pr > 0 && p.v >= VR * 0.93) p.pitch += 8 * dt;
+    if (pr > 0 && p.v >= VR * 0.93) p.pitch += 8 * PT().agile * dt;
     else p.pitch -= 5 * dt;
     p.pitch = clamp(p.pitch, 0, 14);
   } else {
-    p.pitch += pr * 12 * dt;
-    if (p.v < 62) p.pitch -= (62 - p.v) * 0.8 * dt;   // zu langsam: die Nase sackt weg
+    p.pitch += pr * 12 * PT().agile * dt;
+    if (p.v < VR - 13) p.pitch -= (VR - 13 - p.v) * 0.8 * dt;   // zu langsam: die Nase sackt weg
     p.pitch = clamp(p.pitch, -20, 20);
   }
 
@@ -482,21 +555,22 @@ function update(dt) {
     p.roll = 0;
     p.hdg += lr * 4 * DEG * clamp(p.v / 10, 0, 1) * dt;
   } else {
-    if (lr) p.roll += lr * 35 * dt;
+    if (lr) p.roll += lr * 35 * PT().agile * dt;
     else p.roll -= Math.sign(p.roll) * Math.min(Math.abs(p.roll), 25 * dt);   // richtet sich von selbst wieder gerade
     p.roll = clamp(p.roll, -35, 35);
     p.hdg += 9.81 * Math.tan(p.roll * DEG) / Math.max(p.v, 40) * 1.5 * dt;
   }
   p.hdg = clamp(p.hdg, -60 * DEG, 60 * DEG);
 
-  const drag = 7.4e-5 * (1 + p.gear * 0.5);
-  let acc = p.throttle * 5 - drag * p.v * p.v - 9.81 * Math.sin(p.pitch * DEG) * 0.6;
-  if (p.onGround) acc -= 0.15 + (held('brake') ? 7 : 0);
+  const drag = (PT().drag || 7.4e-5) * (1 + p.gear * 0.5) * (p.airbrake ? 3 : 1);
+  let acc = p.throttle * PT().thrust - drag * p.v * p.v - 9.81 * Math.sin(p.pitch * DEG) * 0.6;
+  if (p.tow && !p.tow.free) acc += 3.2 * clamp((40 - p.v) / 8, 0, 1);   // das Seil zieht dich auf 144 km/h
+  if (p.onGround) acc -= 0.15 + (held('brake') ? WX().brake : 0) + p.rev * 1.5 + (p.rwy.field ? 2.5 : 0);
   p.v = Math.max(0, p.v + acc * dt);
 
   // langsam sinkt er auch mit waagerechter Nase, damit man beim Landen aufsetzt
-  const sag = clamp((100 - p.v) / 25, 0, 1) * 3;
-  const vy = p.v * Math.sin(p.pitch * DEG) * lift - sag - (1 - lift) * 18 - (1 - Math.cos(p.roll * DEG)) * 10;
+  const sag = clamp((VR + 25 - p.v) / 25, 0, 1) * (PT().sag || 3) + (p.airbrake ? 4 : 0);
+  const vy = p.v * Math.sin(p.pitch * DEG) * lift - sag - (1 - lift) * 18 - (1 - Math.cos(p.roll * DEG)) * 10 + (PT().glider ? thermalLift() : 0);
   if (p.onGround) {
     p.vy = 0;
     if (vy > 0.5) p.onGround = false;
@@ -510,13 +584,28 @@ function update(dt) {
   p.x += vh * Math.cos(p.hdg) * dt;
   p.z += vh * Math.sin(p.hdg) * dt;
 
+  if (!p.onGround) {
+    // Seitenwind schiebt dich weg, Böen schubsen dich hoch und runter; dicht am Boden weniger
+    const w = WX();
+    p.z += w.wind * dt;
+    p.y += w.turb * (Math.sin(time * 1.7) + 0.6 * Math.sin(time * 3.3 + 1)) * clamp(p.y / 150, 0, 1) * dt;
+    if (w.turb > 2) shake = Math.max(shake, 1.5);
+  }
+  if (PT().glider) updateGlider(dt);
+  if (p.rev > 0.5 && p.v > 15 && PT().engines.length && Math.random() < 0.6) {
+    // Schubumkehr wirbelt Wasser, Schnee oder Staub nach vorne
+    const [x] = localToWorld(PT().engines[0][0] + 4, 0);
+    const wet = weather === 'rain' || weather === 'storm', snowy = weather === 'snow';
+    particles.push({ x, a: 1, vx: p.v * 0.4 + Math.random() * 10, va: 2 + Math.random() * 4, life: 0.9, max: 0.9, r: 1.2, grow: 3,
+                     color: wet ? '225,235,245' : snowy ? '250,250,255' : '200,190,170' });
+  }
   if (!p.onGround && p.y <= 0) { touchdown(); return; }
 
   if (p.onGround && p.x > p.rwy.x1) {
-    if (!p.flown) return crash('field', 'Die Startbahn war zu Ende! Gib mehr Schub und zieh die Nase hoch, sobald du 270 km/h schnell bist.');
+    if (!p.flown) return crash('field', `Die Startbahn war zu Ende! Gib mehr Schub und zieh die Nase hoch, sobald du ${Math.round(VR * 3.6)} km/h schnell bist.`);
     return crash('field', 'Über die Landebahn hinaus gerollt! Halte nach dem Aufsetzen die Bremse gedrückt.');
   }
-  if (p.onGround && Math.abs(p.z) > 32) return crash('field', 'Von der Bahn abgekommen! Lenk mit ◀ ▶, damit du in der Mitte bleibst.');
+  if (p.onGround && !p.rwy.field && Math.abs(p.z) > 32) return crash('field', 'Von der Bahn abgekommen! Lenk mit ◀ ▶, damit du in der Mitte bleibst.');
   if (p.onGround && p.flown && p.v < 1.5) return landed();
   if (!p.onGround && p.x > RWY_B.x1 + 3000) {
     return finish({ ok: false, title: 'Vorbeigeflogen!', text: `${R.name} liegt schon hinter dir. Folge beim nächsten Mal den grünen Punkten runter zur Landebahn.` });
@@ -524,10 +613,10 @@ function update(dt) {
 
   // Kondensstreifen hoch oben
   if (p.y > 600) {
-    for (const [lx, ly] of [[2, 5.6], [-8, 4.1]]) {
+    PT().engines.forEach(([lx, ly], e) => {
       const [x, a] = localToWorld(lx, ly);
-      contrail.push({ x, a, t: 0, e: lx });
-    }
+      contrail.push({ x, a, t: 0, e });
+    });
   }
 }
 
@@ -540,7 +629,11 @@ function touchdown() {
   if (p.pitch > 12) return crash('tail', 'Heckaufsetzer! Die Nase war viel zu weit oben.');
   if (sink > 8) return crash('hard', 'Viel zu hart aufgesetzt! Sink langsamer und zieh kurz vor dem Boden die Nase hoch.');
   const onStrip = Math.abs(p.z) <= 30;
-  const rwy = !onStrip ? null : inside(p.x, RWY_A) ? RWY_A : inside(p.x, RWY_B) ? RWY_B : null;
+  let rwy = !onStrip ? null : inside(p.x, RWY_A) ? RWY_A : inside(p.x, RWY_B) ? RWY_B : null;
+  if (!rwy && PT().glider && p.x > 3000) {
+    // Segelflieger dürfen auf einem Feld landen, wenn sie es nicht mehr bis zum Flugplatz schaffen
+    rwy = { x0: p.x - 1, x1: p.x + 900, field: true };
+  }
   if (!rwy) return crash('field', onStrip ? 'Daneben! Du bist vor oder hinter der Landebahn aufgesetzt.' : 'Daneben! Du bist neben der Landebahn aufgesetzt. Schau aufs Radar und lenk mit ◀ ▶.');
   p.onGround = true; p.vy = 0; p.rwy = rwy; p.touchSink = sink;
   paxTouchdown(sink);
@@ -554,6 +647,9 @@ function touchdown() {
 }
 
 function landed() {
+  if (p.rwy.field) {
+    return finish({ ok: true, stars: 1, title: 'Außenlandung!', text: 'Sicher auf einem Feld gelandet. Das machen echte Segelflieger auch! Gleich holt dich das Auto mit dem Anhänger ab. 🚗' });
+  }
   if (p.rwy === RWY_A) {
     return finish({ ok: true, stars: 0, title: 'Zurück in Frankfurt', text: `Sicher gelandet! Aber ${R.name} wartet noch auf dich. ${R.icon}` });
   }
@@ -576,23 +672,42 @@ function finish(r) {
 
 function crash(kind, text) {
   result = { ok: false, title: kind === 'sea' ? 'Platsch!' : 'Bumm!', text };
-  result.pax = kind === 'sea' ? `🛟 Alle ${pax.n} Passagiere sind mit Schwimmwesten an Land geschwommen.`
+  result.pax = pax.n === 1 ? '🙋 Dein Passagier ist zum Glück heil rausgeklettert. Puh!'
+             : kind === 'sea' ? `🛟 Alle ${pax.n} Passagiere sind mit Schwimmwesten an Land geschwommen.`
                               : `🛝 Alle ${pax.n} Passagiere sind über die Notrutsche raus. Puh!`;
   state = 'crashed';
-  resultT = 1.8;
+  resultT = 8;   // erst zuschauen, wie die Feuerwehr kommt; Tippen überspringt
   p.crash = kind;
-  p.tilt = kind === 'nose' ? -6 : kind === 'tail' ? 8 : kind === 'sea' ? 0 : -3;
-  p.drop = p.gear < 0.5 ? 4 : 2;
-  shake = 14;
+  const T = PT();
+  const onRwy = Math.abs(p.z) < 30 && (inside(p.x, RWY_A) || inside(p.x, RWY_B));
+  // langsam von der Bahn gerollt: nur steckengeblieben, sonst bricht das Fahrwerk weg
+  const soft = kind === 'field' && p.v < 25;
+  const broken = ['nose', 'hard', 'tail'].includes(kind) || (kind === 'field' && p.v > 45);
+  const fire = kind !== 'sea' && kind !== 'belly' && !soft && !PT().glider;   // ohne Treibstoff brennt nichts
+  p.wreck = { t: 0, onRwy, soft, broken, fire: fire ? 0.2 : 0, burning: fire, smoky: fire || kind === 'belly', gap: 0, rot: 0, stopT: null,
+              trucks: [], people: [], boat: null, sirenT: 0 };
+  if (!soft) p.gear = 0;
+  p.drop = soft ? 1 : (T.gearH - 4.4) * T.k;
+  p.tilt = kind === 'nose' ? -4 : kind === 'tail' ? 5 : kind === 'sea' ? 2 : soft ? -2 : -1;
+  p.pitch = 0;
+  shake = soft ? 6 : 14;
   stopEngine();
+  if (!soft && kind !== 'sea') scrape(Math.min(4, p.v / 15));
   if (kind === 'sea') {
     splash();
     for (let i = 0; i < 60; i++) {
       particles.push({ x: p.x - 30 + Math.random() * 70, a: 1, vx: (Math.random() - 0.3) * 30, va: 10 + Math.random() * 30,
                        life: 1.6, max: 1.6, r: 0.8 + Math.random() * 1.6, grow: 0, color: '235,245,255', g: 30 });
     }
+  } else if (!fire) {
+    thump();
   } else {
     boom();
+    // Trümmerteile fliegen herum
+    for (let i = 0; i < 14; i++) {
+      particles.push({ x: p.x + (Math.random() - 0.5) * 30 * T.k, a: 3, vx: p.v * (0.2 + Math.random() * 0.6) + (Math.random() - 0.5) * 20,
+                       va: 8 + Math.random() * 22, life: 2.5, max: 2.5, r: 0.5 + Math.random() * 0.8, grow: 0, color: '120,125,135', g: 30, bounce: true });
+    }
     for (let i = 0; i < 50; i++) {
       const fire = i < 20;
       particles.push({ x: p.x - 30 + Math.random() * 70, a: 2 + Math.random() * 8, vx: (Math.random() - 0.5) * 8, va: 3 + Math.random() * 8,
@@ -600,6 +715,419 @@ function crash(kind, text) {
                        color: fire ? '255,150,40' : '90,90,95' });
     }
   }
+}
+
+function scrape(dur) {
+  noiseBurst(0, dur, 0.5, 2600, 'bandpass');
+  noiseBurst(0, dur * 0.8, 0.4, 900, 'bandpass');
+}
+// Martinshorn: tiefer und hoher Ton im Abstand einer Quarte, wie bei der deutschen Feuerwehr
+const SIREN_LO = 440, SIREN_HI = 587, SIREN_STEP = 0.65;
+let hornWave = null;
+function startSiren(k, i) {
+  const ac = getAC();
+  // Obertöne wie bei einem Drucklufthorn: kräftig in der Mitte, oben leiser
+  if (!hornWave) {
+    const n = 16, re = new Float32Array(n), im = new Float32Array(n);
+    for (let h = 1; h < n; h++) im[h] = (h % 2 ? 1 : 0.55) / Math.pow(h, 0.9) * (h >= 2 && h <= 5 ? 1.4 : 1);
+    hornWave = ac.createPeriodicWave(re, im);
+  }
+  // weit weg klingt es dumpfer, die Luft schluckt die hohen Töne
+  const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900;
+  const horn = ac.createBiquadFilter(); horn.type = 'peaking'; horn.frequency.value = 1300; horn.gain.value = 5;
+  const g = ac.createGain(); g.gain.value = 0;
+  const pan = ac.createStereoPanner ? ac.createStereoPanner() : null;
+  lp.connect(horn).connect(g);
+  const out = pan ? (g.connect(pan), pan) : g;
+  out.connect(ac.destination);
+  // Echo vom Flughafengebäude
+  const echo = ac.createDelay(1); echo.delayTime.value = 0.23;
+  const fb = ac.createGain(); fb.gain.value = 0.3;
+  const wet = ac.createGain(); wet.gain.value = 0.35;
+  out.connect(echo); echo.connect(fb).connect(echo); echo.connect(wet).connect(ac.destination);
+  // jedes Auto hat ein etwas anderes Horn, das zweite klingt einen Ton höher
+  const tune = i ? 1.06 : 1;
+  const oscs = [[1, 0.8], [1.003, 0.4]].map(([mul, vol]) => {
+    const o = ac.createOscillator(), og = ac.createGain();
+    o.setPeriodicWave(hornWave); o.frequency.value = SIREN_LO * mul * tune; og.gain.value = vol;
+    o.connect(og).connect(lp); o.start();
+    return { o, mul: mul * tune };
+  });
+  // ein leichtes Zittern im Ton
+  const vib = ac.createOscillator(), vg = ac.createGain();
+  vib.frequency.value = 5.5; vg.gain.value = 3;
+  vib.connect(vg); oscs.forEach(({ o }) => vg.connect(o.frequency)); vib.start();
+  // Dieselmotor brummt mit
+  const dsl = ac.createBufferSource(); dsl.buffer = noise(); dsl.loop = true;
+  const dlp = ac.createBiquadFilter(); dlp.type = 'lowpass'; dlp.frequency.value = 120;
+  const dg = ac.createGain(); dg.gain.value = 0;
+  dsl.connect(dlp).connect(dg).connect(out); dsl.start();
+  k.siren = { oscs, g, lp, pan, dg, stops: [vib, dsl, ...oscs.map(x => x.o)], t0: ac.currentTime + Math.random() * SIREN_STEP };
+}
+function updateSiren(k) {
+  const sr = k.siren;
+  if (!sr) return;
+  const now = AC.currentTime;
+  const hi = Math.floor((now - sr.t0) / SIREN_STEP) % 2 !== 0;
+  // Doppler: kommt das Auto auf dich zu, klingt es höher
+  const v = k.at ? 0 : clamp(k.speed, 0, 30) * k.dir * Math.sign(p.x - k.x);   // echte Feuerwehrautos fahren nicht schneller
+  const f = (hi ? SIREN_HI : SIREN_LO) * 343 / (343 - v);
+  // das Horn gleitet in ein paar hundertstel Sekunden zum neuen Ton
+  for (const { o, mul } of sr.oscs) o.frequency.setTargetAtTime(f * mul, now, 0.025);
+  const near = clamp(80 / (Math.abs(k.x - p.x) + 30), 0.08, 1);
+  sr.g.gain.setTargetAtTime(0.1 * near, now, 0.08);
+  sr.lp.frequency.setTargetAtTime(700 + 3300 * near, now, 0.1);
+  sr.dg.gain.setTargetAtTime((k.at ? 0.15 : 0.5) * near, now, 0.2);
+  if (sr.pan) sr.pan.pan.setTargetAtTime(clamp((k.x - p.x) / 120, -0.9, 0.9), now, 0.1);
+}
+function stopSiren(k) {
+  const sr = k.siren;
+  if (!sr) return;
+  k.siren = null;
+  sr.g.gain.setTargetAtTime(0, AC.currentTime, 0.12);
+  sr.dg.gain.setTargetAtTime(0, AC.currentTime, 0.4);
+  setTimeout(() => sr.stops.forEach(o => o.stop()), 2500);
+}
+function stopSirens() {
+  if (p && p.wreck) p.wreck.trucks.forEach(stopSiren);
+}
+
+// ── Segelflug ──────────────────────────────────────────────────────
+function thermalLift(x = p.x, y = p.y) {
+  let up = 0;
+  for (const t of THERMALS) {
+    const d = Math.abs(x - t.x);
+    if (d < t.w) up = Math.max(up, t.lift * (1 - d / t.w) * clamp((330 - y) / 60, 0, 1));
+  }
+  return up;
+}
+
+function releaseTow(msg) {
+  p.tow.free = true;
+  p.tow.v = p.v + 8;
+  clunk();
+  pax.t = 0; say(msg);
+}
+
+function updateGlider(dt) {
+  const tw = p.tow, steer = held('up') || held('dn');
+  if (tw && !tw.free && !steer) {
+    // am Seil fliegt der Segler von allein hinter dem Schleppflugzeug her
+    if (p.onGround && p.v >= VR * 0.93) p.pitch += 8 * dt;
+    if (!p.onGround) p.pitch += clamp(clamp((tw.y - p.y) * 0.6 + 4, -4, 12) - p.pitch, -10 * dt, 10 * dt);
+  } else if (!p.onGround && !steer) {
+    // getrimmt: lässt du los, sucht er sich von selbst die beste Geschwindigkeit
+    const best = thermalLift() > 0.5 ? 27 : 31;
+    p.pitch += clamp(clamp((p.v - best) * 0.8, -6, 6) - p.pitch, -4 * dt, 4 * dt);
+  }
+  if (tw) {
+    tw.t += dt;
+    if (!tw.free) {
+      // das Schleppflugzeug fliegt vorne und steigt gleichmäßig
+      tw.x = p.x + ROPE;
+      // es wartet auf dich, wenn du zu weit unten hängst
+      if (p.v > 28 && p.y > tw.y - 8) tw.y = Math.min(TOW_TOP + 5, tw.y + 6 * dt);
+      if (p.flown && p.y - tw.y > 25) releaseTow('Das Seil ist gerissen! 😮 Bleib beim nächsten Mal hinter dem Schleppflugzeug.');
+      else if (tw.y >= TOW_TOP) releaseTow('Ausgeklinkt auf 2200 m! Jetzt such dir Aufwind unter den Wolken. ☁️');
+    } else {
+      // nach dem Ausklinken fliegt es zurück nach Frankfurt
+      tw.x += (tw.v - 6 * tw.t) * dt; tw.y = Math.max(0, tw.y - 7 * dt);
+    }
+  }
+  // drückt man den blinkenden Knopf nicht, hilft der Fluglehrer nach ein paar Sekunden
+  const ask = !p.onGround && p.tow && p.tow.free && hint()[0].includes('blinkenden');
+  p.helpT = ask ? (p.helpT || 0) + dt : 0;
+  if (p.helpT > 3) {
+    p.helpT = 0;
+    p.airbrake = !p.airbrake; clunk();
+    pax.t = 0; say(p.airbrake ? '👨‍✈️ Fluglehrer: Ich mach mal die Bremsklappen raus!' : '👨‍✈️ Fluglehrer: Und wieder rein!');
+  }
+  // Variometer: piepst immer schneller und höher, je mehr du steigst
+  p.varioT -= dt;
+  if (!p.onGround && p.vy > 0.4 && p.varioT <= 0) {
+    tone(600 + p.vy * 110, 0, 0.08, 0.05, 'square');
+    p.varioT = Math.max(0.14, 0.5 - p.vy * 0.07);
+  }
+}
+
+function drawTowPlane() {
+  const tw = p.tow;
+  if (!tw || tw.t > 14) return;
+  const X = sx(tw.x), Y = sy(tw.y), s = S * 0.2;
+  if (X < -80 || X > W() + 80) return;
+  if (!tw.free) {
+    // Seil vom Haken an der Nase des Seglers zum Schwanz des Schleppflugzeugs
+    const [nx, na] = localToWorld(36, 0.8);
+    ctx.strokeStyle = '#f2f2f2'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(sx(nx), sy(na));
+    ctx.quadraticCurveTo((sx(nx) + X - 22 * s) / 2, (sy(na) + Y - 5 * s) / 2 + 6, X - 22 * s, Y - 5 * s);
+    ctx.stroke();
+  }
+  ctx.save(); ctx.translate(X, Y); ctx.scale(s, s); ctx.translate(0, -9);
+  ctx.fillStyle = BLUE;
+  ctx.beginPath(); ctx.moveTo(-20, -3); ctx.lineTo(-25, -12); ctx.lineTo(-28, -12); ctx.lineTo(-28, -1); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath(); ctx.moveTo(-28, -2); ctx.lineTo(-14, -4); ctx.lineTo(10, -4.5); ctx.quadraticCurveTo(22, -4, 24, 0); ctx.quadraticCurveTo(22, 3.5, 10, 3.5); ctx.lineTo(-14, 2); ctx.lineTo(-28, 0); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = GREEN; ctx.fillRect(-26, -0.2, 46, 1.2);
+  ctx.fillStyle = 'rgba(40,60,90,0.85)';
+  ctx.beginPath(); ctx.moveTo(14, -4.3); ctx.quadraticCurveTo(8, -9, 0, -4.5); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#cfd6de'; ctx.beginPath(); ctx.moveTo(8, 2.5); ctx.lineTo(-8, 3.5); ctx.lineTo(-8, 4.6); ctx.lineTo(8, 3.6); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = 'rgba(80,80,80,0.35)'; ctx.beginPath(); ctx.ellipse(24.5, 0, 0.8, 6, 0, 0, Math.PI * 2); ctx.fill();   // Propeller dreht sich
+  ctx.strokeStyle = '#333'; ctx.lineWidth = 0.8;
+  ctx.beginPath(); const a = time * 40; ctx.moveTo(24.5, Math.sin(a) * 6); ctx.lineTo(24.5, -Math.sin(a) * 6); ctx.stroke();
+  for (const x of [14, -2]) { ctx.fillStyle = '#1b1b1f'; ctx.beginPath(); ctx.arc(x, 7, 1.6, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#5b626d'; ctx.fillRect(x - 0.3, 3.5, 0.6, 3.5); }
+  ctx.restore();
+}
+
+function drawThermals() {
+  // dicke Wolken über den Aufwinden, darunter steigen kleine Pfeile hoch
+  for (const t of THERMALS) {
+    const X = sx(t.x);
+    if (X < -200 * S || X > W() + 200 * S) continue;
+    cloud(X, sy(345), 34 * S, 0.95);
+    cloud(X - 22 * S, sy(338), 22 * S, 0.9);
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    for (let i = 0; i < 6; i++) {
+      const a = (time * 25 + i * 55) % 320, x = t.x + (rand(i * 3.1 + t.x) - 0.5) * t.w * 1.2;
+      txt('⬆', sx(x), sy(a), Math.max(10, 4 * S), 'rgba(255,255,255,0.45)');
+    }
+  }
+}
+
+function drawGliderHelp() {
+  // am Anfang erklärt eine Karte die drei Schritte
+  if (p.x < 900 && p.tow && !p.tow.free && view !== 'cockpit') {
+    const u = clamp(Math.min(W(), H()) / 400, 0.8, 1.3), cw = Math.min(W() - 24, 430), lh = 22 * u;
+    const lines = ['So fliegst du Segelflugzeug:', '1️⃣ Das Schleppflugzeug zieht dich hoch. Nichts drücken!',
+                   '2️⃣ Flieg durch die dicken Wolken ☁️ Dort steigst du ⬆', '3️⃣ Bei der Wasserkuppe: drück den Knopf, wenn er blinkt'];
+    const wrapped = lines.flatMap((l, i) => wrap(l, cw - 24, (i ? 14 : 16) * u).map(w => [w, i]));
+    const ch = wrapped.length * lh + 18 * u, x = W() / 2 - cw / 2, y = H() * 0.42 - ch / 2;
+    ctx.fillStyle = 'rgba(20,60,140,0.9)';
+    ctx.beginPath(); ctx.roundRect(x, y, cw, ch, 14); ctx.fill();
+    wrapped.forEach(([w, i], n) => txt(w, W() / 2, y + 9 * u + lh * (n + 0.5), (i ? 14 : 16) * u, i ? '#fff' : '#ffd34d'));
+    return;
+  }
+  // ein hüpfender Pfeil zeigt zum nächsten Aufwind
+  if (view === 'cockpit' || !p.tow || !p.tow.free || p.onGround || thermalLift() > 0.5) return;
+  const next = THERMALS.find(t => t.x - t.w > p.x);
+  if (!next || next.x > DEST) return;
+  const X = Math.min(sx(next.x), W() - 60), Y = sy(p.y) - 30 + Math.sin(time * 5) * 6;
+  if (X - sx(p.x) < 60) return;
+  txt(sx(next.x) > W() - 60 ? '➡️ Aufwind' : '⬇️ Aufwind', X, Y - (sx(next.x) > W() - 60 ? 0 : 40), 18, '#fff', 'center', 'rgba(0,0,0,0.5)');
+}
+
+function gliderHint() {
+  const tw = p.tow, dist = DEST - p.x;
+  if (welcomeT > 0) return ['🔔 Segelflug! Das Schleppflugzeug zieht dich am Seil hoch.', false];
+  if (p.onGround && !p.flown) return ['Das Schleppflugzeug zieht dich … gleich hebst du ab!', false];
+  if (p.onGround) return ['Bremse halten! 🛑', true];
+  if (tw && !tw.free) {
+    if (p.y > tw.y + 12) return ['Etwas tiefer! Sonst reißt das Seil ▼', true];
+    return ['Das Schleppflugzeug zieht dich hoch 👍', false];
+  }
+  if (p.v < VR - 4) return ['⚠️ Zu langsam! Nase runter!', true];
+  if (p.vy > 0.4) return ['Juhu, Aufwind! Du steigst ⬆ Piep piep!', false];
+  // ohne Klappen gleitet er viel zu weit; mit Klappen etwa 1 m runter auf 16 m nach vorne
+  const high = dist > 600 && dist < 5000 && p.y > dist / 16 + 25, low = p.y < dist / 22 + 10;
+  if (high && !p.airbrake) return ['Zu hoch! Drück den blinkenden Knopf 👇', true];
+  if (p.airbrake && low) return ['Genug! Nochmal den blinkenden Knopf 👇', true];
+  const next = THERMALS.find(t => t.x > p.x - t.w * 0.5);
+  if (dist > 0 && p.y * 32 < dist) {
+    if (next && next.x < DEST) return ['Flieg weiter zur dicken Wolke ☁️ ⬆', false];
+    return ['Zu tief für die Wasserkuppe: such dir ein Feld zum Landen 🌾', true];
+  }
+  if (dist < 1500 && p.y < 30) return ['Gleich am Boden: Nase ganz leicht hoch ▲', false];
+  if (dist > 0) return ['Alles gut! Der Segler fliegt von allein 👍', false];
+  return ['Lande auf der Bahn! Bremsklappen helfen beim Sinken', false];
+}
+
+// ── Nach dem Absturz ───────────────────────────────────────────────
+function updateCrash(dt) {
+  const c = p.wreck;
+  if (!c) return;
+  c.t += dt;
+  const T = PT();
+  if (p.v > 0) {
+    const fr = p.crash === 'sea' ? 22 : c.onRwy ? 13 : 18;
+    p.v = Math.max(0, p.v - fr * dt);
+    p.x += p.v * dt;
+    if (c.broken) { c.gap += p.v * dt * 0.1; c.rot = Math.min(6, c.rot + dt * 5); }   // das Heck bleibt zurück
+    shake = Math.max(shake, Math.min(6, p.v / 10));
+    const n = Math.ceil(p.v / 8);
+    for (let i = 0; i < n; i++) {
+      const bx = p.x + (Math.random() * 30 - 12) * T.k;
+      if (p.crash === 'sea') {
+        particles.push({ x: bx, a: 0.5, vx: p.v * 0.5 + (Math.random() - 0.5) * 10, va: 6 + Math.random() * 12,
+                         life: 1, max: 1, r: 0.8 + Math.random(), grow: 1, color: '235,245,255', g: 25 });
+      } else if (c.onRwy && !c.soft) {
+        // Funken, wenn Metall über den Asphalt schrammt
+        particles.push({ x: bx, a: 0.3, vx: -p.v * (0.3 + Math.random() * 0.5), va: 2 + Math.random() * 8,
+                         life: 0.5, max: 0.5, r: 0.35, grow: 0, color: Math.random() < 0.5 ? '255,230,120' : '255,170,40', g: 20, spark: true });
+      } else {
+        // Erde und Gras fliegen hoch
+        particles.push({ x: bx, a: 0.5, vx: p.v * (0.2 + Math.random() * 0.4), va: 4 + Math.random() * 10,
+                         life: 1.2, max: 1.2, r: 0.6 + Math.random() * 0.9, grow: 0.5, color: Math.random() < 0.6 ? '110,80,45' : '80,130,50', g: 22 });
+      }
+    }
+    if (p.v === 0) c.stopT = c.t;
+  }
+  if (p.crash === 'sea') {
+    // erst schwimmt er, dann geht er langsam unter
+    if (c.stopT !== null && c.t > c.stopT + 2.5) p.sinkAnim = Math.min(10, p.sinkAnim + dt * 0.8);
+    if (c.stopT !== null && !c.boat) c.boat = { x: p.x + Math.min((W() * 0.65) / S + 20, 160), rafts: 0 };
+    if (c.boat) {
+      const goal = p.x + 45 * T.k + 20;
+      c.boat.x = Math.max(goal, c.boat.x - 50 * dt);
+      c.boat.rafts = Math.min(3, (c.t - c.stopT) * 0.8);
+    }
+    return;
+  }
+  // Feuer wird größer, bis die Feuerwehr löscht
+  const spraying = c.trucks.some(k => k.at);
+  if (c.burning) {
+    c.fire = spraying ? Math.max(0, c.fire - dt * 0.12) : Math.min(1, c.fire + dt * 0.6);
+    if (c.fire === 0) c.burning = false;
+  }
+  for (const fx of c.smoky ? fires() : []) {
+    if (Math.random() < dt * (c.burning ? 7 * c.fire : 3)) {
+      particles.push({ x: fx + (Math.random() - 0.5) * 4, a: 4 + Math.random() * 4, vx: 3 + WX().wind * 2, va: 6 + Math.random() * 4,
+                       life: 5, max: 5, r: 1.5, grow: 2.6, color: c.burning ? '45,45,50' : '215,215,220' });
+    }
+  }
+  // Feuerwehr kommt von beiden Seiten
+  if (c.t > 0.8 && !c.trucks.length) {
+    const edge = W() / S;
+    c.trucks.push({ x: p.x - Math.min(edge * 0.4 + 30, 220), dir: 1, at: false, atT: 0 });
+    c.trucks.push({ x: p.x + Math.min(edge * 0.7 + 30, 320), dir: -1, at: false, atT: 0 });
+    c.trucks.forEach((k, i) => startSiren(k, i));
+  }
+  for (const k of c.trucks) {
+    // das Wrack rutscht vielleicht noch, also hält die Feuerwehr neben seiner jetzigen Stelle
+    k.goal = k.dir > 0 ? p.x - 40 * T.k - c.gap - 14 : p.x + 40 * T.k + 14;
+    k.speed = k.at ? 0 : 35 + (k.dir > 0 ? p.v : 0);
+    k.x += k.dir * k.speed * dt;
+    if ((k.goal - k.x) * k.dir <= 0) { k.x = k.goal; k.at = true; }
+    if (k.at) k.atT += dt;
+    if (k.atT > 3) stopSiren(k); else updateSiren(k);   // nach dem Ankommen noch kurz weiter
+    if (k.at && (c.burning || Math.random() < 0.3)) {
+      // Wasserstrahl im Bogen
+      const tx = fires()[k.dir > 0 ? 0 : fires().length - 1];
+      const d = tx - (k.x + k.dir * 4);
+      particles.push({ x: k.x + k.dir * 4, a: 5, vx: d / 1.1 + (Math.random() - 0.5) * 3, va: 13 + Math.random() * 2,
+                       life: 1.1, max: 1.1, r: 0.5, grow: 0.4, color: '190,225,255', g: 22 });
+    }
+  }
+  // die Passagiere rutschen raus und rennen weg vom Flugzeug
+  if (c.stopT !== null && c.t > c.stopT + 0.8 && c.people.length < Math.min(pax.n, 24) && Math.random() < dt * 6) {
+    const front = c.people.length % 2 === 0;
+    c.people.push({ x: front ? doorX(true) : doorX(false), dir: front ? 1 : -1, v: 3 + Math.random() * 2,
+                    goal: (front ? 1 : -1) * (25 + Math.random() * 20) * Math.max(T.k, 0.5), col: PEOPLE_COLORS[c.people.length % PEOPLE_COLORS.length], ph: Math.random() * 6 });
+  }
+  for (const q of c.people) {
+    const home = q.dir > 0 ? doorX(true) : doorX(false);
+    if ((home + q.goal - q.x) * q.dir > 0) q.x += q.dir * q.v * dt; else q.stop = true;
+  }
+}
+const PEOPLE_COLORS = ['#e74c3c', '#3498db', '#f1c40f', '#9b59b6', '#2ecc71', '#e67e22', '#ff6fb5'];
+
+function fires() {
+  const k = PT().k, c = p.wreck;
+  const list = [p.x - 2 * k, p.x + 8 * k];
+  if (c.broken) list.unshift(p.x - 10 * k - c.gap);
+  return list;
+}
+function doorX(front) {
+  const k = PT().k;
+  return front ? p.x + (PT().nose[0] - 2) * k : p.x - 16 * k - (p.wreck.broken ? p.wreck.gap : 0);
+}
+
+function drawFire(X, Y, size) {
+  for (let i = 0; i < 5; i++) {
+    const fl = 0.7 + 0.3 * Math.sin(time * 13 + i * 2.1) + 0.15 * Math.sin(time * 23 + i);
+    const w = size * (0.5 + 0.12 * i), hgt = size * (1.4 - i * 0.18) * fl;
+    const x = X + (i - 2) * size * 0.28;
+    const g = ctx.createLinearGradient(0, Y, 0, Y - hgt);
+    g.addColorStop(0, 'rgba(255,240,150,0.95)'); g.addColorStop(0.4, 'rgba(255,140,30,0.9)'); g.addColorStop(1, 'rgba(200,40,10,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(x - w / 2, Y);
+    ctx.quadraticCurveTo(x - w * 0.4, Y - hgt * 0.5, x, Y - hgt);
+    ctx.quadraticCurveTo(x + w * 0.4, Y - hgt * 0.5, x + w / 2, Y);
+    ctx.closePath(); ctx.fill();
+  }
+}
+
+function drawTruck(k) {
+  const X = sx(k.x), Y = sy(0) - 3, s = S, d = k.dir;
+  ctx.save(); ctx.translate(X, Y); ctx.scale(d * s, s);
+  ctx.fillStyle = '#d8231f';
+  ctx.beginPath(); ctx.roundRect(-6, -4.2, 9, 3.4, 0.4); ctx.fill();          // Aufbau
+  ctx.beginPath(); ctx.roundRect(3, -3.6, 3, 2.8, 0.6); ctx.fill();            // Fahrerhaus
+  ctx.fillStyle = '#9fd3ff'; ctx.fillRect(4.4, -3.2, 1.3, 1.1);
+  ctx.fillStyle = '#f5f5f5'; ctx.fillRect(-6, -2.4, 9, 0.4);
+  ctx.strokeStyle = '#c9c9c9'; ctx.lineWidth = 0.3;                            // Leiter
+  ctx.beginPath(); ctx.moveTo(-5.5, -4.6); ctx.lineTo(2, -4.6); ctx.stroke();
+  for (const x of [-4, 3.8]) {
+    ctx.fillStyle = '#1b1b1f'; ctx.beginPath(); ctx.arc(x, -0.7, 0.75, 0, Math.PI * 2); ctx.fill();
+  }
+  const on = (time * 4) % 1 < 0.5;
+  ctx.fillStyle = on ? '#3d7bff' : '#123a99';
+  ctx.fillRect(4.2, -4.1, 0.9, 0.5);
+  ctx.restore();
+  if (on) glowDot(X + d * 4.6 * s, Y - 3.9 * s, 4 * s, '#5a8cff');
+}
+
+function drawPerson(q) {
+  const X = sx(q.x), Y = sy(0) - 3, s = Math.max(1.4, S * 0.55);
+  const step = q.stop ? 0 : Math.sin(time * 14 + q.ph) * 0.6;
+  ctx.strokeStyle = '#2b2b2b'; ctx.lineWidth = Math.max(1, s * 0.3);
+  ctx.beginPath();
+  ctx.moveTo(X, Y - 1.6 * s); ctx.lineTo(X - step * s, Y);
+  ctx.moveTo(X, Y - 1.6 * s); ctx.lineTo(X + step * s, Y);
+  ctx.stroke();
+  ctx.fillStyle = q.col; ctx.fillRect(X - 0.45 * s, Y - 3.2 * s, 0.9 * s, 1.7 * s);
+  ctx.fillStyle = '#f1c9a5'; ctx.beginPath(); ctx.arc(X, Y - 3.7 * s, 0.5 * s, 0, Math.PI * 2); ctx.fill();
+  if (!q.stop) return;
+  ctx.strokeStyle = '#f1c9a5';   // winken
+  ctx.beginPath(); ctx.moveTo(X, Y - 3 * s); ctx.lineTo(X + 0.8 * s, Y - 4.2 * s + Math.sin(time * 8 + q.ph) * 0.4 * s); ctx.stroke();
+}
+
+function drawSlide(front) {
+  const X = sx(doorX(front)), Y = sy(PT().gearH * PT().k * 0.9 - p.drop), G = sy(0) - 3;
+  const d = front ? 1 : -1;
+  ctx.fillStyle = '#ffcc1f';
+  ctx.beginPath(); ctx.moveTo(X - 1.2 * S, Y); ctx.lineTo(X + 1.2 * S, Y); ctx.lineTo(X + d * 10 * S * Math.max(PT().k, 0.5), G); ctx.lineTo(X + d * 7 * S * Math.max(PT().k, 0.5), G); ctx.closePath(); ctx.fill();
+}
+
+function drawBoat(b) {
+  const X = sx(b.x), Y = sy(0), s = S;
+  ctx.save(); ctx.translate(X, Y); ctx.scale(s, s);
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath(); ctx.moveTo(-7, -1.5); ctx.lineTo(6, -1.5); ctx.lineTo(4, 1); ctx.lineTo(-6, 1); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#e8541c'; ctx.fillRect(-6.6, -0.6, 12, 0.6);
+  ctx.fillStyle = '#e8541c'; ctx.fillRect(-3, -4, 4, 2.5);
+  ctx.fillStyle = '#9fd3ff'; ctx.fillRect(-2.5, -3.5, 3, 1);
+  ctx.fillStyle = (time * 4) % 1 < 0.5 ? '#3d7bff' : '#123a99'; ctx.fillRect(-1.5, -4.6, 1, 0.6);
+  ctx.restore();
+  // Rettungsinseln
+  for (let i = 0; i < Math.floor(b.rafts); i++) {
+    const rx = sx(p.x + (-14 + i * 12) * PT().k), ry = sy(0) + 1 + Math.sin(time * 2 + i) * 1.2;
+    ctx.fillStyle = '#ff7a1a';
+    ctx.beginPath(); ctx.ellipse(rx, ry, 3.5 * S * 0.6, 1.1 * S * 0.6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#f1c9a5';
+    for (let j = -1; j <= 1; j++) { ctx.beginPath(); ctx.arc(rx + j * S * 0.9, ry - S * 0.8, S * 0.35, 0, Math.PI * 2); ctx.fill(); }
+  }
+}
+
+function drawWreckFx() {
+  const c = state === 'crashed' && p.wreck;
+  if (!c) return;
+  if (p.crash === 'sea') { if (c.boat) drawBoat(c.boat); return; }
+  const G = sy(0) - 3;
+  if (c.fire > 0) for (const fx of fires()) drawFire(sx(fx), G - p.drop * S * 0.5, 9 * S * Math.max(PT().k, 0.55) * c.fire);
+  if (c.stopT !== null && c.t > c.stopT + 0.5 && !c.soft) { drawSlide(true); if (!c.broken) drawSlide(false); }
+  for (const q of c.people) drawPerson(q);
+  for (const k of c.trucks) drawTruck(k);
 }
 
 // ── Passagiere ─────────────────────────────────────────────────────
@@ -610,8 +1138,11 @@ const CHATTER = [
   'Noch ein Saft, bitte 🧃', 'Ich gucke einen Film 🎬', 'Henrik Airlines ist die beste! 💚💙',
 ];
 
+const NIGHT_CHATTER = ['Ich bin so müde 😴', 'Die Lichter da unten sehen toll aus! 🌃', 'Ist das da der Mond? 🌙', 'Gute Nacht! 💤'];
+
 function newPax() {
-  return { n: 420 + Math.floor(Math.random() * 130), mood: 80, text: '', who: '', t: 0, wait: 5, said: new Set(), ouch: 0 };
+  const [lo, hi] = PT().pax;
+  return { n: lo + Math.floor(Math.random() * (hi - lo + 1)), mood: 80, text: '', who: '', t: 0, wait: 5, said: new Set(), ouch: 0 };
 }
 
 function say(text, key) {
@@ -632,7 +1163,7 @@ function updatePax(dt) {
     if (Math.abs(p.pitch) > 15) { bad += (Math.abs(p.pitch) - 15) * 1.5; why = p.pitch > 0 ? 'Huiii, nicht so steil! 😱' : 'Mir wird schlecht! 🤢'; }
     if (Math.abs(p.roll) > 28) { bad += Math.abs(p.roll) - 28; why = 'Uiii, alles kippt um! 😵'; }
     if (p.vy < -25) { bad += (-p.vy - 25) * 0.6; why = 'Mein Saft fliegt durch die Luft! 🧃'; }
-    if (p.v < 66) { bad += 6; why = 'Warum ist es so leise? 😨'; }
+    if (p.v < VR - 9) { bad += 6; why = 'Warum ist es so leise? 😨'; }
   }
   if (bad > 0) {
     pax.mood -= bad * dt;
@@ -645,13 +1176,19 @@ function updatePax(dt) {
   const dist = DEST - p.x;
   if (welcomeT < 2.5) say(`Juhu, wir fliegen nach ${R.name}! ${R.icon}`, 'start');
   if (p.flown) say('Wir heben ab! 🎉', 'lift');
-  if (p.y > 600) say('Schau mal, wir sind über den Wolken! ☁️', 'high');
+  if (p.flown && p.y > 150) {
+    if (weather === 'rain') say('Es regnet ja! ☔', 'wx');
+    if (weather === 'storm') say('Huch, es wackelt ganz schön! 😬', 'wx');
+    if (weather === 'snow') say('Guck mal, es schneit! ☃️', 'wx');
+  }
+  if (p.y > 600) say(night ? 'Guck mal, die vielen Sterne! ✨' : 'Schau mal, wir sind über den Wolken! ☁️', 'high');
   if (p.x > SEA_FROM && p.x < SEA_TO) say(`Da unten ist ${R.seaName}! 🌊`, 'sea');
   if (R.desert && p.x > DEST_FROM) say('Ich sehe Kamele! 🐪', 'desert');
   if (dist < 9000 && dist > 0) say(`Ich kann schon ${R.name} sehen! ${R.icon}`, 'see');
   if (p.flown && p.gearDown && p.gear > 0.95 && dist < 9000) say('Was hat da so gerumpelt? Ach, das Fahrwerk!', 'gear');
   if (pax.wait <= 0 && p.flown && !p.onGround && bad === 0) {
-    say(CHATTER[Math.floor(Math.random() * CHATTER.length)]);
+    const pool = night ? CHATTER.concat(NIGHT_CHATTER) : CHATTER;
+    say(pool[Math.floor(Math.random() * pool.length)]);
   }
 }
 
@@ -659,15 +1196,17 @@ function paxTouchdown(sink) {
   pax.mood = clamp(pax.mood - Math.max(0, sink - 2) * 6, 0, 100);
 }
 
+const paxWord = () => pax.n === 1 ? 'Passagier' : 'Passagiere';
 function paxFace(m) {
   return m > 85 ? '😍' : m > 65 ? '😀' : m > 45 ? '🙂' : m > 25 ? '😟' : '😱';
 }
 
 function paxVerdict(r) {
-  if (!r.ok) return `😤 Die ${pax.n} Passagiere wollten doch nach ${R.name}!`;
+  if (!r.ok) return pax.n === 1 ? `😤 Dein Passagier wollte doch zur ${R.name}!` : `😤 Die ${pax.n} Passagiere wollten doch nach ${R.name}!`;
   if (!r.stars) return `😅 Die Passagiere wundern sich: Das ist ja wieder Frankfurt!`;
   const m = pax.mood;
   const how = m > 85 ? 'sind begeistert' : m > 65 ? 'sind froh' : m > 45 ? 'sind zufrieden' : m > 25 ? 'sind ein bisschen sauer' : 'hatten große Angst';
+  if (pax.n === 1) return `${paxFace(m)} Dein Passagier ${how.replace('sind', 'ist').replace('hatten', 'hatte')}!`;
   return `${paxFace(m)} ${pax.n} Passagiere ${how}!`;
 }
 
@@ -704,35 +1243,33 @@ function updateParticles(dt) {
     q.x += q.vx * dt;
     q.a += q.va * dt;
     if (q.g) q.va -= q.g * dt;
+    if (q.bounce && q.a < 0) { q.a = 0; q.va *= -0.35; q.vx *= 0.6; }
     q.r += q.grow * dt;
   }
   particles = particles.filter(q => q.life > 0);
   for (const c of contrail) c.t += dt;
   contrail = contrail.filter(c => c.t < 2.5);
-  // Rauch steigt noch eine Weile nach dem Absturz auf
-  if (state === 'crashed' && p.crash !== 'sea' && Math.random() < 0.3) {
-    particles.push({ x: p.x - 20 + Math.random() * 40, a: 6, vx: 4, va: 6, life: 4, max: 4, r: 4, grow: 6, color: '90,90,95' });
-  }
 }
 
 // ── Hinweise für den Piloten ───────────────────────────────────────
 function glideAlt(x) { return (DEST - x) * Math.tan(GLIDE); }
 
 function hint() {
+  if (PT().glider) return gliderHint();
   const dist = DEST - p.x;
-  if (welcomeT > 0) return [`🔔 Bitte anschnallen! Wir fliegen nach ${R.name}.`, false];
+  if (welcomeT > 0) return [weather === 'sun' ? `🔔 Bitte anschnallen! Wir fliegen nach ${R.name}.` : `🔔 Anschnallen! Heute: ${WX().icon} ${WX().name} und Seitenwind`, false];
   const side = p.z > 0 ? 'links ◀' : 'rechts ▶';
   if (p.onGround && Math.abs(p.z) > 12) return [`Bleib in der Mitte der Bahn! Lenk nach ${side}`, true];
   if (p.onGround && !p.flown) {
     if (p.throttle < 0.7) return ['Gib Schub! Halte „Schub +“ gedrückt.', false];
-    if (p.v < VR * 0.93) return ['Schneller werden … bei 270 km/h abheben!', false];
+    if (p.v < VR * 0.93) return [`Schneller werden … bei ${Math.round(VR * 3.6)} km/h abheben!`, false];
     return ['Jetzt die Nase hoch! ▲', false];
   }
   if (p.onGround) return [p.throttle > 0.05 ? 'Schub ganz weg! Und bremsen! 🛑' : 'Bremse halten! 🛑', true];
-  if (p.v < 66) return ['⚠️ Zu langsam! Mehr Schub und Nase runter!', true];
+  if (p.v < VR - 9) return ['⚠️ Zu langsam! Mehr Schub und Nase runter!', true];
   if (p.gear > 0.5 && p.v > 110 && dist > 5000) return ['Fahrwerk einfahren! Sonst bremst es dich.', true];
   if (dist < 5000 && !p.gearDown) return ['Fahrwerk ausfahren! ⚙️', true];
-  if (dist < 8000 && p.v > 105) return ['Zu schnell für die Landung! Schub weg.', true];
+  if (dist < 8000 && p.v > VR + 30) return ['Zu schnell für die Landung! Schub weg.', true];
   if (dist < GLIDE_LEN + 3000 && Math.abs(p.z) > 40) return [`Die Landebahn ist ${side} – schau aufs Radar`, true];
   if (dist >= GLIDE_LEN + 3000 && Math.abs(p.hdg) > 25 * DEG) return [`${R.name} liegt ${p.hdg > 0 ? 'links ◀' : 'rechts ▶'}`, false];
   if (dist < 1500 && p.y < 30) return ['Gleich am Boden: Nase ganz leicht hoch ▲', false];
@@ -927,7 +1464,62 @@ function drawWheel(x, y) {
   ctx.fillStyle = '#1b1b1f';
   ctx.beginPath(); ctx.arc(x, y, 0.62, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#9aa0a8';
-  ctx.beginPath(); ctx.arc(x, y, 0.25, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x, y, 0.32, 0, Math.PI * 2); ctx.fill();
+  // Speichen drehen sich beim Rollen
+  const a = state !== 'menu' && p ? p.x / 0.62 : 0;
+  ctx.strokeStyle = '#4a4f57'; ctx.lineWidth = 0.08;
+  ctx.beginPath();
+  for (let i = 0; i < 3; i++) {
+    const b = a + i * Math.PI / 3;
+    ctx.moveTo(x - Math.cos(b) * 0.3, y - Math.sin(b) * 0.3); ctx.lineTo(x + Math.cos(b) * 0.3, y + Math.sin(b) * 0.3);
+  }
+  ctx.stroke();
+}
+
+const lerp2 = (A, B, t) => [A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t];
+
+function drawWingExtras(T) {
+  const [rf, tf, tb, rb] = T.wing;
+  // Landeklappen klappen hinten am Flügel nach unten und hinten
+  if (EXT.flaps > 0.02) {
+    const f = EXT.flaps;
+    for (const [a, b] of [[0.08, 0.42], [0.48, 0.82]]) {
+      const P = lerp2(rb, tb, a), Q = lerp2(rb, tb, b);
+      ctx.fillStyle = '#b9c2cc';
+      ctx.beginPath(); ctx.moveTo(...P); ctx.lineTo(...Q);
+      ctx.lineTo(Q[0] - 1.6 * f, Q[1] + 1.3 * f); ctx.lineTo(P[0] - 1.6 * f, P[1] + 1.3 * f);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = 'rgba(70,80,100,0.6)'; ctx.lineWidth = 0.1; ctx.stroke();
+    }
+  }
+  // Störklappen oben auf dem Flügel
+  if (EXT.spoil > 0.02) {
+    ctx.fillStyle = '#aab3bd';
+    for (let i = 0; i < 4; i++) {
+      const P = lerp2(rf, tf, 0.3 + i * 0.12), Q = lerp2(rf, tf, 0.38 + i * 0.12);
+      ctx.beginPath(); ctx.moveTo(...P); ctx.lineTo(...Q); ctx.lineTo(Q[0] - 0.4, Q[1] - 1.1 * EXT.spoil); ctx.lineTo(P[0] - 0.4, P[1] - 1.1 * EXT.spoil);
+      ctx.closePath(); ctx.fill();
+    }
+  }
+}
+
+function panelLines(x0, x1) {
+  ctx.strokeStyle = 'rgba(90,100,120,0.18)'; ctx.lineWidth = 0.08;
+  ctx.beginPath();
+  for (let x = x0; x < x1; x += 5.5) { ctx.moveTo(x, -8); ctx.lineTo(x, 8); }
+  ctx.stroke();
+  // Licht oben, Schatten unten am runden Rumpf
+  const g = ctx.createLinearGradient(0, -5, 0, 5);
+  g.addColorStop(0, 'rgba(255,255,255,0.25)'); g.addColorStop(0.35, 'rgba(255,255,255,0)'); g.addColorStop(1, 'rgba(40,50,70,0.22)');
+  ctx.fillStyle = g; ctx.fillRect(-45, -8, 90, 16);
+}
+
+function cockpitPanes(pts) {
+  const [tl, tr, br, bl] = pts;
+  ctx.strokeStyle = 'rgba(230,235,240,0.85)'; ctx.lineWidth = 0.15;
+  ctx.beginPath();
+  for (const t of [0.36, 0.7]) { ctx.moveTo(...lerp2(tl, tr, t)); ctx.lineTo(...lerp2(bl, br, t)); }
+  ctx.stroke();
 }
 
 function drawEngine(x0, cy, shade) {
@@ -945,11 +1537,229 @@ function drawEngine(x0, cy, shade) {
   ctx.strokeStyle = 'rgba(60,70,90,0.5)'; ctx.lineWidth = 0.12; ctx.stroke();
   ctx.fillStyle = GREEN;
   ctx.fillRect(x0 + 1.2, cy - 1.5, 0.5, 3);
+  ctx.strokeStyle = 'rgba(60,70,90,0.35)'; ctx.lineWidth = 0.08;
+  ctx.beginPath(); ctx.moveTo(x0 + 4.3, cy - 1.5); ctx.lineTo(x0 + 4.3, cy + 1.5); ctx.stroke();
+  if (EXT.rev > 0.05) {
+    // Schubumkehr: die Hülle schiebt sich nach hinten auf
+    ctx.fillStyle = '#3a3f48';
+    ctx.fillRect(x0 + 3.2 - EXT.rev * 0.6, cy - 1.5, 1.1 * EXT.rev, 3);
+  }
   // Einlass vorne, Düse hinten
   ctx.fillStyle = '#2a2f38';
   ctx.beginPath(); ctx.ellipse(x0 + 7, cy, 0.45, 1.35, 0, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#6b7380';
   ctx.beginPath(); ctx.moveTo(x0, cy - 0.8); ctx.lineTo(x0 - 1.4, cy); ctx.lineTo(x0, cy + 0.8); ctx.closePath(); ctx.fill();
+}
+
+// ── Die anderen Flugzeuge ──────────────────────────────────────────
+// Alle sind gleich groß gezeichnet (Rumpfmitte bei y = 0, Nase rechts); k macht sie im Spiel so groß wie in echt.
+const PLANES = {
+  a380: { name: 'Airbus A380', short: 'A380', k: 1, vr: 75, thrust: 5, agile: 1, pax: [420, 550], gearH: 8.2,
+    wing: [[10, 3], [-20, 0.4], [-21.8, 1.1], [-5, 4.5]],
+    engines: [[2, 5.6], [-8, 4.1]], nose: [31, 4],
+    winRows: [{ y: -2.7, x0: -16, x1: 26.5, step: 1.25, skip: [2, 14] }, { y: 0.3, x0: -19, x1: 29.5, step: 1.25, skip: [9.5, -4] }],
+    cockpit: [[31.8, -1.7], [34.4, -1.7], [35.3, -0.6], [31.8, -0.7]], logo: [-32.3, -13, 6], nav: [-21.9, 0.6], tail: [-40, -2.9] },
+  b747: { name: 'Boeing 747', short: '747', k: 0.97, vr: 78, thrust: 5.2, agile: 1, pax: [350, 420], gearH: 8.2,
+    body() {
+      ctx.moveTo(-37, -2.2); ctx.lineTo(-22, -3.6); ctx.lineTo(6, -3.6);
+      ctx.bezierCurveTo(12, -3.6, 14, -6.2, 20, -6.3); ctx.lineTo(26, -6.2);
+      ctx.bezierCurveTo(31, -6, 34, -3, 35.8, 0.2); ctx.bezierCurveTo(36.2, 2.2, 34, 3.6, 30, 3.6);
+      ctx.lineTo(-14, 3.6); ctx.bezierCurveTo(-24, 3.4, -31, 1.4, -37, -1.2);
+    },
+    fin: [[-23, -3.4], [-32, -17.5], [-37, -17.5], [-38, -2.2]], stab: [[-28, -1.2], [-38, -3.2], [-39.5, -2.5], [-31, -0.2]],
+    stripe: 2.2, logo: [-32.6, -12, 6], label: [-14, -2.3, 1.45],
+    winRows: [{ y: -1.4, x0: -20, x1: 31, step: 1.25, skip: [27.6, 9.6, -3.4, -17.4] }, { y: -5.2, x0: 14, x1: 26.5, step: 1.25, skip: [] }],
+    doors: [[27, -1.9], [9, -1.9], [-4, -1.9], [-18, -1.9]],
+    cockpit: [[27.5, -5.6], [30.5, -5.4], [31.8, -4.3], [27.5, -4.4]],
+    wing: [[8, 2.6], [-19, 0.2], [-20.6, 0.8], [-5, 4]], winglet: null,
+    under: [[-7, 4, 1, true], [2.5, 5.3, 1, false]], engines: [[2.5, 5.3], [-7, 4]],
+    gear: { top: 3.4, len: 3.4, nose: [29], main: [[-7.3, -5.5, -3.7], [-0.6, 1.2]] },
+    nose: [29, 3.8], nav: [-20.4, 0.5], tail: [-39, -2.3], beacon: [0, -3.9], strobe: [-20.6, 0.3] },
+  a320: { name: 'Airbus A320', short: 'A320', k: 0.52, vr: 70, thrust: 5.6, agile: 1.25, pax: [150, 180], gearH: 6.8,
+    body() {
+      ctx.moveTo(-36, -1.6); ctx.lineTo(-24, -4); ctx.lineTo(26, -4);
+      ctx.bezierCurveTo(31, -4, 34.5, -1.8, 35.6, 0.6); ctx.bezierCurveTo(35.9, 2.4, 33.5, 4, 29, 4);
+      ctx.lineTo(-12, 4); ctx.bezierCurveTo(-22, 3.8, -30, 1.6, -36, -0.8);
+    },
+    fin: [[-23, -3.8], [-31, -15.5], [-35.5, -15.5], [-36.8, -1.8]], stab: [[-28, -1], [-37, -3.2], [-38.5, -2.6], [-31, -0.1]],
+    stripe: 2.3, logo: [-31.2, -11, 5], label: [-10, -2.9, 1.7],
+    winRows: [{ y: -1.8, x0: -21, x1: 26, step: 1.6, skip: [-2.6, -0.8] }],
+    doors: [[27, -2.3], [-23, -2.3]],
+    cockpit: [[29.5, -2.4], [32.5, -2.4], [33.8, -1.0], [29.5, -1.1]],
+    wing: [[8, 2.8], [-15, 1.2], [-16.5, 1.8], [-3, 4.2]], winglet: [[-15.2, 1.3], [-16.5, -1.6], [-17.3, -1.4], [-16.5, 1.8]],
+    under: [[-4.5, 4.6, 1.3, false]], engines: [[-4.5, 4.6]],
+    gear: { top: 3.8, len: 2, nose: [27], main: [[-7.5, -5.9]] },
+    nose: [27, 4], nav: [-16.6, 1.6], tail: [-38, -2], beacon: [0, -4.3], strobe: [-17, -1.4] },
+  legacy: { name: 'Embraer Legacy', short: 'Legacy', k: 0.36, vr: 62, thrust: 6.5, agile: 1.5, pax: [8, 13], gearH: 5.8,
+    body() {
+      ctx.moveTo(-36, -1.4); ctx.lineTo(-24, -3.3); ctx.lineTo(24, -3.3);
+      ctx.bezierCurveTo(30, -3.3, 35, -1.2, 37, 0.6); ctx.bezierCurveTo(36.4, 2.2, 32, 3.3, 26, 3.3);
+      ctx.lineTo(-14, 3.3); ctx.bezierCurveTo(-24, 3.2, -31, 1.4, -36, -0.6);
+    },
+    fin: [[-22, -3], [-31, -14], [-35.5, -14], [-36, -1.4]], stab: [[-29, -13.6], [-38.5, -15], [-39.5, -14.2], [-31, -12.6]],
+    stripe: 1.9, logo: [-31.4, -8.5, 4.5], label: [7, 1, 1.5],
+    winRows: [{ y: -1.6, x0: -12, x1: 19, step: 2.6, skip: [], oval: true }],
+    doors: [[21.5, -2.4]],
+    cockpit: [[27, -2.4], [30.5, -2.1], [32.6, -0.9], [27.2, -0.8]],
+    wing: [[6, 2.6], [-12, 1.2], [-13.2, 1.8], [-2, 3.6]], winglet: [[-12.4, 1.3], [-13.8, -1.6], [-14.6, -1.4], [-13.2, 1.8]],
+    rear: [-27, -2.4], engines: [[-27, -2.4]],
+    gear: { top: 3.2, len: 1.6, nose: [28], main: [[-4]] },
+    nose: [28, 3.3], nav: [-13.3, 1.6], tail: [-36.5, -1.2], beacon: [-2, -3.6], strobe: [-14, -1.4] },
+  glider: { name: 'Segelflugzeug', short: 'Segler', k: 0.22, vr: 24, thrust: 0, agile: 1.6, pax: [1, 1], gearH: 5.8,
+    glider: true, drag: 1.6e-5, sag: 0.5,
+    body() {
+      ctx.moveTo(36, 0.8); ctx.bezierCurveTo(36, -2.5, 30, -4.2, 22, -4.4); ctx.lineTo(4, -3.8);
+      ctx.bezierCurveTo(-2, -3.2, -6, -1.6, -12, -1.3); ctx.lineTo(-36, -0.9); ctx.lineTo(-37.5, -0.2); ctx.lineTo(-37, 1);
+      ctx.lineTo(-12, 1.4); ctx.bezierCurveTo(-4, 1.8, 2, 4.2, 10, 4.4); ctx.lineTo(24, 4.2); ctx.bezierCurveTo(32, 3.8, 36, 2.6, 36, 0.8);
+    },
+    fin: [[-30, -1.1], [-35, -11], [-38.5, -11], [-37.5, -0.6]], stab: [[-31, -10.8], [-39, -11.8], [-39.5, -11.2], [-33, -10.2]],
+    stripe: 1.6, logo: [-35.4, -6, 4], label: [11, 2.2, 1.5],
+    winRows: [], doors: [],
+    cockpit: [[12, -4.4], [28, -4.8], [31.5, -2.6], [11, -3.6]], canopy: true,
+    wing: [[6, -3.9], [-8, -3.3], [-8.6, -2.6], [5, -2.9]], winglet: null,
+    engines: [], gear: { top: 4.2, len: 0.3, nose: [], main: [[12]] },
+    nose: [33, 1], nav: [-8.4, -2.9], tail: [-38, -0.4], beacon: [-4, -3.5], strobe: [-8.4, -2.9] },
+};
+const PLANE_KEYS = Object.keys(PLANES);
+let planeKey = 'a380';
+try { if (PLANES[localStorage.getItem('flug-flugzeug')]) planeKey = localStorage.getItem('flug-flugzeug'); } catch (e) {}
+const PT = () => PLANES[planeKey];
+setRoute(routeIdx);
+function setPlane(k) {
+  planeKey = k;
+  setRoute(routeIdx);   // das Segelflugzeug hat sein eigenes Ziel
+  try { localStorage.setItem('flug-flugzeug', k); } catch (e) {}
+  tone(600 + PLANE_KEYS.indexOf(k) * 80, 0, 0.12, 0.1);
+}
+
+function poly(pts) {
+  ctx.beginPath();
+  pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+  ctx.closePath();
+}
+
+function drawWindows(T, color) {
+  ctx.fillStyle = color;
+  for (const r of T.winRows) {
+    for (let x = r.x0; x < r.x1; x += r.step) {
+      if (r.skip.some(sk => Math.abs(x - sk) < 1)) continue;
+      if (r.oval) { ctx.beginPath(); ctx.ellipse(x, r.y + 0.4, 0.5, 0.65, 0, 0, Math.PI * 2); ctx.fill(); }
+      else ctx.fillRect(x, r.y, 0.55, 0.75);
+    }
+  }
+}
+
+let EXT = { flaps: 0, spoil: 0, rev: 0 };
+function drawPlaneType(T, gear, lights, ext = { flaps: 0, spoil: 0, rev: 0 }) {
+  EXT = ext;
+  if (T === PLANES.a380) return drawA380(gear, lights);
+  // Seitenleitwerk mit Logo
+  ctx.fillStyle = BLUE;
+  poly(T.fin); ctx.fill();
+  ctx.save(); ctx.clip();
+  const [lx, ly, ls] = T.logo, q = ls / 6;
+  ctx.fillStyle = GREEN;
+  ctx.beginPath();
+  ctx.moveTo(lx + 10.3 * q, ly + 11 * q); ctx.quadraticCurveTo(lx + 2.3 * q, ly + 3 * q, lx - 7.7 * q, ly + 3 * q);
+  ctx.lineTo(lx - 7.7 * q, ly + 7 * q); ctx.quadraticCurveTo(lx + 2.3 * q, ly + 7 * q, lx + 6.8 * q, ly + 11 * q);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `bold ${ls}px system-ui, -apple-system, sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('H', lx, ly);
+  // Höhenleitwerk: beim Legacy oben am Seitenleitwerk
+  ctx.fillStyle = '#dfe4ea';
+  poly(T.stab); ctx.fill();
+  ctx.strokeStyle = 'rgba(70,80,100,0.5)'; ctx.lineWidth = 0.15; ctx.stroke();
+
+  // Rumpf
+  ctx.beginPath(); T.body(); ctx.closePath();
+  const g = ctx.createLinearGradient(0, -4.2, 0, 4.2);
+  g.addColorStop(0, '#ffffff'); g.addColorStop(0.6, '#f1f4f8'); g.addColorStop(1, '#c9d1db');
+  ctx.fillStyle = g; ctx.fill();
+  ctx.save(); ctx.clip();
+  ctx.fillStyle = BLUE; ctx.fillRect(-40, T.stripe, 80, 2.5);
+  ctx.fillStyle = GREEN; ctx.fillRect(-40, T.stripe - 0.8, 80, 0.7);
+  panelLines(-32, 30);
+  ctx.restore();
+  ctx.beginPath(); T.body(); ctx.closePath();
+  ctx.strokeStyle = 'rgba(70,80,100,0.6)'; ctx.lineWidth = 0.15; ctx.stroke();
+
+  drawWindows(T, '#2b3a55');
+  ctx.strokeStyle = 'rgba(80,90,110,0.7)'; ctx.lineWidth = 0.12;
+  for (const [x, y] of T.doors) { ctx.beginPath(); ctx.roundRect(x, y, 1.1, 2.1, 0.3); ctx.stroke(); }
+  if (T.canopy) {
+    // große Glashaube mit dem Piloten darunter
+    ctx.fillStyle = 'rgba(40,60,90,0.85)';
+    ctx.beginPath(); ctx.moveTo(31.5, -2.6); ctx.bezierCurveTo(28, -6.4, 18, -6.8, 10, -4.0); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#f1c9a5'; ctx.beginPath(); ctx.arc(22, -4.1, 1.1, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#e74c3c'; ctx.beginPath(); ctx.arc(22, -4.5, 1.15, Math.PI, 0); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.beginPath(); ctx.moveTo(27, -4.6); ctx.bezierCurveTo(24, -5.9, 18, -6, 14, -4.8); ctx.lineTo(15, -4.5); ctx.bezierCurveTo(19, -5.4, 24, -5.3, 27, -4.3); ctx.closePath(); ctx.fill();
+  } else {
+    ctx.fillStyle = '#1d2433';
+    poly(T.cockpit); ctx.fill();
+    cockpitPanes(T.cockpit);
+  }
+  ctx.fillStyle = BLUE;
+  ctx.font = `bold ${T.label[2]}px system-ui, -apple-system, sans-serif`;
+  ctx.textAlign = 'left';
+  ctx.fillText('Henrik Airlines', T.label[0], T.label[1]);
+
+  // Fahrwerk
+  if (gear > 0.12) {
+    const G = T.gear, wy = G.top + 0.4 + G.len * gear;
+    ctx.strokeStyle = '#5b626d'; ctx.lineWidth = 0.45;
+    ctx.beginPath();
+    for (const set of [G.nose, ...G.main].filter(x => x.length)) {
+      const mid = (set[0] + set[set.length - 1]) / 2;
+      ctx.moveTo(mid, G.top); ctx.lineTo(mid, wy);
+      if (set.length > 1) { ctx.moveTo(set[0], wy); ctx.lineTo(set[set.length - 1], wy); }
+    }
+    ctx.stroke();
+    for (const set of [G.nose, ...G.main]) for (const x of set) drawWheel(x, wy);
+    if (T.glider) { ctx.fillStyle = '#333'; ctx.beginPath(); ctx.arc(-36, 1.3, 0.4, 0, Math.PI * 2); ctx.fill(); }   // Sporn hinten
+  }
+
+  // Flügel
+  ctx.fillStyle = '#cfd6de';
+  poly(T.wing); ctx.fill();
+  ctx.strokeStyle = 'rgba(70,80,100,0.6)'; ctx.lineWidth = 0.15; ctx.stroke();
+  if (T.winglet) { ctx.fillStyle = GREEN; poly(T.winglet); ctx.fill(); }
+  drawWingExtras(T);
+  for (const [x, y, k, shade] of T.under || []) {
+    ctx.save(); ctx.translate(x, y); ctx.scale(k, k); drawEngine(0, 0, shade); ctx.restore();
+  }
+  if (T.rear) {
+    // Triebwerk hinten am Rumpf
+    const [x, y] = T.rear;
+    const eg = ctx.createLinearGradient(0, y - 1.8, 0, y + 1.8);
+    eg.addColorStop(0, '#ffffff'); eg.addColorStop(1, '#b3bcc7');
+    ctx.fillStyle = eg;
+    ctx.beginPath(); ctx.roundRect(x, y - 1.8, 9, 3.6, 1.6); ctx.fill();
+    ctx.strokeStyle = 'rgba(60,70,90,0.5)'; ctx.lineWidth = 0.12; ctx.stroke();
+    ctx.fillStyle = GREEN; ctx.fillRect(x + 1.5, y - 1.8, 0.6, 3.6);
+    ctx.fillStyle = '#2a2f38';
+    ctx.beginPath(); ctx.ellipse(x + 9, y, 0.5, 1.6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#6b7380';
+    ctx.beginPath(); ctx.moveTo(x, y - 1); ctx.lineTo(x - 1.6, y); ctx.lineTo(x, y + 1); ctx.closePath(); ctx.fill();
+  }
+
+  if (lights) {
+    const t = time % 1.2;
+    if (t < 0.12) {
+      const [bx, by] = T.beacon;
+      ctx.fillStyle = 'rgba(255,40,40,0.95)';
+      ctx.beginPath(); ctx.arc(bx, by, 0.5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,40,40,0.25)';
+      ctx.beginPath(); ctx.arc(bx, by, 1.8, 0, Math.PI * 2); ctx.fill();
+    }
+    if (t > 0.6 && t < 0.68) {
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.beginPath(); ctx.arc(T.strobe[0], T.strobe[1], 1.2, 0, Math.PI * 2); ctx.fill();
+    }
+  }
 }
 
 function drawA380(gear, lights) {
@@ -981,6 +1791,7 @@ function drawA380(gear, lights) {
   ctx.fillStyle = GREEN; ctx.fillRect(-40, 1.9, 80, 0.7);
   ctx.fillStyle = 'rgba(120,130,150,0.35)';
   ctx.beginPath(); ctx.ellipse(-3, 4.3, 12, 1.6, 0, 0, Math.PI * 2); ctx.fill();   // Bauchverkleidung
+  panelLines(-34, 30);
   ctx.restore();
   fuselagePath();
   ctx.strokeStyle = 'rgba(70,80,100,0.6)'; ctx.lineWidth = 0.15; ctx.stroke();
@@ -998,6 +1809,7 @@ function drawA380(gear, lights) {
   ctx.beginPath();
   ctx.moveTo(31.8, -1.7); ctx.lineTo(34.4, -1.7); ctx.lineTo(35.3, -0.6); ctx.lineTo(31.8, -0.7);
   ctx.closePath(); ctx.fill();
+  cockpitPanes(PLANES.a380.cockpit);
   // Name
   ctx.fillStyle = BLUE;
   ctx.font = 'bold 1.45px system-ui, -apple-system, sans-serif';
@@ -1035,6 +1847,7 @@ function drawA380(gear, lights) {
   ctx.strokeStyle = 'rgba(70,80,100,0.6)'; ctx.lineWidth = 0.15; ctx.stroke();
   ctx.fillStyle = GREEN;
   ctx.beginPath(); ctx.moveTo(-20.2, 0.5); ctx.lineTo(-21.6, -1.4); ctx.lineTo(-22.4, -1.2); ctx.lineTo(-21.8, 1.1); ctx.closePath(); ctx.fill();
+  drawWingExtras(PLANES.a380);
   drawEngine(-8, 4.1, true);
   drawEngine(2, 5.6, false);
 
@@ -1080,6 +1893,7 @@ function drawSky() {
   g.addColorStop(1, rgb(low));
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, W(), H());
+  if (night || weather !== 'sun') return;   // Mond und Sterne kommen erst nach dem Abdunkeln
   // Sonne
   const sxp = W() * 0.82, syp = H() * 0.16;
   const sg = ctx.createRadialGradient(sxp, syp, 0, sxp, syp, 90);
@@ -1123,7 +1937,7 @@ function drawHills(gy) {
   }
 }
 
-function drawSkyline(gy) {
+function drawSkyline(gy, lightsOnly = false) {
   // Frankfurter Hochhäuser in der Ferne
   for (let i = 0; i < 26; i++) {
     const bx = -900 + i * 140;
@@ -1131,6 +1945,17 @@ function drawSkyline(gy) {
     const w = (30 + rand(i + 5) * 35) * S * 0.3;
     if (x + w < 0 || x > W()) continue;
     const h = (40 + rand(i + 9) * 130) * S * 0.3;
+    if (lightsOnly) {
+      // nachts ist nur jedes zweite Fenster an
+      for (let wy = gy - h + 4, n = 0; wy < gy - 4; wy += 7, n++) {
+        if (rand(i * 31 + n) < 0.5) continue;
+        ctx.fillStyle = 'rgba(255,215,120,0.85)';
+        ctx.fillRect(x + 2, wy, w - 4, 1.5);
+      }
+      ctx.fillStyle = (time + i * 0.3) % 1.5 < 0.75 ? '#ff3030' : '#801818';
+      ctx.fillRect(x + w / 2 - 1, gy - h - 2, 2, 2);
+      continue;
+    }
     ctx.fillStyle = i % 3 === 0 ? '#7f93ae' : '#8ea1ba';
     ctx.fillRect(x, gy - h, w, h);
     if (i % 5 === 2) {
@@ -1290,42 +2115,139 @@ function drawRunway(r) {
   if (b < 0 || a > W() || gy > H() + 20) return;
   const depth = Math.max(8, 9 * S);
   const top = gy - 3;
-  ctx.fillStyle = '#3b3f45';
+  const wet = weather === 'rain' || weather === 'storm';
+  // Seitenstreifen, dann die Bahn
+  ctx.fillStyle = '#6b6f72';
+  ctx.fillRect(a, top - 1.5, b - a, depth + 3);
+  ctx.fillStyle = wet ? '#2c3036' : '#3b3f45';
   ctx.fillRect(a, top, b - a, depth);
+  // dunkle Reifenspuren, wo die Flugzeuge aufsetzen
+  ctx.fillStyle = 'rgba(15,15,18,0.45)';
+  for (const y of [0.36, 0.6]) ctx.fillRect(sx(r.x0 + 250), top + depth * y, 650 * S, depth * 0.06);
   ctx.fillStyle = '#ffffff';
   const mid = top + depth * 0.5 - 1;
-  for (let x = r.x0 + 120; x < r.x1 - 120; x += 70) {
+  for (let x = r.x0 + 120; x < r.x1 - 120; x += 50) {
     const xx = sx(x);
-    if (xx > -40 * S && xx < W()) ctx.fillRect(xx, mid, 35 * S, 2);
+    if (xx > -40 * S && xx < W()) ctx.fillRect(xx, mid, 30 * S, 1.5);
   }
-  for (const end of [r.x0 + 15, r.x1 - 45]) {
-    for (let i = 0; i < 4; i++) ctx.fillRect(sx(end), top + depth * (0.15 + i * 0.22), 30 * S, 1.5);
+  // Randlinien
+  ctx.fillRect(a, top + 0.5, b - a, 1); ctx.fillRect(a, top + depth - 1.5, b - a, 1);
+  for (const end of [r.x0 + 10, r.x1 - 50]) {
+    for (let i = 0; i < 4; i++) ctx.fillRect(sx(end), top + depth * (0.15 + i * 0.22), 40 * S, 1.5);
   }
-  // Randbefeuerung
-  for (let x = r.x0; x <= r.x1; x += 60) {
-    const xx = sx(x);
-    if (xx < -5 || xx > W() + 5) continue;
-    ctx.fillStyle = x === r.x0 ? '#3f3' : x + 60 > r.x1 ? '#f33' : '#fff7d0';
-    ctx.fillRect(xx - 1, top - 1, 3, 3);
-    ctx.fillRect(xx - 1, top + depth - 2, 3, 3);
+  // Aufsetzzone: Balkenpaare und die dicken Zielpunkt-Markierungen
+  for (let i = 1; i <= 6; i++) {
+    const x = r.x0 + i * 150, big = i === 2;
+    for (const y of [0.25, 0.7]) ctx.fillRect(sx(x), top + depth * y, (big ? 60 : 22) * S, big ? depth * 0.1 : 1.2);
+  }
+  runwayLights(r);
+  // Schild mit der Bahnnummer: rot mit weißer Schrift
+  const sxp = sx(r.x0 - 40), sb = top + depth + 2;
+  ctx.fillStyle = '#555'; ctx.fillRect(sxp + 5 * S, sb - 1, 1, 4 * S);
+  ctx.fillStyle = '#c4161c'; ctx.fillRect(sxp, sb - 1 - 6 * S + 4 * S, 12 * S, 5 * S);
+  txt(r.num || '', sxp + 6 * S, sb - 1 + 0.5 * S, 3.6 * S, '#fff');
+  drawPAPI(r, top + depth + 2);
+  drawWindsock(r.x0 - 140, top);
+}
+
+// Die Bahnnummer groß auf den Asphalt gemalt, lesbar beim Anflug
+const SEGS = { 0: 'abcdef', 1: 'bc', 2: 'abged', 3: 'abgcd', 4: 'fgbc', 5: 'afgcd', 6: 'afgedc', 7: 'abc', 8: 'abcdefg', 9: 'abcdfg' };
+function runwayNumber(num, x0, quad) {
+  if (!num) return;
+  const w = 11, h = 32, t = 2.6;
+  // u geht quer über die Bahn, v in Flugrichtung; die Ziffer steht von vorne gesehen aufrecht
+  const box = { a: [0, w, h - t, h], b: [w - t, w, h / 2, h], c: [w - t, w, 0, h / 2], d: [0, w, 0, t],
+                e: [0, t, 0, h / 2], f: [0, t, h / 2, h], g: [0, w, h / 2 - t / 2, h / 2 + t / 2] };
+  [...num].forEach((ch, i) => {
+    const z0 = i === 0 ? -w - 2.5 : 2.5;
+    for (const sgm of SEGS[ch]) {
+      const [u0, u1, v0, v1] = box[sgm];
+      quad(x0 + v0, x0 + v1, z0 + u0, z0 + u1, 0, '#ffffff');
+    }
+  });
+}
+
+// PAPI: vier Lampen neben der Bahn. Zwei weiß und zwei rot heißt genau richtig, mehr weiß zu hoch, mehr rot zu tief.
+function papiColors(r) {
+  const ang = Math.atan2(Math.max(0, p.y), Math.max(1, r.x0 + 20 - p.x)) / DEG;
+  return [0.5, 0.17, -0.17, -0.5].map(o => ang > GLIDE / DEG + o ? '#ffffff' : '#ff2a2a');
+}
+function drawPAPI(r, y) {
+  if (r !== RWY_B) return;
+  papiColors(r).forEach((c, i) => {
+    const X = sx(r.x0 + 20 - i * 10);
+    ctx.fillStyle = '#333'; ctx.fillRect(X - 2, y - 1, 4, 3);
+    if (night) glowDot(X, y, 6, c);
+    ctx.fillStyle = c; ctx.beginPath(); ctx.arc(X, y, 1.6, 0, Math.PI * 2); ctx.fill();
+  });
+}
+
+function drawWindsock(x, base) {
+  const X = sx(x), h = 10 * S;
+  if (X < -30 * S || X > W() + 30 * S) return;
+  ctx.strokeStyle = '#aaa'; ctx.lineWidth = Math.max(1, 0.4 * S);
+  ctx.beginPath(); ctx.moveTo(X, base); ctx.lineTo(X, base - h); ctx.stroke();
+  // bei Wind steht der Sack waagerecht und flattert, sonst hängt er runter
+  const w = clamp(WX().wind / 3, 0.15, 1);
+  const ang = (80 - 75 * w) * DEG + Math.sin(time * 6) * 0.08 * w;
+  for (let i = 0; i < 5; i++) {
+    const r0 = i * 1.2 * S, r1 = (i + 1) * 1.2 * S, hw0 = (1 - i * 0.12) * S, hw1 = (1 - (i + 1) * 0.12) * S;
+    const dx = -Math.cos(ang), dy = Math.sin(ang), Y = base - h;
+    const pt = (r, hw, side) => [X + dx * r - dy * hw * side, Y + dy * r + dx * hw * side];
+    ctx.fillStyle = i % 2 ? '#ffffff' : '#ff6a00';
+    ctx.beginPath();
+    ctx.moveTo(...pt(r0, hw0, 1)); ctx.lineTo(...pt(r1, hw1, 1)); ctx.lineTo(...pt(r1, hw1, -1)); ctx.lineTo(...pt(r0, hw0, -1));
+    ctx.closePath(); ctx.fill();
   }
 }
 
-function drawApproachLights() {
+function runwayLights(r, glow = false) {
+  const top = sy(0) - 3, depth = Math.max(8, 9 * S);
+  // Mittellinienfeuer: weiß, am Ende rot-weiß und zuletzt rot
+  for (let x = r.x0 + 15; x < r.x1; x += 30) {
+    const xx = sx(x);
+    if (xx < -5 || xx > W() + 5) continue;
+    const left = r.x1 - x, c = left < 300 ? '#ff4040' : left < 900 && (x / 30) % 2 < 1 ? '#ff4040' : '#f4f8ff';
+    if (glow) glowDot(xx, top + depth * 0.5, 4, c);
+    ctx.fillStyle = c; ctx.fillRect(xx - 0.5, top + depth * 0.5 - 0.5, 1.5, 1.5);
+  }
+  for (let x = r.x0; x <= r.x1; x += 60) {
+    const xx = sx(x);
+    if (xx < -5 || xx > W() + 5) continue;
+    const c = x === r.x0 ? '#3f3' : x + 60 > r.x1 ? '#f33' : '#fff7d0';
+    for (const yy of [top, top + depth - 1]) {
+      if (glow) glowDot(xx, yy, 7, c);
+      ctx.fillStyle = c;
+      ctx.fillRect(xx - 1, yy - 1, 3, 3);
+    }
+  }
+}
+
+function glowDot(x, y, r, color) {
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+  g.addColorStop(0, color); g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.globalAlpha = 0.5;
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+function drawApproachLights(glow = false) {
   const gy = sy(0) - 3;
   const run = Math.floor((time * 2) % 1 * 15);   // Lauflicht Richtung Landebahn
   for (let i = 0; i < 15; i++) {
     const x = DEST - 60 - (14 - i) * 60;
     const xx = sx(x);
     if (xx < -10 || xx > W() + 10) continue;
-    ctx.fillStyle = '#555';
-    ctx.fillRect(xx - 0.5, gy - 4 * S, 1.5, 4 * S);
+    if (glow) glowDot(xx, gy - 4 * S, i === run ? 16 : 9, i === run ? '#ffffff' : '#ffe98a');
+    else { ctx.fillStyle = '#555'; ctx.fillRect(xx - 0.5, gy - 4 * S, 1.5, 4 * S); }
     ctx.fillStyle = i === run ? '#ffffff' : '#ffe98a';
     ctx.beginPath(); ctx.arc(xx, gy - 4 * S, i === run ? 3 : 1.8, 0, Math.PI * 2); ctx.fill();
   }
 }
 
 function drawGlidePath() {
+  if (PT().glider) return;
   const x0 = p.x - (W() * 0.35) / S - 50, x1 = Math.min(DEST, p.x + (W() * 0.65) / S + 50);
   const step = 120;
   for (let x = Math.max(DEST - GLIDE_LEN, Math.ceil(x0 / step) * step); x <= x1; x += step) {
@@ -1355,14 +2277,14 @@ function worldClouds(front) {
 
 function drawContrails() {
   ctx.lineCap = 'round';
-  for (const e of [2, -8]) {
+  for (let e = 0; e < PT().engines.length; e++) {
     let prev = null;
     for (const c of contrail) {
       if (c.e !== e) continue;
       if (prev) {
         const f = 1 - c.t / 2.5;
         ctx.strokeStyle = `rgba(255,255,255,${0.7 * f})`;
-        ctx.lineWidth = (1.2 + c.t * 2) * S * 0.5;
+        ctx.lineWidth = (1.2 + c.t * 2) * S * 0.5 * Math.max(0.5, PT().k);
         ctx.beginPath(); ctx.moveTo(sx(prev.x), sy(prev.a)); ctx.lineTo(sx(c.x), sy(c.a)); ctx.stroke();
       }
       prev = c;
@@ -1373,6 +2295,11 @@ function drawContrails() {
 function drawParticles() {
   for (const q of particles) {
     const f = q.life / q.max;
+    if (q.spark) {
+      ctx.strokeStyle = `rgba(${q.color},${f})`; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(sx(q.x), sy(q.a)); ctx.lineTo(sx(q.x - q.vx * 0.04), sy(q.a - q.va * 0.04)); ctx.stroke();
+      continue;
+    }
     ctx.fillStyle = `rgba(${q.color},${0.8 * f})`;
     ctx.beginPath(); ctx.arc(sx(q.x), sy(q.a), q.r * S, 0, Math.PI * 2); ctx.fill();
   }
@@ -1383,19 +2310,39 @@ function drawShadow() {
   const k = 1 - p.y / 250;
   ctx.fillStyle = `rgba(0,0,0,${0.28 * k})`;
   ctx.beginPath();
-  ctx.ellipse(sx(p.x + 12), sy(0) + Math.max(8, 9 * S) * 0.3, 38 * S * (0.6 + 0.4 * k), 2.5 * S, 0, 0, Math.PI * 2);
+  ctx.ellipse(sx(p.x + 12 * PT().k), sy(0) + Math.max(8, 9 * S) * 0.3, 38 * S * PT().k * (0.6 + 0.4 * k), 2.5 * S, 0, 0, Math.PI * 2);
   ctx.fill();
 }
 
+function planeTransform(c) {
+  c.translate(sx(p.x), sy(p.y - p.drop + (p.crash === 'sea' ? -p.sinkAnim : 0)));
+  c.rotate(-(p.pitch + p.tilt) * DEG);
+  c.scale(S * PT().k, S * PT().k);
+  c.translate(4, -PT().gearH);
+}
+
 function drawPlane() {
-  const X = sx(p.x), Y = sy(p.y - p.drop + (p.crash === 'sea' ? -p.sinkAnim : 0));
-  ctx.save();
-  ctx.translate(X, Y);
-  ctx.rotate(-(p.pitch + p.tilt) * DEG);
-  ctx.scale(S, S);
-  ctx.translate(4, -GEAR_H);
-  drawA380(p.gear, state === 'flying');
-  ctx.restore();
+  const X = sx(p.x);
+  const c = state === 'crashed' && p.wreck;
+  if (c && c.broken) {
+    // vorne und hinten getrennt; das Heck bleibt zurück und kippt etwas
+    const cut = -10, far = 200;
+    ctx.save(); planeTransform(ctx);
+    ctx.beginPath(); ctx.rect(cut, -far, far * 2, far * 2); ctx.clip();
+    drawPlaneType(PT(), 0, false);
+    ctx.restore();
+    ctx.save(); planeTransform(ctx);
+    ctx.translate(-c.gap / PT().k, 0);
+    ctx.translate(cut, 4); ctx.rotate(-c.rot * DEG); ctx.translate(-cut, -4);
+    ctx.beginPath(); ctx.rect(-far, -far, far + cut, far * 2); ctx.clip();
+    drawPlaneType(PT(), 0, false);
+    ctx.restore();
+  } else {
+    ctx.save();
+    planeTransform(ctx);
+    drawPlaneType(PT(), p.gear, state === 'flying', p);
+    ctx.restore();
+  }
   if (p.crash === 'sea') {
     // Wasser schwappt über den sinkenden Flieger
     const gy = sy(0);
@@ -1406,6 +2353,208 @@ function drawPlane() {
     ctx.fillRect(X - 50 * S, gy - 2, 100 * S, H() - gy + 2);
     ctx.globalAlpha = 1;
   }
+}
+
+// ── Wetter ─────────────────────────────────────────────────────────
+function updateStorm(dt) {
+  if (weather !== 'storm') return;
+  nextBolt -= dt;
+  if (nextBolt > 0) return;
+  nextBolt = 5 + Math.random() * 7;
+  flash = 1;
+  bolt = { x: W() * (0.15 + Math.random() * 0.7), seed: Math.random() * 100 };
+  thunder();
+  pax.t = 0; say('Ein Blitz! ⚡ Hast du das gesehen?');
+}
+
+function drawWeatherTint() {
+  const w = WX();
+  if (!w.tint) return;
+  ctx.fillStyle = night ? `rgba(0,0,8,${w.tint * 0.6})` : `rgba(70,80,95,${w.tint})`;
+  ctx.fillRect(0, 0, W(), H());
+}
+
+function drawWeatherFx(cockpit) {
+  const w = WX();
+  const v = state === 'flying' || state === 'menu' ? (p && state !== 'menu' ? p.v : 60) : 0;
+  if (w.rain) {
+    // Regen wird schräg, je schneller du fliegst
+    const lean = clamp(v / 4, 4, 30) * (cockpit ? 0 : 1);
+    const len = cockpit ? 40 : 18;
+    ctx.strokeStyle = night ? 'rgba(170,190,230,0.45)' : cockpit ? 'rgba(235,242,255,0.75)' : 'rgba(210,225,245,0.55)';
+    ctx.lineWidth = cockpit ? 2 : 1.2;
+    ctx.beginPath();
+    for (let i = 0; i < w.rain; i++) {
+      const sp = 700 + rand(i * 3.3) * 400;
+      const y = (rand(i * 1.1) * H() + time * sp) % (H() + 40) - 20;
+      const x = ((rand(i * 2.7) * W() - time * lean * 20) % W() + W()) % W();
+      if (cockpit) {
+        // Tropfen fliegen von der Mitte nach außen über die Scheibe
+        const k = (time * (1.2 + rand(i) * 0.8) + rand(i * 5.1)) % 1;
+        const a = rand(i * 7.7) * Math.PI * 2, r0 = Math.min(W(), H()) * 0.6 * k;
+        const cx = W() / 2 + Math.cos(a) * r0, cy = H() * 0.33 + Math.sin(a) * r0 * 0.6;
+        ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(a) * len * k, cy + Math.sin(a) * len * 0.6 * k);
+      } else {
+        ctx.moveTo(x, y); ctx.lineTo(x - lean, y + len);
+      }
+    }
+    ctx.stroke();
+  }
+  if (w.snow) {
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    for (let i = 0; i < w.snow; i++) {
+      const sp = 50 + rand(i * 3.3) * 70, drift = cockpit ? 0 : v * 2.5;
+      const y = (rand(i * 1.1) * H() + time * sp) % (H() + 20) - 10;
+      const x = ((rand(i * 2.7) * W() + Math.sin(time * 1.5 + i) * 12 - time * drift) % W() + W()) % W();
+      const r = 1.2 + rand(i * 4.4) * 2;
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  if (bolt && flash > 0.4 && !cockpit) {
+    // zackiger Blitz vom Himmel
+    ctx.strokeStyle = `rgba(255,255,230,${flash})`; ctx.lineWidth = 3;
+    ctx.beginPath();
+    let x = bolt.x, y = 0;
+    ctx.moveTo(x, y);
+    for (let i = 1; i <= 8; i++) {
+      x += (rand(bolt.seed + i) - 0.5) * 60; y = H() * 0.6 * i / 8;
+      ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+  if (flash > 0) {
+    ctx.fillStyle = `rgba(255,255,255,${flash * 0.55})`;
+    ctx.fillRect(0, 0, W(), H());
+  }
+}
+
+// ── Nacht ──────────────────────────────────────────────────────────
+const NIGHT_SKY = 'rgba(6,10,34,0.8)';
+let nightCanvas = null;
+
+function drawStars(n, yMax, shift) {
+  for (let i = 0; i < n; i++) {
+    const x = ((rand(i * 1.7) * W() * 1.5 - shift) % (W() * 1.5) + W() * 1.5) % (W() * 1.5) - W() * 0.25;
+    const y = rand(i * 2.9) * yMax;
+    const tw = 0.5 + 0.5 * Math.sin(time * 2 + i * 1.3);
+    ctx.fillStyle = `rgba(255,255,235,${0.35 + 0.55 * tw})`;
+    const r = rand(i * 4.1) < 0.15 ? 2 : 1.3;
+    ctx.fillRect(x, y, r, r);
+  }
+}
+
+function drawMoon(x, y, r) {
+  const g = ctx.createRadialGradient(x, y, r * 0.5, x, y, r * 4);
+  g.addColorStop(0, 'rgba(230,235,255,0.35)'); g.addColorStop(1, 'rgba(230,235,255,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(x, y, r * 4, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#f4f1dc';
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = 'rgba(180,175,150,0.5)';
+  for (const [dx, dy, k] of [[-0.3, -0.2, 0.22], [0.25, 0.3, 0.16], [0.35, -0.35, 0.1]]) {
+    ctx.beginPath(); ctx.arc(x + dx * r, y + dy * r, k * r, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+function drawNightOutside(gy) {
+  ctx.fillStyle = NIGHT_SKY;
+  ctx.fillRect(0, 0, W(), H());
+  if (gy > 0 && weather === 'sun') {
+    drawStars(110, Math.min(gy - 20, H()), farX * 0.05);
+    drawMoon(W() * 0.62, H() * 0.3 - cam.a * S * 0.02, 18);
+  }
+  // Lichter von Dörfern und Städten
+  if (gy < H()) {
+    const x0 = p.x - (W() * 0.35) / S, x1 = p.x + (W() * 0.65) / S, cw = 30;
+    for (let c = Math.floor(x0 / cw); c * cw < x1; c++) {
+      const x = c * cw;
+      if (landFactor(x) < 1) continue;
+      const city = x < 7000 || Math.abs(x - DEST) < 7000;
+      const n = city ? 3 : rand(Math.floor(x / 900)) < 0.4 ? 2 : 0;
+      for (let k = 0; k < n; k++) {
+        const q = c * 5 + k;
+        if (rand(q + 0.11) < 0.35) continue;
+        const yy = gy + 4 + Math.pow(rand(q + 0.47), 1.6) * (H() - gy);
+        if (Math.abs(x - p.x) < 60 && yy < gy + 12) continue;
+        const xx = sx(x + rand(q + 0.83) * cw);
+        ctx.fillStyle = rand(q + 0.2) < 0.75 ? 'rgba(255,205,110,0.9)' : 'rgba(235,240,255,0.85)';
+        ctx.fillRect(xx, yy, 1.5 + (yy - gy) * 0.01, 1.5);
+      }
+    }
+  }
+  if (p.x < 9000) drawSkyline(gy, true);
+  // Fenster der Flughäfen
+  const ag = sy(0) - 3;
+  ctx.fillStyle = 'rgba(255,215,130,0.85)';
+  for (const [x0, w, h] of [[300, 380, 20], [DEST + 600, 380, 18]]) {
+    ctx.fillRect(sx(x0) + 2 * S, ag - h * S * 0.75, w * S - 4 * S, h * S * 0.35);
+  }
+  for (const x of [1100, DEST + 1300]) {
+    ctx.fillStyle = 'rgba(150,240,220,0.9)';
+    ctx.fillRect(sx(x) - 7 * S, ag - 65 * S, 14 * S, 6 * S);
+    ctx.fillStyle = (time % 1.5) < 0.75 ? '#ff3030' : '#801818';
+    ctx.beginPath(); ctx.arc(sx(x), ag - 75 * S, 1.5, 0, Math.PI * 2); ctx.fill();
+  }
+  runwayLights(RWY_A, true);
+  runwayLights(RWY_B, true);
+  drawApproachLights(true);
+  drawGlidePath();
+}
+
+function drawPlaneNight() {
+  // der Flieger wird auf einer eigenen Fläche abgedunkelt, damit nur er dunkler wird und nicht der Himmel drumherum
+  if (!nightCanvas) nightCanvas = document.createElement('canvas');
+  if (nightCanvas.width !== canvas.width || nightCanvas.height !== canvas.height) {
+    nightCanvas.width = canvas.width; nightCanvas.height = canvas.height;
+  }
+  const nc = nightCanvas.getContext('2d'), dpr = canvas.width / W();
+  nc.setTransform(1, 0, 0, 1, 0, 0);
+  nc.clearRect(0, 0, nightCanvas.width, nightCanvas.height);
+  nc.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const keep = ctx;
+  ctx = nc;
+  drawPlane();
+  ctx = keep;
+  nc.globalCompositeOperation = 'source-atop';
+  nc.fillStyle = 'rgba(6,10,34,0.55)';
+  nc.fillRect(0, 0, W(), H());
+  nc.globalCompositeOperation = 'source-over';
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(nightCanvas, 0, 0);
+  ctx.restore();
+
+  if (p.crash === 'sea' && p.sinkAnim > 6) return;
+  ctx.save();
+  planeTransform(ctx);
+  const on = state === 'flying';
+  const T = PT();
+  if (on && p.gearDown) {
+    // Landescheinwerfer
+    const [nx, ny] = T.nose;
+    const g = ctx.createLinearGradient(nx, ny, nx + 59, ny);
+    g.addColorStop(0, 'rgba(255,250,220,0.55)'); g.addColorStop(1, 'rgba(255,250,220,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.moveTo(nx, ny - 0.4); ctx.lineTo(nx + 59, ny - 6); ctx.lineTo(nx + 59, ny + 10); ctx.closePath(); ctx.fill();
+  }
+  drawWindows(T, 'rgba(255,225,140,0.95)');
+  ctx.fillStyle = 'rgba(150,200,255,0.6)';
+  poly(T.cockpit); ctx.fill();
+  // Logo am Leitwerk wird angestrahlt
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.font = `bold ${T.logo[2]}px system-ui, -apple-system, sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('H', T.logo[0], T.logo[1]);
+  if (on) {
+    // rotes Licht an der linken Flügelspitze, weißes am Heck
+    const [rx, ry] = T.nav, [wx, wy] = T.tail;
+    ctx.fillStyle = '#ff3030';
+    ctx.beginPath(); ctx.arc(rx, ry, 0.45, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,48,48,0.3)';
+    ctx.beginPath(); ctx.arc(rx, ry, 1.6, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(wx, wy, 0.4, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
 }
 
 // ── Zeichnen: Anzeigen ─────────────────────────────────────────────
@@ -1465,7 +2614,7 @@ function drawHUD() {
   ctx.fillStyle = '#2f8fd0'; ctx.fillRect(mx(SEA_FROM), base, mx(SEA_TO) - mx(SEA_FROM), 3);
   ctx.strokeStyle = 'rgba(60,255,120,0.8)'; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]);
   const alt = a => base - (a / CEILING) * (mh - 12);
-  ctx.beginPath(); ctx.moveTo(mx(DEST - GLIDE_LEN), alt(glideAlt(DEST - GLIDE_LEN))); ctx.lineTo(mx(DEST), base); ctx.stroke();
+  if (!PT().glider) { ctx.beginPath(); ctx.moveTo(mx(DEST - GLIDE_LEN), alt(glideAlt(DEST - GLIDE_LEN))); ctx.lineTo(mx(DEST), base); ctx.stroke(); }
   ctx.setLineDash([]);
   txt('FRA', mx(0) + 2, my + 9 * u, 9 * u, 'rgba(255,255,255,0.8)', 'left');
   txt(R.code, mx(DEST) + 10, my + 9 * u, 9 * u, 'rgba(255,255,255,0.8)', 'left');
@@ -1487,11 +2636,23 @@ function drawHUD() {
 
   // Knöpfe
   const bs = buttons();
-  drawButton(bs.thrUp, '+', 'Schub', held('thrUp'));
-  drawButton(bs.thrDn, '−', 'Schub', held('thrDn'));
+  const glider = PT().glider;
+  if (!glider) {
+    drawButton(bs.thrUp, '+', 'Schub', held('thrUp'));
+    drawButton(bs.thrDn, '−', 'Schub', held('thrDn'));
+  }
   drawButton(bs.up, '▲', 'Nase hoch', held('up'));
   drawButton(bs.dn, '▼', 'Nase runter', held('dn'));
-  drawButton(bs.gear, p.gearDown ? '⚙️ raus' : '⚙️ drin', 'Fahrwerk', false, p.gearDown ? '#7dff9a' : '#ffd34d');
+  if (glider && p.tow && !p.tow.free) drawButton(bs.gear, '🪝', 'Ausklinken', false, '#ffd34d');
+  else if (glider) drawButton(bs.gear, p.airbrake ? '⬆ raus' : '⬆ drin', 'Bremsklappen', false, p.airbrake ? '#ffd34d' : '#7dff9a');
+  if (glider && h.includes('blinkenden')) {
+    const r = bs.gear, a = 0.5 + 0.5 * Math.sin(time * 10);
+    ctx.strokeStyle = `rgba(255,211,77,${a})`; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.roundRect(r.x - 4, r.y - 4, r.w + 8, r.h + 8, 16); ctx.stroke();
+    txt('👇', r.x + r.w / 2, r.y - 18 - 6 * a, 26, '#fff');
+  }
+  if (glider) drawGliderHelp();
+  else drawButton(bs.gear, p.gearDown ? '⚙️ raus' : '⚙️ drin', 'Fahrwerk', false, p.gearDown ? '#7dff9a' : '#ffd34d');
   drawButton(bs.brake, '🛑', 'Bremse', held('brake'));
   drawButton(bs.view, '👁️', view === 'cockpit' ? 'Außen' : 'Cockpit', false);
   drawButton(bs.left, '◀', 'links', held('left'));
@@ -1502,6 +2663,7 @@ function drawHUD() {
   const rs = Math.min(130 * u, leftTop - radarTop);
   if (rs >= 60 && view !== 'cockpit') drawRadar(m, leftTop - rs, rs);
   // Schubanzeige
+  if (glider) { drawBubble(); return; }
   const bx = bs.thrUp.x + bs.thrUp.w + 8, by = bs.thrUp.y, bh = bs.thrDn.y + bs.thrDn.h - by, bw = 12 * u;
   panel(bx, by, bw, bh);
   const fh = (bh - 6) * p.throttle;
@@ -1531,6 +2693,10 @@ function drawRadar(x, y, R, RH = R) {
   for (const r of [RWY_A, RWY_B]) {
     ctx.lineWidth = Math.max(3, 60 * k);
     ctx.beginPath(); ctx.moveTo(...mp(r.x0, 0)); ctx.lineTo(...mp(r.x1, 0)); ctx.stroke();
+  }
+  if (PT().glider) for (const t of THERMALS) {
+    const [X, Y] = mp(t.x, 0);
+    if (Y > y && Y < y + RH) txt('⬆', X, Y, 12, 'rgba(120,220,255,0.95)');
   }
   ctx.translate(cxr, cyr); ctx.rotate(Math.atan(Math.tan(p.hdg) * 4));
   ctx.fillStyle = '#ffd34d';
@@ -1578,10 +2744,13 @@ let menuX = 0;
 function drawMenu(dt) {
   menuX += dt * 60;
   const g = ctx.createLinearGradient(0, 0, 0, H());
-  g.addColorStop(0, '#3f8fdc'); g.addColorStop(1, '#bfe2ff');
+  g.addColorStop(0, night ? '#050a24' : '#3f8fdc'); g.addColorStop(1, night ? '#1f3466' : '#bfe2ff');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, W(), H());
+  if (night && weather === 'sun') { drawStars(120, H() * 0.8, menuX * 0.1); drawMoon(W() * 0.18, H() * 0.3, 20); }
+  if (night) ctx.globalAlpha = 0.35;
   drawFarClouds(menuX * 0.5, 0);
+  ctx.globalAlpha = 1;
 
   const u = clamp(Math.min(W(), H()) / 400, 0.8, 1.6);
   const s = Math.min(W() * 0.62 / 78, H() * 0.3 / 26);
@@ -1589,7 +2758,7 @@ function drawMenu(dt) {
 
   // Kondensstreifen
   ctx.lineCap = 'round';
-  for (const [ex, ey] of [[2 - 1.4, 5.6], [-8 - 1.4, 4.1]]) {
+  for (const [ex, ey] of PT().engines.map(([x, y]) => [x - 1.4, y])) {
     const g2 = ctx.createLinearGradient(px + ex * s, 0, 0, 0);
     g2.addColorStop(0, 'rgba(255,255,255,0.8)'); g2.addColorStop(1, 'rgba(255,255,255,0)');
     ctx.strokeStyle = g2; ctx.lineWidth = 4 * u;
@@ -1597,31 +2766,50 @@ function drawMenu(dt) {
   }
   ctx.save();
   ctx.translate(px, py); ctx.rotate(-3 * DEG); ctx.scale(s, s);
-  drawA380(0, true);
+  drawPlaneType(PT(), 0, true);
   ctx.restore();
 
   // Vordere Wolken
   for (let i = 0; i < 4; i++) {
     const span = W() + 400;
     const x = ((rand(i + 70) * span - menuX * 1.6) % span + span) % span - 200;
-    cloud(x, H() * (0.62 + rand(i + 80) * 0.15), 26 + rand(i + 90) * 20, 0.85);
+    cloud(x, H() * (0.62 + rand(i + 80) * 0.15), 26 + rand(i + 90) * 20, night ? 0.3 : 0.85);
   }
 
+  drawWeatherTint();
+  drawWeatherFx(false);
+
   const ts = Math.min(W() * 0.09, 56 * u);
-  txt('A380 Flugsimulator', W() / 2, H() * 0.13, ts, '#fff', 'center', 'rgba(20,40,90,0.7)');
-  txt(`Henrik Airlines · Frankfurt ✈ ${R.name}`, W() / 2, H() * 0.13 + ts * 0.85, ts * 0.38, '#ffd34d', 'center', 'rgba(20,40,90,0.7)');
+  txt('Flugsimulator', W() / 2, H() * 0.13, ts, '#fff', 'center', 'rgba(20,40,90,0.7)');
+  txt(`Henrik Airlines · ${PT().name} · Frankfurt ✈ ${R.name}`, W() / 2, H() * 0.13 + ts * 0.85, ts * 0.38, '#ffd34d', 'center', 'rgba(20,40,90,0.7)');
 
   const bh = 56 * u, bw = Math.min(320, W() - 2 * bh - 60);
   menuBtn = { x: W() / 2 - bw / 2, y: H() * 0.72, w: bw, h: bh };
+  // Flugzeug aussuchen
+  const sw = Math.min(W() - 24, 420), sh = 34 * u, segW = sw / PLANE_KEYS.length;
+  const sy0 = menuBtn.y - sh - 10 * u;
+  ctx.fillStyle = 'rgba(20,40,90,0.55)';
+  ctx.beginPath(); ctx.roundRect(W() / 2 - sw / 2, sy0, sw, sh, 12); ctx.fill();
+  planeBtns = PLANE_KEYS.map((k, i) => {
+    const r = { x: W() / 2 - sw / 2 + i * segW, y: sy0, w: segW, h: sh, k };
+    if (k === planeKey) {
+      ctx.fillStyle = '#ffd34d';
+      ctx.beginPath(); ctx.roundRect(r.x + 3, r.y + 3, r.w - 6, r.h - 6, 10); ctx.fill();
+    }
+    txt(`✈ ${PLANES[k].short}`, r.x + r.w / 2, r.y + sh / 2, 15 * u, k === planeKey ? '#1d2433' : '#fff');
+    return r;
+  });
   // Pfeile, um das Ziel auszusuchen
   menuPrev = { x: menuBtn.x - bh - 12, y: menuBtn.y, w: bh, h: bh };
   menuNext = { x: menuBtn.x + bw + 12, y: menuBtn.y, w: bh, h: bh };
+  if (PT().glider) ctx.globalAlpha = 0.3;
   for (const [r, label] of [[menuPrev, '◀'], [menuNext, '▶']]) {
     ctx.fillStyle = 'rgba(20,40,90,0.55)';
     ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, 14); ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2; ctx.stroke();
     txt(label, r.x + r.w / 2, r.y + r.h / 2, bh * 0.4, '#fff');
   }
+  ctx.globalAlpha = 1;
   const pulse = 1 + Math.sin(time * 4) * 0.03;
   ctx.save();
   ctx.translate(W() / 2, menuBtn.y + bh / 2); ctx.scale(pulse, pulse);
@@ -1629,7 +2817,7 @@ function drawMenu(dt) {
   ctx.beginPath(); ctx.roundRect(-bw / 2, -bh / 2, bw, bh, 16); ctx.fill();
   ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 3; ctx.stroke();
   txt(`✈ ${R.icon} ${R.name}`, 0, -bh * 0.12, 22 * u, '#fff');
-  txt(`Abflug · ${R.km} km · Ziel ${routeIdx + 1} von ${ROUTES.length}`, 0, bh * 0.3, 11 * u, 'rgba(255,255,255,0.85)');
+  txt(`${night ? '🌙 Nacht' : '☀️ Tag'} · ${WX().icon} ${WX().name} · ${R.km} km`, 0, bh * 0.3, 11 * u, 'rgba(255,255,255,0.85)');
   ctx.restore();
 
   musicBtn = { x: W() - 58, y: 10, w: 44, h: 44 };
@@ -1638,13 +2826,25 @@ function drawMenu(dt) {
   ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 1; ctx.stroke();
   txt(musicOff ? '🔇' : '🔊', musicBtn.x + 22, musicBtn.y + 23, 22, '#fff');
 
+  // Tag oder Nacht aussuchen
+  nightBtn = { x: musicBtn.x - 54, y: 10, w: 44, h: 44 };
+  ctx.fillStyle = night ? '#3b4f9a' : '#f0a020';
+  ctx.beginPath(); ctx.roundRect(nightBtn.x, nightBtn.y, 44, 44, 12); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1; ctx.stroke();
+  txt(night ? '🌙' : '☀️', nightBtn.x + 22, nightBtn.y + 23, 22, '#fff');
+  weatherBtn = { x: nightBtn.x - 54, y: 10, w: 44, h: 44 };
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.beginPath(); ctx.roundRect(weatherBtn.x, weatherBtn.y, 44, 44, 12); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1; ctx.stroke();
+  txt(WX().icon, weatherBtn.x + 22, weatherBtn.y + 23, 22, '#fff');
+
   const hs = 12 * u;
   let y = menuBtn.y + bh + 22 * u;
   for (const l of ['Knöpfe: Schub + / −, Nase ▲ ▼, Kurve ◀ ▶, Fahrwerk, Bremse, 👁️ Cockpit',
-                   'Tastatur: W S Schub · ↑ ↓ Nase · ← → Kurve · G Fahrwerk · Leertaste Bremse · C Cockpit · M Musik']) {
-    for (const w of wrap(l, W() - 32, hs)) { txt(w, W() / 2, y, hs, 'rgba(20,40,90,0.85)'); y += hs * 1.4; }
+                   'Tastatur: W S Schub · ↑ ↓ Nase · ← → Kurve · G Fahrwerk · Leertaste Bremse · C Cockpit · F Flugzeug · N Nacht · R Wetter · M Musik']) {
+    for (const w of wrap(l, W() - 32, hs)) { txt(w, W() / 2, y, hs, night ? 'rgba(220,230,255,0.85)' : 'rgba(20,40,90,0.85)'); y += hs * 1.4; }
   }
-  if (H() > W()) txt('📱 Tipp: Handy quer halten!', W() / 2, y + hs, hs * 1.2, '#1f2f4a');
+  if (H() > W()) txt('📱 Tipp: Handy quer halten!', W() / 2, y + hs, hs * 1.2, night ? '#dfe7ff' : '#1f2f4a');
 }
 
 // ── Blick aus dem Cockpit ──────────────────────────────────────────
@@ -1672,8 +2872,9 @@ function drawCockpit() {
   const f = Math.max(w, h) * 0.7;
   const pc = Math.cos(p.pitch * DEG), ps = Math.sin(p.pitch * DEG);
   const ch = Math.cos(p.hdg), sh = Math.sin(p.hdg);
-  const eyeX = p.x + 36 * pc * ch, eyeZ = p.z + 36 * pc * sh;
-  const eye = p.y + 7 + 36 * ps;
+  const nose = 36 * PT().k;
+  const eyeX = p.x + nose * pc * ch, eyeZ = p.z + nose * pc * sh;
+  const eye = p.y + 7 * Math.max(0.6, PT().k) + nose * ps;
   const vib = p.onGround ? (Math.random() - 0.5) * p.v * 0.03 : 0;
   const cx = w / 2 + shX, cy = h * 0.36 + shY + vib;
   const hy = cy + f * Math.tan(p.pitch * DEG);
@@ -1719,7 +2920,7 @@ function drawCockpit() {
   ctx.fillRect(cx - big, cy - big, 2 * big, 2 * big);
   const sunA = 20 * DEG - p.hdg;
   const sxp = cx + f * Math.tan(sunA), syp = hy - f * 0.5;
-  if (Math.abs(sunA) < 70 * DEG) {
+  if (!night && weather === 'sun' && Math.abs(sunA) < 70 * DEG) {
     const sg = ctx.createRadialGradient(sxp, syp, 0, sxp, syp, 110);
     sg.addColorStop(0, 'rgba(255,250,220,0.95)');
     sg.addColorStop(0.25, 'rgba(255,240,180,0.6)');
@@ -1795,28 +2996,59 @@ function drawCockpit() {
   }
 
   // Landebahnen
+  // nachts werden alle Lichter erst nach dem Abdunkeln gezeichnet
+  const glows = [], late = [];
   const light = (x, z, a, r, color) => {
+    if (night) { glows.push([x, z, a, r, color]); return; }
     const [d, l] = cam(x, z);
     if (!visible(d, l, 20) || d > 9000) return;
     const [X, Y] = scr(d, l, a);
     ctx.fillStyle = color;
     ctx.beginPath(); ctx.arc(X, Y, Math.max(1, f * r / d), 0, Math.PI * 2); ctx.fill();
   };
+  const wet = weather === 'rain' || weather === 'storm';
   for (const r of [RWY_A, RWY_B]) {
     if (r.x1 < eyeX - 3000 || r.x0 > eyeX + DMAX) continue;
-    quad(r.x0, r.x1, -30, 30, 0, '#3b3f45');
+    const near = r.x0 < eyeX + 7000;
+    quad(r.x0 - 60, r.x1 + 60, -38, 38, 0, '#6b6f72');                 // Seitenstreifen
+    quad(r.x0, r.x1, -30, 30, 0, wet ? '#2c3036' : '#3b3f45');
+    if (near) {
+      // Asphaltplatten in leicht anderen Grautönen
+      for (let x = r.x0; x < r.x1; x += 200) if (rand(x * 0.013) < 0.4) quad(x, x + 200, -30, 30, 0, wet ? '#30343a' : '#41454b');
+      // Reifenspuren in der Aufsetzzone
+      for (const z of [-7, 4]) quad(r.x0 + 250, r.x0 + 900, z, z + 3, 0, 'rgba(15,15,18,0.5)');
+    }
+    quad(r.x0, r.x1, -28.5, -27.5, 0, '#ffffff');                     // Randlinien
+    quad(r.x0, r.x1, 27.5, 28.5, 0, '#ffffff');
     for (const e of [r.x0 + 10, r.x1 - 50]) {
       for (const z of [-26, -20, -14, -8, 5, 11, 17, 23]) quad(e, e + 40, z, z + 3, 0, '#ffffff');
     }
-    for (let x = r.x0 + 120; x < r.x1 - 120; x += 70) {
-      if (x + 35 < eyeX - 200 || x > eyeX + 6000) continue;
-      quad(x, x + 35, -0.7, 0.7, 0, '#ffffff');
+    if (near) {
+      runwayNumber(r.num, r.x0 + 70, quad);
+      for (let i = 1; i <= 6; i++) {
+        const x = r.x0 + i * 150, big = i === 2;
+        for (const side of [-1, 1]) {
+          if (big) quad(x, x + 60, side * 18 - 4, side * 18 + 4, 0, '#ffffff');
+          else for (const k of [0, 1, 2]) quad(x, x + 22, side * (9 + k * 4), side * (9 + k * 4) + side * 1.8, 0, '#ffffff');
+        }
+      }
+    }
+    for (let x = r.x0 + 120; x < r.x1 - 120; x += 50) {
+      if (x + 30 < eyeX - 200 || x > eyeX + 6000) continue;
+      quad(x, x + 30, -0.7, 0.7, 0, '#ffffff');
     }
     for (let x = r.x0; x <= r.x1; x += 60) {
       const color = x === r.x0 ? '#3f3' : x + 60 > r.x1 ? '#f33' : '#fff7d0';
       light(x, -31, 0.5, 0.5, color);
       light(x, 31, 0.5, 0.5, color);
     }
+    // Mittellinienfeuer und Lichterreihen in der Aufsetzzone
+    for (let x = r.x0 + 15; x < r.x1; x += 30) {
+      const left = r.x1 - x;
+      light(x, 0, 0.1, 0.35, left < 300 ? '#ff4040' : left < 900 && (x / 30) % 2 < 1 ? '#ff4040' : '#f4f8ff');
+      if (x < r.x0 + 900 && night) for (const z of [-11, -9, 9, 11]) light(x, z, 0.1, 0.3, '#f4f8ff');
+    }
+    if (r === RWY_B) papiColors(r).forEach((c, i) => light(r.x0 + 20, -45 - i * 9, 1, 0.9, c));
   }
   // Anflugbefeuerung mit Lauflicht
   const run = Math.floor((time * 2) % 1 * 15);
@@ -1862,6 +3094,7 @@ function drawCockpit() {
     for (let i = 0; i < 9; i++) {
       const hx = vx + rand(k * 9 + i) * 320, hz = zc + rand(k * 9 + i + 0.5) * 260;
       box(hx, hx + 12, hz, hz + 10, 0, 6 + rand(k + i) * 3, hc[0], hc[1], i % 3 ? hc[2] : hc[3]);
+      if (night && rand(k * 9 + i + 0.2) < 0.75) glows.push([hx + 6, hz + 5, 3, 1.2, '#ffd27a']);
     }
   }
   // Bäume und Palmen
@@ -1904,6 +3137,28 @@ function drawCockpit() {
       } });
     }
   }
+  if (PT().glider) {
+    for (const t of THERMALS) {
+      const [d, l] = cam(t.x, 0);
+      if (d < 50 || !visible(d, l, 400)) continue;
+      things.push({ d, draw() { const [X, Y] = scr(d, l, 345); cloud(X, Y, f * 110 / d, 0.95); } });
+    }
+    const tw = p.tow;
+    if (tw && !tw.free) {
+      const [d, l] = cam(tw.x, 0);
+      if (d > near) things.push({ d, draw() {
+        // von hinten: Flügel, Rumpf, Leitwerk, und das Seil kommt zu dir
+        const [X, Y] = scr(d, l, tw.y + 1), k = f / d;
+        ctx.strokeStyle = '#f2f2f2'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(cx, h * 0.6); ctx.quadraticCurveTo(cx, (h * 0.6 + Y) / 2 + 10, X, Y); ctx.stroke();
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(X - 5 * k, Y - 0.4 * k, 10 * k, 0.8 * k);
+        ctx.fillStyle = GREEN; ctx.fillRect(X - 5 * k, Y + 0.1 * k, 10 * k, 0.3 * k);
+        ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(X, Y, 0.9 * k, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = BLUE; ctx.fillRect(X - 0.25 * k, Y - 2.4 * k, 0.5 * k, 2.2 * k);
+        ctx.fillStyle = '#dfe4ea'; ctx.fillRect(X - 2 * k, Y - 0.9 * k, 4 * k, 0.35 * k);
+      } });
+    }
+  }
   // berühmte Bauwerke am Ziel
   for (const [kind, lx, lz] of R.landmarks) {
     const [d, l] = cam(DEST + lx, lz);
@@ -1916,10 +3171,10 @@ function drawCockpit() {
     } });
   }
   // grüne Ringe der Landehilfe
-  for (let x = DEST - GLIDE_LEN; x <= DEST; x += 120) {
+  for (let x = DEST - GLIDE_LEN; x <= (PT().glider ? -1e9 : DEST); x += 120) {
     const [d, l] = cam(x, 0);
     if (!visible(d, l, 50) || d > 5000) continue;
-    things.push({ d, draw() {
+    (night ? late : things).push({ d, draw() {
       const [X, Y] = scr(d, l, glideAlt(x) + 7), r = Math.max(2, f * 4 / d);
       // nahe Ringe werden durchsichtig, damit man die Landebahn dahinter sieht
       ctx.strokeStyle = `rgba(60,255,120,${0.85 * clamp((d - 100) / 300, 0, 1)})`; ctx.lineWidth = Math.max(1.5, r * 0.15);
@@ -1929,8 +3184,41 @@ function drawCockpit() {
   things.sort((a, b) => b.d - a.d);
   for (const o of things) o.draw();
 
+  if (night) {
+    ctx.fillStyle = NIGHT_SKY;
+    ctx.fillRect(cx - big, cy - big, 2 * big, 2 * big);
+    for (let i = 0; i < (weather === 'sun' ? 160 : 0); i++) {
+      const az = (rand(i * 1.7) - 0.5) * 170 * DEG - p.hdg, el = (1 + rand(i * 2.9) * 55) * DEG;
+      if (Math.abs(az) > 80 * DEG) continue;
+      const X = cx + f * Math.tan(az), Y = hy - f * Math.tan(el);
+      ctx.fillStyle = `rgba(255,255,235,${0.4 + 0.5 * (0.5 + 0.5 * Math.sin(time * 2 + i * 1.3))})`;
+      ctx.fillRect(X, Y, 1.5, 1.5);
+    }
+    if (weather === 'sun' && Math.abs(sunA) < 70 * DEG) drawMoon(sxp, syp, 22);
+    // Lichter von Städten auf dem Boden
+    for (let row = Math.floor((eyeX - 1000) / 300); row * 300 < eyeX + 12000; row++) {
+      for (let k = 0; k < 14; k++) {
+        const n = row * 14 + k, x = row * 300 + rand(n + 0.31) * 300, z = (rand(n + 0.62) - 0.5) * 9000;
+        const city = x < 7000 || Math.abs(x - DEST) < 7000;
+        if (landFactor(x) < 1 || Math.abs(z) < 80 || rand(n + 0.93) > (city ? 0.9 : 0.25)) continue;
+        glows.push([x, z, 1, 1.5, rand(n) < 0.75 ? '#ffcd6e' : '#eef2ff']);
+      }
+    }
+    for (const x0 of [300, DEST + 600]) for (let x = x0; x <= x0 + 380; x += 20) glows.push([x, -180, 8, 1.2, '#ffd78a']);
+    for (const [x, z, a, r, color] of glows) {
+      const [d, l] = cam(x, z);
+      if (!visible(d, l, 20) || d > 12000) continue;
+      const [X, Y] = scr(d, l, a), rr = Math.max(1, f * r / d);
+      if (rr > 1.5) glowDot(X, Y, rr * 4, color);
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.arc(X, Y, rr, 0, Math.PI * 2); ctx.fill();
+    }
+    late.sort((a, b) => b.d - a.d);
+    for (const o of late) o.draw();
+  }
+
   // Blendenflecken, wenn die Sonne zu sehen ist
-  if (Math.abs(sunA) < 40 * DEG && syp > 0 && syp < h * 0.6) {
+  if (!night && weather === 'sun' && Math.abs(sunA) < 40 * DEG && syp > 0 && syp < h * 0.6) {
     const vx = cx - sxp, vy = cy - syp;
     for (const [k, r, a, c] of [[0.5, 18, 0.12, '255,220,150'], [0.9, 8, 0.18, '180,220,255'], [1.3, 26, 0.08, '255,180,120'], [1.7, 12, 0.12, '160,255,200']]) {
       ctx.fillStyle = `rgba(${c},${a})`;
@@ -1939,6 +3227,8 @@ function drawCockpit() {
   }
   ctx.restore();
 
+  drawWeatherTint();
+  drawWeatherFx(true);
   drawCockpitFrame();
 }
 
@@ -2051,14 +3341,16 @@ function loop(ts) {
     startMusic();
     drawMenu(dt);
   } else {
-    if (state === 'flying') { update(dt); updateEngine(); }
+    if (state === 'flying') { update(dt); updateEngine(); updateStorm(dt); }
+    flash = Math.max(0, flash - dt * 2.5);
     welcomeT -= dt;
     resultT -= dt;
-    if (p.crash === 'sea') p.sinkAnim = Math.min(10, p.sinkAnim + dt * 3);
+    if (state === 'crashed') updateCrash(dt);
     updateParticles(dt);
 
     const base = Math.min(W() / 260, H() / 170);
-    S = base * (1 - 0.3 * clamp(p.y / 700, 0, 1));
+    // kleine Flugzeuge holt die Kamera näher heran
+    S = base * (1 - 0.3 * clamp(p.y / 700, 0, 1)) * clamp(1 / Math.sqrt(PT().k), 1, 2.1);
     const target = Math.max(p.y + 10, H() * 0.27 / S);
     if (!cam.init) { cam.a = target; cam.init = true; }
     cam.a += (target - cam.a) * Math.min(1, dt * 4);
@@ -2081,13 +3373,28 @@ function loop(ts) {
       drawRunway(RWY_A);
       drawRunway(RWY_B);
       drawApproachLights();
+      if (PT().glider) drawThermals();
       worldClouds(false);
-      drawGlidePath();
-      drawContrails();
-      drawShadow();
-      drawPlane();
-      drawParticles();
-      worldClouds(true);
+      drawWeatherTint();
+      if (night) {
+        drawContrails();
+        worldClouds(true);
+        drawNightOutside(gy);
+        if (PT().glider) drawTowPlane();
+        drawPlaneNight();
+        drawParticles();
+        drawWreckFx();
+      } else {
+        drawGlidePath();
+        drawContrails();
+        drawShadow();
+        if (PT().glider) drawTowPlane();
+        drawPlane();
+        drawParticles();
+        drawWreckFx();
+        worldClouds(true);
+      }
+      drawWeatherFx(false);
     }
     if (state === 'flying') drawHUD();
     drawResult();
