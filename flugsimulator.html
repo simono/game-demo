@@ -76,6 +76,7 @@ const BLUE = '#1f4fd1', GREEN = '#1fb84f';
 // ── Spielzustand ───────────────────────────────────────────────────
 let state = 'menu';       // menu, flying, crashed, done
 let p, cam, pax, particles = [], contrail = [], result = null;
+let rockets = [], balloons = [], hits = 0, fireCd = 0;
 let resultT = 0, welcomeT = 0, shake = 0, farX = 0, time = 0;
 
 let VR = 75;
@@ -95,6 +96,7 @@ function newFlight() {
     p.throttle = 0; p.airbrake = false; p.varioT = 0;
   }
   particles = []; contrail = []; result = null;
+  rockets = []; hits = 0; fireCd = 0; balloons = PT().weapon ? makeBalloons() : [];
   state = 'flying'; welcomeT = 4; shake = 0; flash = 0; bolt = null; nextBolt = 5;
   pointers.clear();
   startEngine();
@@ -118,6 +120,7 @@ const KEYMAP = {
   w: 'thrUp', W: 'thrUp', '+': 'thrUp',
   s: 'thrDn', S: 'thrDn', '-': 'thrDn',
   ' ': 'brake', b: 'brake', B: 'brake',
+  x: 'fire', X: 'fire',
 };
 function held(k) {
   if (keys[k]) return true;
@@ -151,6 +154,7 @@ function buttons() {
     right: { x: W() - m - b, y: middle, w: b, h: b },
     view:  { x: W() - m - b, y: middle - gh - 10, w: b, h: gh },
   };
+  if (PT().weapon) bs.fire = { x: padX - b - 10, y: middle - b - 10, w: b, h: b };
   // Fahrwerk und Bremse unten in der Mitte; wenn dort kein Platz ist, über dem Schub
   if (W() / 2 + 16 + gw <= bs.left.x && W() / 2 - 16 - gw >= m + b + 60) {
     bs.gear = { x: W() / 2 - gw - 6, y: H() - m - gh, w: gw, h: gh };
@@ -306,6 +310,8 @@ function noiseBurst(start, dur, vol, freq, type = 'lowpass') {
 }
 function clunk() { noiseBurst(0, 0.25, 0.6, 300); tone(90, 0, 0.2, 0.2, 'triangle'); }
 function thump() { noiseBurst(0, 0.4, 0.9, 200); tone(60, 0, 0.3, 0.3, 'triangle'); }
+function whoosh() { noiseBurst(0, 0.6, 0.5, 1800, 'bandpass'); }
+function pop() { noiseBurst(0, 0.15, 0.9, 3000, 'highpass'); tone(900, 0, 0.1, 0.25, 'square'); }
 function boom() { noiseBurst(0, 2.2, 1.6, 500); tone(45, 0, 1, 0.4, 'triangle'); }
 function splash() { noiseBurst(0, 1.6, 1.2, 1200, 'bandpass'); noiseBurst(0.1, 1.2, 0.6, 400); }
 function applause() {
@@ -594,6 +600,7 @@ function update(dt) {
     if (w.turb > 2) shake = Math.max(shake, 1.5);
   }
   if (PT().glider) updateGlider(dt);
+  if (PT().weapon) updateWeapon(dt);
   if (PT().supersonic && !p.boomed && p.v > MACH1) {
     p.boomed = true; p.boomT = 0;
     boom(); shake = 7;
@@ -670,8 +677,9 @@ function landed() {
   if (pax.mood > 45) applause();
 }
 
+function balloonScore() { return PT().weapon ? ` 🎈 Ballons getroffen: ${hits} von ${balloons.length}!` : ''; }
 function finish(r) {
-  r.pax = paxVerdict(r);
+  r.pax = paxVerdict(r) + balloonScore();
   result = r;
   state = 'done';
   resultT = 0.6;
@@ -683,6 +691,7 @@ function crash(kind, text) {
   result.pax = pax.n === 1 ? '🙋 Dein Passagier ist zum Glück heil rausgeklettert. Puh!'
              : kind === 'sea' ? `🛟 Alle ${pax.n} Passagiere sind mit Schwimmwesten an Land geschwommen.`
                               : `🛝 Alle ${pax.n} Passagiere sind über die Notrutsche raus. Puh!`;
+  result.pax += balloonScore();
   state = 'crashed';
   resultT = 8;   // erst zuschauen, wie die Feuerwehr kommt; Tippen überspringt
   p.crash = kind;
@@ -798,6 +807,94 @@ function stopSiren(k) {
 }
 function stopSirens() {
   if (p && p.wreck) p.wreck.trucks.forEach(stopSiren);
+}
+
+// ── Raketen und Zielballons (nur der Kampfjet) ─────────────────────
+const BALLOON_COLORS = ['#e74c3c', '#ffd34d', '#2bb24c', '#3498db', '#9b59b6', '#ff8c1a'];
+function makeBalloons() {
+  const out = [];
+  for (let x = 2000; x < DEST - GLIDE_LEN - 3000; x += 700 + Math.random() * 700) {
+    out.push({ x, a: 120 + Math.random() * 900, c: BALLOON_COLORS[out.length % BALLOON_COLORS.length], hit: false, ph: Math.random() * 6 });
+  }
+  return out;
+}
+// Lenkraketen suchen sich den nächsten Ballon vor dir, wenn er nicht zu hoch oder zu tief ist
+function nextBalloon(x, a, range) {
+  let best = null;
+  for (const b of balloons) {
+    const dx = b.x - x;
+    if (b.hit || dx < 30 || dx > range || Math.abs(b.a - a) > 250 + dx * 0.1) continue;
+    if (!best || dx < best.x - x) best = b;
+  }
+  return best;
+}
+function updateWeapon(dt) {
+  fireCd -= dt;
+  if (held('fire') && !p.onGround && fireCd <= 0) {
+    fireCd = 0.4;
+    const [x, a] = localToWorld(8, 5);
+    const sp = p.v + 250, d = p.pitch * DEG;
+    rockets.push({ x, a, vx: sp * Math.cos(d), va: sp * Math.sin(d), sp, t: 0, target: nextBalloon(x, a, 2000) });
+    whoosh();
+  }
+  for (const r of rockets) {
+    for (let i = 0; i < 4 && r.t < 99; i++) {
+      const h = dt / 4;
+      if (r.target && !r.target.hit) {
+        // Richtung zum Ziel drehen, aber nicht ruckartig
+        const want = Math.atan2(r.target.a - r.a, r.target.x - r.x), cur = Math.atan2(r.va, r.vx);
+        const ang = cur + clamp(want - cur, -4 * h, 4 * h);
+        r.vx = r.sp * Math.cos(ang); r.va = r.sp * Math.sin(ang);
+      }
+      r.x += r.vx * h; r.a += r.va * h;
+      for (const b of balloons) {
+        if (b.hit || Math.hypot(b.x - r.x, b.a - r.a) > 15) continue;
+        b.hit = true; r.t = 99; hits++;
+        pop();
+        for (let k = 0; k < 30; k++) {
+          particles.push({ x: b.x, a: b.a, vx: (Math.random() - 0.5) * 60, va: (Math.random() - 0.3) * 50, g: 20, life: 3, max: 3, r: 0.8, grow: 0,
+                           color: ['231,76,60', '255,211,77', '43,178,76', '52,152,219'][k % 4] });
+        }
+        pax.t = 0; say(hits === 1 ? 'Treffer! 🎈 Super gezielt!' : `Schon ${hits} Ballons! 🎈`);
+        break;
+      }
+    }
+    r.t += dt;
+    if (Math.random() < 0.7) particles.push({ x: r.x, a: r.a, vx: 0, va: 1, life: 0.8, max: 0.8, r: 0.6, grow: 2.5, color: '235,235,235' });
+  }
+  rockets = rockets.filter(r => r.t < 5 && r.a > 0);
+}
+function drawBalloon(X, Y, r, c) {
+  ctx.strokeStyle = 'rgba(60,60,60,0.7)'; ctx.lineWidth = Math.max(1, r * 0.06);
+  ctx.beginPath(); ctx.moveTo(X, Y + r * 1.15); ctx.quadraticCurveTo(X - r * 0.3, Y + r * 1.7, X, Y + r * 2.3); ctx.stroke();
+  ctx.fillStyle = c;
+  ctx.beginPath(); ctx.ellipse(X, Y, r * 0.85, r * 1.05, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(X - r * 0.15, Y + r * 1.15); ctx.lineTo(X + r * 0.15, Y + r * 1.15); ctx.lineTo(X, Y + r); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.beginPath(); ctx.ellipse(X - r * 0.3, Y - r * 0.4, r * 0.18, r * 0.3, -0.4, 0, Math.PI * 2); ctx.fill();
+}
+function drawBalloons() {
+  for (const b of balloons) {
+    if (b.hit) continue;
+    const X = sx(b.x), Y = sy(b.a + Math.sin(time + b.ph) * 2);
+    if (X < -60 || X > W() + 60) continue;
+    drawBalloon(X, Y, 6 * S, b.c);
+  }
+  for (const r of rockets) {
+    const X = sx(r.x), Y = sy(r.a), a = Math.atan2(r.va, r.vx);
+    ctx.save(); ctx.translate(X, Y); ctx.rotate(-a); ctx.scale(S, S);
+    ctx.fillStyle = '#ff9a2a'; ctx.beginPath(); ctx.moveTo(-2, -0.4); ctx.lineTo(-4.5, 0); ctx.lineTo(-2, 0.4); ctx.fill();
+    ctx.fillStyle = '#dfe4ea'; ctx.fillRect(-2, -0.3, 4, 0.6);
+    ctx.fillStyle = '#e74c3c'; ctx.beginPath(); ctx.moveTo(2, -0.3); ctx.lineTo(2.8, 0); ctx.lineTo(2, 0.3); ctx.fill();
+    ctx.restore();
+  }
+}
+function balloonHint() {
+  const b = nextBalloon(p.x, p.y, 4000) || balloons.find(b => !b.hit && b.x - p.x > 30 && b.x - p.x < 4000);
+  if (!b) return null;
+  const km = ((b.x - p.x) / 1000).toFixed(1).replace('.', ',');
+  if (nextBalloon(p.x, p.y, 2000) === b) return [`🎈 Ballon in ${km} km – Feuer! 🚀`, false];
+  return [`🎈 Ballon in ${km} km – flieg ${b.a > p.y ? 'höher ▲' : 'tiefer ▼'}`, false];
 }
 
 // ── Segelflug ──────────────────────────────────────────────────────
@@ -1280,6 +1377,7 @@ function hint() {
   if (dist < 25000 && p.v > 160) return ['Langsamer werden! Schub weg, bald kommt die Landung.', true];
   if (PT().supersonic && p.v > 200 && p.v < MACH1 && !p.boomed && dist > 30000) return ['Volle Kraft für den Nachbrenner! 🔥 Schaffst du Überschall?', false];
   if (dist < 8000 && p.v > VR + 30) return ['Zu schnell für die Landung! Schub weg.', true];
+  if (PT().weapon && !p.onGround && dist > GLIDE_LEN + 3000) { const bh = balloonHint(); if (bh) return bh; }
   if (dist < GLIDE_LEN + 3000 && Math.abs(p.z) > 40) return [`Die Landebahn ist ${side} – schau aufs Radar`, true];
   if (dist >= GLIDE_LEN + 3000 && Math.abs(p.hdg) > 25 * DEG) return [`${R.name} liegt ${p.hdg > 0 ? 'links ◀' : 'rechts ▶'}`, false];
   if (dist < 1500 && p.y < 30) return ['Gleich am Boden: Nase ganz leicht hoch ▲', false];
@@ -1651,7 +1749,7 @@ const PLANES = {
     gear: { top: 2.4, len: 5, nose: [24], main: [[-6.6, -4.8]] },
     nose: [40, 0.6], nav: [-29.6, 1.8], tail: [-38, -0.8], beacon: [0, -2.6], strobe: [-30, 1.8] },
   jet: { name: 'Kampfjet', short: 'Kampfjet', k: 0.22, vr: 72, thrust: 14, agile: 2.2, pax: [1, 1], gearH: 6,
-    drag: 6e-5, supersonic: true, maxPitch: 35, paint: ['#b4bdc7', '#98a3ae', '#76818d'], labelText: 'Henrik Air Force',
+    drag: 6e-5, supersonic: true, maxPitch: 35, weapon: true, paint: ['#b4bdc7', '#98a3ae', '#76818d'], labelText: 'Henrik Air Force',
     body() {
       ctx.moveTo(-34, -1.6); ctx.lineTo(-10, -2.2); ctx.lineTo(14, -2.4);
       ctx.bezierCurveTo(24, -2.4, 34, -1, 40, 0.4); ctx.bezierCurveTo(34, 1.6, 24, 2.6, 16, 2.6);
@@ -2711,6 +2809,7 @@ function drawHUD() {
   const alt = a => base - (a / CEILING) * (mh - 12);
   if (!PT().glider) { ctx.beginPath(); ctx.moveTo(mx(DEST - GLIDE_LEN), alt(glideAlt(DEST - GLIDE_LEN))); ctx.lineTo(mx(DEST), base); ctx.stroke(); }
   ctx.setLineDash([]);
+  for (const b of balloons) if (!b.hit) { ctx.fillStyle = b.c; ctx.beginPath(); ctx.arc(mx(b.x), alt(b.a), 2.5, 0, Math.PI * 2); ctx.fill(); }
   txt('FRA', mx(0) + 2, my + 9 * u, 9 * u, 'rgba(255,255,255,0.8)', 'left');
   txt(R.code, mx(DEST) + 10, my + 9 * u, 9 * u, 'rgba(255,255,255,0.8)', 'left');
   ctx.save();
@@ -2750,6 +2849,7 @@ function drawHUD() {
   else drawButton(bs.gear, p.gearDown ? '⚙️ raus' : '⚙️ drin', 'Fahrwerk', false, p.gearDown ? '#7dff9a' : '#ffd34d');
   drawButton(bs.brake, '🛑', 'Bremse', held('brake'));
   drawButton(bs.view, '👁️', view === 'cockpit' ? 'Außen' : 'Cockpit', false);
+  if (bs.fire) drawButton(bs.fire, '🚀', `Feuer · 🎈${hits}`, held('fire'), '#ff9a2a');
   drawButton(bs.left, '◀', 'links', held('left'));
   drawButton(bs.right, '▶', 'rechts', held('right'));
   // Radar links über den Knöpfen
@@ -3265,6 +3365,16 @@ function drawCockpit() {
       ctx.globalAlpha = 1;
     } });
   }
+  for (const b of balloons) {
+    const [d, l] = cam(b.x, 0);
+    if (b.hit || !visible(d, l, 2000) || d > 8000) continue;
+    things.push({ d, draw() { const [X, Y] = scr(d, l, b.a); drawBalloon(X, Y, Math.max(2, f * 8 / d), b.c); } });
+  }
+  for (const r of rockets) {
+    const [d, l] = cam(r.x, 0);
+    if (d < near) continue;
+    things.push({ d, draw() { const [X, Y] = scr(d, l, r.a); ctx.fillStyle = '#ffb347'; ctx.beginPath(); ctx.arc(X, Y, Math.max(2, f * 1.5 / d), 0, Math.PI * 2); ctx.fill(); } });
+  }
   // grüne Ringe der Landehilfe
   for (let x = DEST - GLIDE_LEN; x <= (PT().glider ? -1e9 : DEST); x += 120) {
     const [d, l] = cam(x, 0);
@@ -3476,6 +3586,7 @@ function loop(ts) {
         worldClouds(true);
         drawNightOutside(gy);
         if (PT().glider) drawTowPlane();
+        drawBalloons();
         drawPlaneNight();
         drawParticles();
         drawWreckFx();
@@ -3484,6 +3595,7 @@ function loop(ts) {
         drawContrails();
         drawShadow();
         if (PT().glider) drawTowPlane();
+        drawBalloons();
         drawPlane();
         drawParticles();
         drawWreckFx();
