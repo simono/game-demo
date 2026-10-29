@@ -689,10 +689,10 @@ function finish(r) {
   result = r;
   state = 'done';
   resultT = 0.6;
-  if (PT().swing && r.ok && r.stars > 0) {
-    // erst zuschauen, wie das Heck aufgeht
-    p.doneAt = time; resultT = 3.5;
-    r.text += ' Das Heck geht auf: Die Flugzeugteile werden ausgeladen! 🔧';
+  if ((PT().swing || PT().noseDoor) && r.ok && r.stars > 0) {
+    // erst zuschauen, wie ausgeladen wird
+    p.doneAt = time; resultT = PT().noseDoor ? 5 : 3.5;
+    r.text += PT().noseDoor ? ' Die Nase klappt hoch: Die Container werden ausgeladen! 📦' : ' Das Heck geht auf: Die Flugzeugteile werden ausgeladen! 🔧';
   }
   stopEngine();
 }
@@ -1906,6 +1906,33 @@ const PLANES = {
     under: [[-7, 4, 1, true], [2.5, 5.3, 1, false]], engines: [[2.5, 5.3], [-7, 4]],
     gear: { top: 3.4, len: 3.4, nose: [29], main: [[-7.3, -5.5, -3.7], [-0.6, 1.2]] },
     nose: [29, 3.8], nav: [-20.4, 0.5], tail: [-39, -2.3], beacon: [0, -3.9], strobe: [-20.6, 0.3] },
+  b744f: { name: 'Boeing 747-428F', short: '747F', k: 0.97, vr: 78, thrust: 5.2, agile: 1, pax: [2, 3], gearH: 8.2,
+    noseDoor: true,
+    // Frachter mit kurzem Oberdeck und ohne Fenster unten
+    body() {
+      ctx.moveTo(-37, -2.2); ctx.lineTo(-22, -3.6); ctx.lineTo(14, -3.6);
+      ctx.bezierCurveTo(18, -3.6, 19, -6.2, 22, -6.3); ctx.lineTo(26, -6.2);
+      ctx.bezierCurveTo(31, -6, 34, -3, 35.8, 0.2); ctx.bezierCurveTo(36.2, 2.2, 34, 3.6, 30, 3.6);
+      ctx.lineTo(-14, 3.6); ctx.bezierCurveTo(-24, 3.4, -31, 1.4, -37, -1.2);
+    },
+    fin: [[-23, -3.4], [-32, -17.5], [-37, -17.5], [-38, -2.2]], stab: [[-28, -1.2], [-38, -3.2], [-39.5, -2.5], [-31, -0.2]],
+    stripe: 2.2, logo: [-32.6, -12, 6], label: [-12, -1.4, 1.7],
+    winRows: [{ y: -5.2, x0: 21.5, x1: 26.5, step: 1.25, skip: [] }],
+    doors: [[24, -1.9]],
+    cockpit: [[27.5, -5.6], [30.5, -5.4], [31.8, -4.3], [27.5, -4.4]],
+    wing: [[8, 2.6], [-19, 0.2], [-20.6, 0.8], [-5, 4]], winglet: [[-19.2, 0.3], [-20.4, -2.4], [-21.2, -2.2], [-20.6, 0.8]],
+    under: [[-7, 4, 1, true], [2.5, 5.3, 1, false]], engines: [[2.5, 5.3], [-7, 4]],
+    gear: { top: 3.4, len: 3.4, nose: [29], main: [[-7.3, -5.5, -3.7], [-0.6, 1.2]] },
+    nose: [29, 3.8], nav: [-20.4, 0.5], tail: [-39, -2.3], beacon: [0, -3.9], strobe: [-20.6, 0.3],
+    draw() {
+      ctx.strokeStyle = 'rgba(80,90,110,0.6)'; ctx.lineWidth = 0.12;
+      ctx.beginPath(); ctx.roundRect(-24, -3, 7, 4.4, 0.3); ctx.stroke();     // große Frachttür hinten
+      ctx.beginPath(); ctx.moveTo(NOSE_CUT, -3.8); ctx.lineTo(NOSE_CUT, 3.4); ctx.stroke();   // Fuge der Bugtür
+      ctx.fillStyle = BLUE; ctx.font = 'bold 1.2px system-ui, -apple-system, sans-serif';
+      ctx.textAlign = 'left'; ctx.fillText('CARGO', 3.5, -1.4);
+      // kleines französisches Fähnchen, weil 28 der Kundencode von Air France ist
+      [['#1f3f8c', 0], ['#ffffff', 0.5], ['#d61f1a', 1]].forEach(([c, o]) => { ctx.fillStyle = c; ctx.fillRect(20 + o, -2.6, 0.5, 1); });
+    } },
   lcf: { name: 'Boeing 747 Dreamlifter', short: 'Dreamlifter', k: 0.98, vr: 80, thrust: 5, agile: 0.9, pax: [3, 3], gearH: 8.2,
     drag: 8.4e-5, swing: true,
     // riesiger Frachtraum hinter dem Cockpit, damit Flugzeugteile reinpassen
@@ -2140,14 +2167,39 @@ function afterburner(x, y, h) {
   ctx.fillStyle = fg;
   ctx.beginPath(); ctx.moveTo(x, y - h); ctx.lineTo(x - L, y); ctx.lineTo(x, y + h); ctx.closePath(); ctx.fill();
 }
-const SWING_CUT = -25;
+const SWING_CUT = -25, NOSE_CUT = 27;
 let swingInner = false;
 function drawPlaneType(T, gear, lights, ext = { flaps: 0, spoil: 0, rev: 0 }) {
   EXT = ext;
   DROOP = 11 * gear;
   if (T === PLANES.a380) return drawA380(gear, lights);
   // Dreamlifter: nach der Landung schwenkt das ganze Heck zur Seite und man sieht die Fracht
-  const sw = T.swing && ext === p && p.doneAt !== undefined ? clamp((time - p.doneAt - 0.5) / 2.5, 0, 1) : 0;
+  const sw = (T.swing || T.noseDoor) && ext === p && p.doneAt !== undefined ? clamp((time - p.doneAt - 0.5) / 2.5, 0, 1) : 0;
+  if (sw > 0 && !swingInner && T.noseDoor) {
+    // Frachter: die Nase klappt nach oben, ein Container rollt auf den Hubwagen
+    const a = sw * 65 * DEG, c = NOSE_CUT, top = -3.8;
+    swingInner = true;
+    ctx.save(); ctx.beginPath(); ctx.rect(-60, -60, 120, 120); ctx.rect(c, top, 40, 20); ctx.clip('evenodd'); drawPlaneType(T, gear, lights, ext); ctx.restore();
+    ctx.fillStyle = '#2a2f38'; ctx.fillRect(c, top + 0.2, 8, 7.4);
+    // gelber Hubwagen vor der Öffnung
+    ctx.fillStyle = '#f2c12e'; ctx.fillRect(c + 4, 3.6, 13, 0.8);
+    ctx.strokeStyle = '#8a7020'; ctx.lineWidth = 0.3;
+    ctx.beginPath(); ctx.moveTo(c + 6, 4.4); ctx.lineTo(c + 14, 8.2); ctx.moveTo(c + 14, 4.4); ctx.lineTo(c + 6, 8.2); ctx.stroke();
+    ctx.fillStyle = '#d9a91f'; ctx.fillRect(c + 4, 7.4, 13, 0.8);
+    // Container mit Riffeln
+    const slide = clamp((time - p.doneAt - 2.5) / 2, 0, 1) * 8;
+    ctx.fillStyle = '#c3c9d0'; ctx.fillRect(c - 3 + slide, -2.6, 6, 6.2);
+    ctx.strokeStyle = 'rgba(70,80,95,0.6)'; ctx.lineWidth = 0.1;
+    ctx.beginPath(); for (let x = c - 2.5 + slide; x < c + 3 + slide; x += 0.8) { ctx.moveTo(x, -2.4); ctx.lineTo(x, 3.4); } ctx.stroke();
+    ctx.fillStyle = BLUE; ctx.fillRect(c - 3 + slide, -2.6, 6, 0.6);
+    ctx.save();
+    ctx.translate(c, top); ctx.rotate(-a); ctx.translate(-c, -top);
+    ctx.beginPath(); ctx.rect(c, top, 40, 20); ctx.clip();
+    drawPlaneType(T, gear, false, ext);
+    ctx.restore();
+    swingInner = false;
+    return;
+  }
   if (sw > 0 && !swingInner) {
     const a = sw * 80 * DEG, c = SWING_CUT;
     swingInner = true;
@@ -3492,7 +3544,10 @@ function drawMenu(dt) {
       ctx.fillStyle = '#ffd34d';
       ctx.beginPath(); ctx.roundRect(r.x + 3, r.y + 3, r.w - 6, r.h - 6, 10); ctx.fill();
     }
-    txt(PLANES[k].short, r.x + r.w / 2, r.y + sh / 2, Math.min(15 * u, segW / 5.2), k === planeKey ? '#1d2433' : '#fff');
+    let fs = 15 * u;
+    ctx.font = `bold ${fs}px system-ui, -apple-system, sans-serif`;
+    fs *= Math.min(1, (segW - 8) / ctx.measureText(PLANES[k].short).width);   // lange Namen kleiner, damit sie in den Knopf passen
+    txt(PLANES[k].short, r.x + r.w / 2, r.y + sh / 2, fs, k === planeKey ? '#1d2433' : '#fff');
     return r;
   });
   // Pfeile, um das Ziel auszusuchen
