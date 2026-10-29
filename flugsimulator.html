@@ -1660,7 +1660,7 @@ function drawWheel(x, y) {
   ctx.fillStyle = '#9aa0a8';
   ctx.beginPath(); ctx.arc(x, y, 0.32, 0, Math.PI * 2); ctx.fill();
   // Speichen drehen sich beim Rollen
-  const a = state !== 'menu' && p ? p.x / 0.62 : 0;
+  const a = state !== 'menu' && p && !PARKED ? p.x / 0.62 : 0;
   ctx.strokeStyle = '#4a4f57'; ctx.lineWidth = 0.08;
   ctx.beginPath();
   for (let i = 0; i < 3; i++) {
@@ -2343,45 +2343,208 @@ function drawTrees(gy) {
   }
 }
 
-function drawBuilding(x0, w, h, color, glass) {
-  const x = sx(x0), gy = sy(0) - 3;
+// ── Flughäfen ──────────────────────────────────────────────────────
+// Beide Flughäfen sind gleich aufgebaut, alles in Metern ab ihrem Anfang (Frankfurt 0, am Ziel DEST + 300)
+const AP = { term: [300, 680], gates: [370, 480, 590], tower: 1000, radar: 1220, hangar: [1350, 1560], fire: [1700, 1790] };
+let PARKED = false;   // geparkte Flugzeuge drehen ihre Räder nicht
+function wrect(x0, x1, h0, h1, color) {
+  const gy = sy(0) - 3;
   ctx.fillStyle = color;
-  ctx.fillRect(x, gy - h * S, w * S, h * S);
-  ctx.fillStyle = glass;
-  ctx.fillRect(x + 2 * S, gy - h * S * 0.75, w * S - 4 * S, h * S * 0.35);
+  ctx.fillRect(sx(x0), gy - h1 * S, (x1 - x0) * S, (h1 - h0) * S);
+}
+function wpoly(pts, color) {
+  const gy = sy(0) - 3;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  pts.forEach(([x, h], i) => i ? ctx.lineTo(sx(x), gy - h * S) : ctx.moveTo(sx(x), gy - h * S));
+  ctx.closePath(); ctx.fill();
 }
 
-function drawTower(x0, color) {
-  const x = sx(x0), gy = sy(0) - 3;
-  ctx.fillStyle = color;
-  ctx.fillRect(x - 3 * S, gy - 55 * S, 6 * S, 55 * S);
-  ctx.fillRect(x - 9 * S, gy - 58 * S, 18 * S, 3 * S);
-  ctx.fillStyle = '#7fd4c9';
+function drawTerminal(b, color, name) {
+  const [t0, t1] = AP.term.map(x => b + x);
+  wrect(t0, t1, 0, 10, color);                                   // unten Beton
+  wrect(t0, t1, 10, 20, 'rgba(70,125,170,0.85)');                // oben Glasfront
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';                      // Spiegelung
+  ctx.fillRect(sx(t0), sy(0) - 3 - 19 * S, (t1 - t0) * S, 2.5 * S);
+  ctx.fillStyle = 'rgba(40,55,75,0.6)';
+  for (let x = t0; x <= t1; x += 8) ctx.fillRect(sx(x), sy(0) - 3 - 20 * S, Math.max(1, 0.4 * S), 10 * S);
+  ctx.fillStyle = 'rgba(40,55,75,0.35)';
+  for (let x = t0 + 6; x < t1 - 6; x += 14) ctx.fillRect(sx(x), sy(0) - 3 - 8 * S, 6 * S, 5 * S);   // Fenster unten
+  // geschwungenes Dach, das vorne übersteht
+  const gy = sy(0) - 3;
+  ctx.fillStyle = '#e6e9ed';
   ctx.beginPath();
-  ctx.moveTo(x - 9 * S, gy - 58 * S); ctx.lineTo(x - 7 * S, gy - 66 * S); ctx.lineTo(x + 7 * S, gy - 66 * S); ctx.lineTo(x + 9 * S, gy - 58 * S);
+  ctx.moveTo(sx(t0 - 10), gy - 20 * S);
+  ctx.quadraticCurveTo(sx((t0 + t1) / 2), gy - 30 * S, sx(t1 + 10), gy - 20 * S);
+  ctx.lineTo(sx(t1 + 10), gy - 21.5 * S);
+  ctx.quadraticCurveTo(sx((t0 + t1) / 2), gy - 31.5 * S, sx(t0 - 10), gy - 21.5 * S);
   ctx.closePath(); ctx.fill();
-  ctx.fillStyle = color;
-  ctx.fillRect(x - 8 * S, gy - 69 * S, 16 * S, 3 * S);
-  ctx.fillStyle = '#c33';
-  ctx.fillRect(x - 0.3 * S, gy - 75 * S, 0.6 * S, 6 * S);
+  txt(name, sx((t0 + t1) / 2), gy - 15 * S, Math.max(9, 4.2 * S), '#ffffff', 'center', 'rgba(20,40,70,0.6)');
+  // Fluggastbrücken mit Rotunde
+  for (const g of AP.gates) {
+    const x = b + g;
+    wrect(x - 1.5, x + 1.5, 0, 4, '#8a9099');
+    wrect(x - 3, x + 3, 4, 8, '#b8bec6');
+    wrect(x + 3, x + 26, 4.6, 7.6, '#c9ced5');
+    ctx.fillStyle = 'rgba(60,70,90,0.5)';
+    for (let k = x + 5; k < x + 26; k += 4) ctx.fillRect(sx(k), gy - 7.4 * S, Math.max(1, 0.3 * S), 2.6 * S);
+    wrect(x + 22, x + 23, 0, 4.6, '#6b7079');
+  }
+}
+
+function drawParkedPlane(x, key) {
+  const T = PLANES[key], k = T.k * 0.75;   // etwas weiter hinten, darum kleiner
+  PARKED = true;
+  ctx.save();
+  ctx.translate(sx(x), sy(0) - 3 - 2);
+  ctx.scale(S * k, S * k);
+  ctx.translate(0, -T.gearH);
+  drawPlaneType(T, 1, false);
+  ctx.restore();
+  PARKED = false;
+}
+
+function drawTower(x, color) {
+  const gy = sy(0) - 3;
+  wrect(x - 14, x + 14, 0, 8, '#c4cad1');                      // Betriebsgebäude unten
+  ctx.fillStyle = 'rgba(60,90,120,0.5)';
+  for (let k = x - 12; k < x + 12; k += 5) ctx.fillRect(sx(k), gy - 6 * S, 3 * S, 3 * S);
+  wpoly([[x - 4.5, 8], [x + 4.5, 8], [x + 3, 50], [x - 3, 50]], color);   // Schaft wird nach oben schmaler
+  ctx.fillStyle = 'rgba(0,0,0,0.08)';
+  ctx.fillRect(sx(x + 1), gy - 50 * S, 2 * S, 42 * S);
+  wrect(x - 9, x + 9, 50, 53, color);                          // Etage unter der Kanzel
+  wpoly([[x - 8, 53], [x + 8, 53], [x + 10, 61], [x - 10, 61]], '#5fb8c9');   // schräge Fenster der Kanzel
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  for (let k = -8; k <= 8; k += 4) ctx.fillRect(sx(x + k), gy - 61 * S, Math.max(1, 0.35 * S), 8 * S);
+  wrect(x - 10.5, x + 10.5, 61, 63, color);
+  wrect(x - 3, x + 3, 63, 65, '#9aa0a8');
+  ctx.strokeStyle = '#888'; ctx.lineWidth = Math.max(1, 0.4 * S);
+  ctx.beginPath(); ctx.moveTo(sx(x - 1.5), gy - 65 * S); ctx.lineTo(sx(x - 1.5), gy - 74 * S);
+  ctx.moveTo(sx(x + 2), gy - 65 * S); ctx.lineTo(sx(x + 2), gy - 70 * S); ctx.stroke();
+  ctx.fillStyle = (time % 1.5) < 0.75 ? '#ff3030' : '#801818';
+  ctx.beginPath(); ctx.arc(sx(x - 1.5), gy - 74 * S, Math.max(1.5, 0.6 * S), 0, Math.PI * 2); ctx.fill();
+}
+
+function drawRadarMast(x) {
+  const gy = sy(0) - 3;
+  // Gittermast
+  ctx.strokeStyle = '#a7adb5'; ctx.lineWidth = Math.max(1, 0.35 * S);
+  ctx.beginPath();
+  ctx.moveTo(sx(x - 3), gy); ctx.lineTo(sx(x - 1), gy - 24 * S); ctx.moveTo(sx(x + 3), gy); ctx.lineTo(sx(x + 1), gy - 24 * S);
+  for (let h = 0; h < 24; h += 4) { const w0 = 3 - h / 12, w1 = 3 - (h + 4) / 12; ctx.moveTo(sx(x - w0), gy - h * S); ctx.lineTo(sx(x + w1), gy - (h + 4) * S); }
+  ctx.stroke();
+  // die Antenne dreht sich
+  const c = Math.cos(time * 2.5), w = 7 * Math.abs(c) + 0.6;
+  ctx.fillStyle = c > 0 ? '#e9edf2' : '#b7bec7';
+  ctx.beginPath(); ctx.ellipse(sx(x), gy - 27 * S, w * S, 2.2 * S, 0, 0, Math.PI * 2); ctx.fill();
+  wrect(x - 0.6, x + 0.6, 24, 27, '#6b7079');
+}
+
+function drawHangar(b, label) {
+  const [h0, h1] = AP.hangar.map(x => b + x), gy = sy(0) - 3, m = (h0 + h1) / 2;
+  wrect(h0, h1, 0, 18, '#c7ccd3');
+  ctx.fillStyle = '#d5d9df';                                   // gewölbtes Dach
+  ctx.beginPath(); ctx.moveTo(sx(h0), gy - 18 * S); ctx.quadraticCurveTo(sx(m), gy - 34 * S, sx(h1), gy - 18 * S); ctx.closePath(); ctx.fill();
+  wrect(h0 + 12, h1 - 12, 0, 16, '#9aa1aa');                   // großes Tor
+  ctx.fillStyle = 'rgba(60,65,75,0.45)';
+  for (let x = h0 + 12; x < h1 - 12; x += 15) ctx.fillRect(sx(x), gy - 16 * S, Math.max(1, 0.4 * S), 16 * S);
+  txt(label, sx(m), gy - 22 * S, Math.max(8, 3.2 * S), BLUE);
+}
+
+function drawFireStation(b) {
+  const [f0, f1] = AP.fire.map(x => b + x), gy = sy(0) - 3;
+  wrect(f0, f1, 0, 9, '#e8e2d6');
+  wrect(f0 - 1, f1 + 1, 9, 10, '#c4161c');
+  for (let i = 0; i < 3; i++) {
+    const x = f0 + 6 + i * 28;
+    wrect(x, x + 20, 0, 7, i === 1 ? '#3a3f48' : '#d9dde2');   // ein Tor ist offen
+    if (i !== 1) { ctx.fillStyle = 'rgba(80,85,95,0.4)'; for (let h = 1; h < 7; h += 1) ctx.fillRect(sx(x), gy - h * S, 20 * S, Math.max(1, 0.12 * S)); }
+  }
+  // im offenen Tor wartet ein Löschfahrzeug
+  wrect(f0 + 37, f0 + 51, 0.8, 4.6, '#d61f1a');
+  wrect(f0 + 37, f0 + 51, 2, 2.5, '#ffffff');
+  txt('FEUERWACHE', sx((f0 + f1) / 2), gy - 8.2 * S, Math.max(7, 1.6 * S), '#c4161c');
+}
+
+function drawApron(b) {
+  const gy = sy(0) - 3;
+  // Gepäckwagen fahren zwischen den Flugzeugen hin und her
+  const tx = b + 450 + Math.sin(time * 0.25 + b) * 140, dir = Math.cos(time * 0.25 + b) > 0 ? 1 : -1;
+  wrect(tx - 2, tx + 2, 0.5, 2.3, '#f2c12e');
+  wrect(tx - 1.6 * dir - 0.6, tx - 1.6 * dir + 0.6, 2.3, 3.3, '#f2c12e');
+  for (let i = 1; i <= 3; i++) {
+    const cx = tx - dir * i * 5;
+    wrect(cx - 2, cx + 2, 0.6, 2.6, '#7d8590');
+    wrect(cx - 1.6, cx + 1.6, 1, 2.4, ['#2f6db5', '#3d8b3d', '#b5542f'][i - 1]);
+  }
+  ctx.fillStyle = '#1b1b1f';
+  for (let i = 0; i <= 3; i++) for (const o of [-1.3, 1.3]) { ctx.beginPath(); ctx.arc(sx(tx - dir * i * 5 + o), gy - 0.4 * S, Math.max(1, 0.4 * S), 0, Math.PI * 2); ctx.fill(); }
+  // Tankwagen steht beim mittleren Flugzeug
+  const fx = b + AP.gates[1] + 40;
+  wrect(fx, fx + 9, 0.7, 3.8, '#e9edf2');
+  wrect(fx + 9, fx + 12, 0.7, 3.4, '#2f6db5');
+  wrect(fx + 9.8, fx + 11.5, 2.2, 3.1, '#9fd3ff');
+  ctx.fillStyle = '#1b1b1f';
+  for (const o of [1.5, 4, 10.5]) { ctx.beginPath(); ctx.arc(sx(fx + o), gy - 0.6 * S, Math.max(1, 0.6 * S), 0, Math.PI * 2); ctx.fill(); }
+  txt('JET A-1', sx(fx + 4.5), gy - 2.3 * S, Math.max(6, 1.2 * S), '#c4161c');
+}
+
+// Rollbahnschilder: schwarz mit gelbem Buchstaben, daneben gelb mit schwarzem Pfeil
+function drawTaxiSigns(b, len) {
+  const gy = sy(0) - 3;
+  ['A', 'B', 'C', 'D', 'E', 'F'].forEach((ch, i) => {
+    const x = b + 250 + i * 500;
+    if (x > b + len - 100) return;
+    const X = sx(x);
+    if (X < -40 || X > W() + 40) return;
+    const h = 1.8 * S, w = 2.2 * S;
+    ctx.fillStyle = '#555'; ctx.fillRect(X + w * 0.5, gy - 0.6 * S, Math.max(1, 0.2 * S), 0.6 * S);
+    ctx.fillStyle = '#111'; ctx.fillRect(X, gy - 0.6 * S - h, w, h);
+    txt(ch, X + w / 2, gy - 0.6 * S - h / 2, h * 0.75, '#ffd400');
+    ctx.fillStyle = '#ffd400'; ctx.fillRect(X + w, gy - 0.6 * S - h, w * 1.3, h);
+    txt(`←${ch}${i + 1}`, X + w * 1.65, gy - 0.6 * S - h / 2, h * 0.6, '#111');
+  });
+}
+
+function drawAirport(b, color, name, len) {
+  if (sx(b + 2000) < -50 || sx(b - 100) > W() + 50) return;
+  drawHangar(b, 'HENRIK AIRLINES');
+  drawRadarMast(b + AP.radar);
+  drawTower(b + AP.tower, '#e3e7ec');
+  drawTerminal(b, color, name);
+  drawFireStation(b);
+  drawParkedPlane(b + AP.gates[0] + 10, 'a320');
+  drawParkedPlane(b + AP.gates[1] + 14, 'b747');
+  drawParkedPlane(b + AP.gates[2] + 8, 'legacy');
+  drawApron(b);
+  drawTaxiSigns(b, len);
 }
 
 function drawAirports() {
   const gy = sy(0) - 3;
-  // Frankfurt
-  if (p.x < 6000) {
-    drawBuilding(300, 380, 20, '#9aa3ad', 'rgba(70,120,170,0.75)');
-    txt('FRANKFURT', sx(490), gy - 22.5 * S, Math.max(9, 3.6 * S), '#1f2f4a');
-    drawTower(1100, '#d8dde3');
-    drawBuilding(1500, 160, 26, '#c7ccd3', 'rgba(255,255,255,0.4)');   // Halle
-  }
-  // Flughafen am Ziel
+  if (p.x < 6000) drawAirport(0, '#9aa3ad', 'FRANKFURT', RWY_A.x1);
   if (p.x > DEST - 6000) {
-    drawBuilding(DEST + 600, 380, 18, R.terminal, 'rgba(70,140,170,0.75)');
-    txt(R.name.toUpperCase(), sx(DEST + 790), gy - 20.5 * S, Math.max(9, 3.6 * S), '#1f2f4a');
-    drawTower(DEST + 1300, '#f1ece0');
+    drawAirport(DEST + 300, R.terminal, R.name.toUpperCase(), RWY_B.x1 - DEST - 300);
     if (R.trees !== 'tree') for (let i = 0; i < 8; i++) drawTree(sx(DEST + 520 + i * 60), gy, (14 + rand(i) * 4) * S, true);
   }
+}
+
+// Nachts sieht man nur die Lichter der Gebäude
+function airportNightLights(b) {
+  const gy = sy(0) - 3, [t0, t1] = AP.term.map(x => b + x);
+  ctx.fillStyle = 'rgba(255,215,130,0.85)';
+  ctx.fillRect(sx(t0), gy - 20 * S, (t1 - t0) * S, 10 * S);
+  ctx.fillStyle = 'rgba(255,215,130,0.6)';
+  for (let x = t0 + 6; x < t1 - 6; x += 14) ctx.fillRect(sx(x), gy - 8 * S, 6 * S, 5 * S);
+  for (const g of AP.gates) ctx.fillRect(sx(b + g + 4), gy - 7 * S, 21 * S, 1.6 * S);
+  const x = b + AP.tower;
+  ctx.fillStyle = 'rgba(150,240,220,0.9)';
+  ctx.beginPath(); ctx.moveTo(sx(x - 8), gy - 53 * S); ctx.lineTo(sx(x + 8), gy - 53 * S); ctx.lineTo(sx(x + 10), gy - 61 * S); ctx.lineTo(sx(x - 10), gy - 61 * S); ctx.fill();
+  ctx.fillStyle = (time % 1.5) < 0.75 ? '#ff3030' : '#801818';
+  for (const [lx, lh] of [[x - 1.5, 74], [b + AP.radar, 28]]) { ctx.beginPath(); ctx.arc(sx(lx), gy - lh * S, 1.5, 0, Math.PI * 2); ctx.fill(); }
+  ctx.fillStyle = 'rgba(255,240,200,0.8)';                     // offenes Hangartor und Feuerwache
+  ctx.fillRect(sx(b + AP.hangar[0] + 12), gy - 2 * S, (AP.hangar[1] - AP.hangar[0] - 24) * S, 2 * S);
+  ctx.fillRect(sx(b + AP.fire[0] + 34), gy - 7 * S, 20 * S, 7 * S);
 }
 
 function drawRunway(r) {
@@ -2762,18 +2925,8 @@ function drawNightOutside(gy) {
     }
   }
   if (p.x < 9000) drawSkyline(gy, true);
-  // Fenster der Flughäfen
-  const ag = sy(0) - 3;
-  ctx.fillStyle = 'rgba(255,215,130,0.85)';
-  for (const [x0, w, h] of [[300, 380, 20], [DEST + 600, 380, 18]]) {
-    ctx.fillRect(sx(x0) + 2 * S, ag - h * S * 0.75, w * S - 4 * S, h * S * 0.35);
-  }
-  for (const x of [1100, DEST + 1300]) {
-    ctx.fillStyle = 'rgba(150,240,220,0.9)';
-    ctx.fillRect(sx(x) - 7 * S, ag - 65 * S, 14 * S, 6 * S);
-    ctx.fillStyle = (time % 1.5) < 0.75 ? '#ff3030' : '#801818';
-    ctx.beginPath(); ctx.arc(sx(x), ag - 75 * S, 1.5, 0, Math.PI * 2); ctx.fill();
-  }
+  airportNightLights(0);
+  airportNightLights(DEST + 300);
   runwayLights(RWY_A, true);
   runwayLights(RWY_B, true);
   drawApproachLights(true);
@@ -3352,19 +3505,19 @@ function drawCockpit() {
       if (eye > a1) polyW([[x0, z0, a1], [x1, z0, a1], [x1, z1, a1], [x0, z1, a1]], top);
     } });
   };
-  const tower = (x, z) => {
-    box(x, x + 6, z, z + 6, 0, 55, '#e3e7ec', '#cdd3da', '#f0f2f5');
-    box(x - 6, x + 12, z - 6, z + 12, 55, 66, '#7fd4c9', '#6cc2b7', '#d8dde3');
+  const airport = (b, color) => {
+    const [t0, t1] = AP.term.map(x => b + x), [h0, h1] = AP.hangar.map(x => b + x), [f0, f1] = AP.fire.map(x => b + x), x = b + AP.tower;
+    box(t0, t1, -260, -180, 0, 10, color, color, color);
+    box(t0, t1, -260, -180, 10, 20, '#5d8fb5', '#4f7ea3', '#e6e9ed');
+    for (const g of AP.gates) box(b + g, b + g + 4, -180, -150, 4.6, 7.6, '#c9ced5', '#b8bec6', '#d5d9df');
+    box(h0, h1, -250, -190, 0, 26, '#c7ccd3', '#b7bcc3', '#dadde2');
+    box(f0, f1, -230, -200, 0, 9, '#e8e2d6', '#d8d2c6', '#c4161c');
+    box(x - 14, x + 14, -144, -116, 0, 8, '#c4cad1', '#b4bac1', '#d0d5db');
+    box(x - 4, x + 4, -134, -126, 8, 52, '#e3e7ec', '#cdd3da', '#f0f2f5');
+    box(x - 9, x + 9, -139, -121, 52, 62, '#5fb8c9', '#4fa6b7', '#e3e7ec');
   };
-  if (eyeX < RWY_A.x1 + 3000) {
-    box(300, 680, -260, -180, 0, 20, '#9aa3ad', '#8a939d', '#b5bcc4');
-    box(1500, 1660, -250, -190, 0, 26, '#c7ccd3', '#b7bcc3', '#dadde2');
-    tower(1100, -130);
-  }
-  if (eyeX > DEST - 20000) {
-    box(DEST + 600, DEST + 980, -260, -180, 0, 18, R.terminal, R.terminal, '#f3eadb');
-    tower(DEST + 1300, -130);
-  }
+  if (eyeX < RWY_A.x1 + 3000) airport(0, '#9aa3ad');
+  if (eyeX > DEST - 20000) airport(DEST + 300, R.terminal);
   // Dörfer mit roten Dächern
   for (let k = Math.floor((eyeX - 2500) / 2500); k <= (eyeX + 5000) / 2500; k++) {
     const vx = k * 2500 + 800;
