@@ -269,7 +269,7 @@ function updateEngine() {
     eng.wg.gain.setTargetAtTime(towing ? 0.05 : 0, t, 0.4);
     return;
   }
-  const t = AC.currentTime, th = p.throttle, ab = PT().concorde ? clamp((th - 0.75) * 4, 0, 1) : 0;
+  const t = AC.currentTime, th = p.throttle, ab = PT().supersonic ? clamp((th - 0.75) * 4, 0, 1) : 0;
   eng.lp.frequency.setTargetAtTime(250 + th * 1100 + ab * 1500, t, 0.3);
   eng.g.gain.setTargetAtTime(0.15 + th * 0.35 + ab * 0.15, t, 0.3);
   eng.whine.frequency.setTargetAtTime(700 + th * 1600, t, 0.5);
@@ -547,7 +547,8 @@ function update(dt) {
   } else {
     p.pitch += pr * 12 * PT().agile * dt;
     if (p.v < VR - 13) p.pitch -= (VR - 13 - p.v) * 0.8 * dt;   // zu langsam: die Nase sackt weg
-    p.pitch = clamp(p.pitch, -20, 20);
+    const mp = PT().maxPitch || 20;
+    p.pitch = clamp(p.pitch, -mp, mp);
   }
 
   // Kurven: in der Luft legt sich der Flieger schräg, am Boden lenkt das Bugrad
@@ -593,7 +594,7 @@ function update(dt) {
     if (w.turb > 2) shake = Math.max(shake, 1.5);
   }
   if (PT().glider) updateGlider(dt);
-  if (PT().concorde && !p.boomed && p.v > MACH1) {
+  if (PT().supersonic && !p.boomed && p.v > MACH1) {
     p.boomed = true; p.boomT = 0;
     boom(); shake = 7;
     pax.t = 0; say('💥 Überschall! Wir sind schneller als der Schall!');
@@ -1277,7 +1278,7 @@ function hint() {
   if (p.gear > 0.5 && p.v > 110 && dist > 5000) return ['Fahrwerk einfahren! Sonst bremst es dich.', true];
   if (dist < 5000 && !p.gearDown) return ['Fahrwerk ausfahren! ⚙️', true];
   if (dist < 25000 && p.v > 160) return ['Langsamer werden! Schub weg, bald kommt die Landung.', true];
-  if (PT().concorde && p.v > 200 && p.v < MACH1 && !p.boomed && dist > 30000) return ['Volle Kraft für den Nachbrenner! 🔥 Schaffst du Überschall?', false];
+  if (PT().supersonic && p.v > 200 && p.v < MACH1 && !p.boomed && dist > 30000) return ['Volle Kraft für den Nachbrenner! 🔥 Schaffst du Überschall?', false];
   if (dist < 8000 && p.v > VR + 30) return ['Zu schnell für die Landung! Schub weg.', true];
   if (dist < GLIDE_LEN + 3000 && Math.abs(p.z) > 40) return [`Die Landebahn ist ${side} – schau aufs Radar`, true];
   if (dist >= GLIDE_LEN + 3000 && Math.abs(p.hdg) > 25 * DEG) return [`${R.name} liegt ${p.hdg > 0 ? 'links ◀' : 'rechts ▶'}`, false];
@@ -1630,7 +1631,7 @@ const PLANES = {
     engines: [], gear: { top: 4.2, len: 0.3, nose: [], main: [[12]] },
     nose: [33, 1], nav: [-8.4, -2.9], tail: [-38, -0.4], beacon: [-4, -3.5], strobe: [-8.4, -2.9] },
   concorde: { name: 'Concorde', short: 'Concorde', k: 0.78, vr: 88, thrust: 10, agile: 1.2, pax: [92, 100], gearH: 8.4,
-    drag: 5.5e-5, concorde: true,
+    drag: 5.5e-5, supersonic: true,
     // die Nase klappt zum Starten und Landen runter, damit die Piloten die Bahn sehen
     body() {
       const a = DROOP * DEG, c = Math.cos(a), sn = Math.sin(a);
@@ -1649,6 +1650,40 @@ const PLANES = {
     nacelle: [-27, -9, 2.3, 4.6], engines: [[-27.5, 3.5]],
     gear: { top: 2.4, len: 5, nose: [24], main: [[-6.6, -4.8]] },
     nose: [40, 0.6], nav: [-29.6, 1.8], tail: [-38, -0.8], beacon: [0, -2.6], strobe: [-30, 1.8] },
+  jet: { name: 'Kampfjet', short: 'Kampfjet', k: 0.22, vr: 72, thrust: 14, agile: 2.2, pax: [1, 1], gearH: 6,
+    drag: 6e-5, supersonic: true, maxPitch: 35, paint: ['#b4bdc7', '#98a3ae', '#76818d'], labelText: 'Henrik Air Force',
+    body() {
+      ctx.moveTo(-34, -1.6); ctx.lineTo(-10, -2.2); ctx.lineTo(14, -2.4);
+      ctx.bezierCurveTo(24, -2.4, 34, -1, 40, 0.4); ctx.bezierCurveTo(34, 1.6, 24, 2.6, 16, 2.6);
+      ctx.lineTo(-12, 3.2); ctx.lineTo(-34, 2.2);
+    },
+    fin: [[-14, -2.2], [-27, -14], [-32, -14], [-33.5, -1.6]], stab: [],
+    stripe: 1.2, logo: [-28.5, -8, 4], label: [-10, -0.8, 1.1],
+    winRows: [], doors: [], cockpit: null,
+    wing: [[6, 1.2], [-30, 0.6], [-32, 1.6], [0, 2.2]], winglet: null, noFlaps: true,
+    engines: [[-38, 0.3]],
+    gear: { top: 2.6, len: 2.4, nose: [26], main: [[-14]] },
+    nose: [39, 0.4], nav: [-31, 1.4], tail: [-38, 0.3], beacon: [-6, -2.4], strobe: [-31.5, 1.2],
+    draw(lights) {
+      // Lufteinlass unten, kleine Vorderflügel und die Düse hinten
+      ctx.fillStyle = '#8a95a1';
+      ctx.beginPath(); ctx.moveTo(12, 2.4); ctx.lineTo(-4, 2.8); ctx.lineTo(-4, 4.4); ctx.lineTo(10, 4.2); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#2a2f38'; ctx.fillRect(10, 2.6, 0.8, 1.5);
+      ctx.fillStyle = '#9aa5b1';
+      poly([[19, -0.6], [13, -1.1], [12.4, -0.4], [18, 0]]); ctx.fill();
+      if (lights && EXT.throttle > 0.75) afterburner(-36, 0.3, 1.6);
+      ctx.fillStyle = '#4a4f57';
+      poly([[-34, -1.6], [-36.5, -1.1], [-36.5, 1.7], [-34, 2.2]]); ctx.fill();
+      // Glashaube mit zwei Piloten: vorne du, hinten dein Passagier
+      ctx.fillStyle = 'rgba(40,60,90,0.85)';
+      ctx.beginPath(); ctx.moveTo(29, -1.6); ctx.bezierCurveTo(25, -5.6, 12, -6, 6, -2.3); ctx.closePath(); ctx.fill();
+      for (const [x, c] of [[20, '#ffffff'], [12.5, '#ffd34d']]) {
+        ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, -3.3, 1.2, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#1d2433'; ctx.fillRect(x + 0.1, -3.5, 1.1, 0.6);
+      }
+      ctx.fillStyle = 'rgba(255,255,255,0.45)';
+      ctx.beginPath(); ctx.moveTo(25, -4); ctx.bezierCurveTo(22, -5.1, 15, -5.2, 11, -4.2); ctx.lineTo(12, -3.9); ctx.bezierCurveTo(16, -4.7, 22, -4.6, 25, -3.7); ctx.closePath(); ctx.fill();
+    } },
 };
 const PLANE_KEYS = Object.keys(PLANES);
 let planeKey = 'a380';
@@ -1680,6 +1715,14 @@ function drawWindows(T, color) {
 }
 
 let EXT = { flaps: 0, spoil: 0, rev: 0 }, DROOP = 0;
+// Nachbrenner: Feuerstrahl hinten raus, je mehr Schub, desto länger
+function afterburner(x, y, h) {
+  const f = (EXT.throttle - 0.75) * 4, L = (6 + Math.random() * 2) * f * h;
+  const fg = ctx.createLinearGradient(x, 0, x - L, 0);
+  fg.addColorStop(0, 'rgba(255,255,255,0.95)'); fg.addColorStop(0.25, 'rgba(255,190,60,0.9)'); fg.addColorStop(1, 'rgba(255,80,20,0)');
+  ctx.fillStyle = fg;
+  ctx.beginPath(); ctx.moveTo(x, y - h); ctx.lineTo(x - L, y); ctx.lineTo(x, y + h); ctx.closePath(); ctx.fill();
+}
 function drawPlaneType(T, gear, lights, ext = { flaps: 0, spoil: 0, rev: 0 }) {
   EXT = ext;
   DROOP = 11 * gear;
@@ -1707,7 +1750,8 @@ function drawPlaneType(T, gear, lights, ext = { flaps: 0, spoil: 0, rev: 0 }) {
   // Rumpf
   ctx.beginPath(); T.body(); ctx.closePath();
   const g = ctx.createLinearGradient(0, -4.2, 0, 4.2);
-  g.addColorStop(0, '#ffffff'); g.addColorStop(0.6, '#f1f4f8'); g.addColorStop(1, '#c9d1db');
+  const [c0, c1, c2] = T.paint || ['#ffffff', '#f1f4f8', '#c9d1db'];
+  g.addColorStop(0, c0); g.addColorStop(0.6, c1); g.addColorStop(1, c2);
   ctx.fillStyle = g; ctx.fill();
   ctx.save(); ctx.clip();
   ctx.fillStyle = BLUE; ctx.fillRect(-40, T.stripe, 80, 2.5);
@@ -1728,7 +1772,7 @@ function drawPlaneType(T, gear, lights, ext = { flaps: 0, spoil: 0, rev: 0 }) {
     ctx.fillStyle = '#e74c3c'; ctx.beginPath(); ctx.arc(22, -4.5, 1.15, Math.PI, 0); ctx.fill();
     ctx.fillStyle = 'rgba(255,255,255,0.45)';
     ctx.beginPath(); ctx.moveTo(27, -4.6); ctx.bezierCurveTo(24, -5.9, 18, -6, 14, -4.8); ctx.lineTo(15, -4.5); ctx.bezierCurveTo(19, -5.4, 24, -5.3, 27, -4.3); ctx.closePath(); ctx.fill();
-  } else {
+  } else if (T.cockpit) {
     ctx.fillStyle = '#1d2433';
     poly(T.cockpit); ctx.fill();
     cockpitPanes(T.cockpit);
@@ -1736,7 +1780,7 @@ function drawPlaneType(T, gear, lights, ext = { flaps: 0, spoil: 0, rev: 0 }) {
   ctx.fillStyle = BLUE;
   ctx.font = `bold ${T.label[2]}px system-ui, -apple-system, sans-serif`;
   ctx.textAlign = 'left';
-  ctx.fillText('Henrik Airlines', T.label[0], T.label[1]);
+  ctx.fillText(T.labelText || 'Henrik Airlines', T.label[0], T.label[1]);
 
   // Fahrwerk
   if (gear > 0.12) {
@@ -1762,17 +1806,11 @@ function drawPlaneType(T, gear, lights, ext = { flaps: 0, spoil: 0, rev: 0 }) {
   for (const [x, y, k, shade] of T.under || []) {
     ctx.save(); ctx.translate(x, y); ctx.scale(k, k); drawEngine(0, 0, shade); ctx.restore();
   }
+  if (T.draw) T.draw(lights);
   if (T.nacelle) {
     // zwei Triebwerke nebeneinander in einer Gondel unter dem Flügel
     const [x0, x1, y0, y1] = T.nacelle;
-    if (lights && EXT.throttle > 0.75) {
-      // Nachbrenner: Feuerstrahl hinten raus
-      const f = (EXT.throttle - 0.75) * 4, L = (6 + Math.random() * 2) * f, ym = (y0 + y1) / 2 + 0.3;
-      const fg = ctx.createLinearGradient(x0, 0, x0 - L, 0);
-      fg.addColorStop(0, 'rgba(255,255,255,0.95)'); fg.addColorStop(0.25, 'rgba(255,190,60,0.9)'); fg.addColorStop(1, 'rgba(255,80,20,0)');
-      ctx.fillStyle = fg;
-      ctx.beginPath(); ctx.moveTo(x0, ym - 1); ctx.lineTo(x0 - L, ym); ctx.lineTo(x0, ym + 1); ctx.closePath(); ctx.fill();
-    }
+    if (lights && EXT.throttle > 0.75) afterburner(x0, (y0 + y1) / 2 + 0.3, 1);
     const ng = ctx.createLinearGradient(0, y0, 0, y1);
     ng.addColorStop(0, '#e9edf2'); ng.addColorStop(1, '#a9b2bd');
     ctx.fillStyle = ng;
