@@ -702,7 +702,7 @@ function crash(kind, text) {
   const broken = ['nose', 'hard', 'tail'].includes(kind) || (kind === 'field' && p.v > 45);
   const fire = kind !== 'sea' && kind !== 'belly' && !soft && !PT().glider;   // ohne Treibstoff brennt nichts
   p.wreck = { t: 0, onRwy, soft, broken, fire: fire ? 0.2 : 0, burning: fire, smoky: fire || kind === 'belly', gap: 0, rot: 0, stopT: null,
-              trucks: [], people: [], boat: null, sirenT: 0 };
+              trucks: [], people: [], boat: null, sirenT: 0, foam: 0 };
   if (!soft) p.gear = 0;
   p.drop = soft ? 1 : (T.gearH - 4.4) * T.k;
   p.tilt = kind === 'nose' ? -4 : kind === 'tail' ? 5 : kind === 'sea' ? 2 : soft ? -2 : -1;
@@ -1115,13 +1115,20 @@ function updateCrash(dt) {
     if (k.at) k.atT += dt;
     if (k.atT > 3) stopSiren(k); else updateSiren(k);   // nach dem Ankommen noch kurz weiter
     if (k.at && (c.burning || Math.random() < 0.3)) {
-      // Wasserstrahl im Bogen
+      // Flughafenfeuerwehr löscht mit Schaum: im Bogen aus dem Werfer auf dem Dach
       const tx = fires()[k.dir > 0 ? 0 : fires().length - 1];
-      const d = tx - (k.x + k.dir * 4);
-      particles.push({ x: k.x + k.dir * 4, a: 5, vx: d / 1.1 + (Math.random() - 0.5) * 3, va: 13 + Math.random() * 2,
-                       life: 1.1, max: 1.1, r: 0.5, grow: 0.4, color: '190,225,255', g: 22 });
+      const d = tx - (k.x + k.dir * 2.3);
+      particles.push({ x: k.x + k.dir * 2.3, a: 4.5, vx: d / 1.1 + (Math.random() - 0.5) * 3, va: 12 + Math.random() * 2,
+                       life: 1.1, max: 1.1, r: 0.5, grow: 0.7, color: '245,248,252', g: 22 });
+      // nach dem Aussteigen spritzt auch die Mannschaft mit dem Schlauch
+      if (k.atT > 2.5 && Math.random() < 0.6) {
+        const hx = crewX(k, 0) + k.dir * 0.8, hd = tx - hx;
+        particles.push({ x: hx, a: 1.4, vx: hd / 0.8 + (Math.random() - 0.5) * 2, va: 7 + Math.random(),
+                         life: 0.8, max: 0.8, r: 0.3, grow: 0.5, color: '245,248,252', g: 18 });
+      }
     }
   }
+  if (spraying) c.foam = Math.min(1, c.foam + dt * 0.12);
   // die Passagiere rutschen raus und rennen weg vom Flugzeug
   if (c.stopT !== null && c.t > c.stopT + 0.8 && c.people.length < Math.min(pax.n, 24) && Math.random() < dt * 6) {
     const front = c.people.length % 2 === 0;
@@ -1162,24 +1169,98 @@ function drawFire(X, Y, size) {
   }
 }
 
+// Flughafen-Löschfahrzeug mit drei Achsen, Rollläden und Schaumwerfer auf dem Dach
+function crewX(k, i) { return k.x + k.dir * (4 + Math.min(Math.max(k.atT - 0.8, 0), 1.6) * 2 - i * 1.6); }
 function drawTruck(k) {
   const X = sx(k.x), Y = sy(0) - 3, s = S, d = k.dir;
+  const moving = !k.at, bob = moving ? Math.sin(time * 18 + k.x) * 0.04 : 0;
   ctx.save(); ctx.translate(X, Y); ctx.scale(d * s, s);
-  ctx.fillStyle = '#d8231f';
-  ctx.beginPath(); ctx.roundRect(-6, -4.2, 9, 3.4, 0.4); ctx.fill();          // Aufbau
-  ctx.beginPath(); ctx.roundRect(3, -3.6, 3, 2.8, 0.6); ctx.fill();            // Fahrerhaus
-  ctx.fillStyle = '#9fd3ff'; ctx.fillRect(4.4, -3.2, 1.3, 1.1);
-  ctx.fillStyle = '#f5f5f5'; ctx.fillRect(-6, -2.4, 9, 0.4);
-  ctx.strokeStyle = '#c9c9c9'; ctx.lineWidth = 0.3;                            // Leiter
-  ctx.beginPath(); ctx.moveTo(-5.5, -4.6); ctx.lineTo(2, -4.6); ctx.stroke();
-  for (const x of [-4, 3.8]) {
-    ctx.fillStyle = '#1b1b1f'; ctx.beginPath(); ctx.arc(x, -0.7, 0.75, 0, Math.PI * 2); ctx.fill();
+  // Schatten und Fahrgestell
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.beginPath(); ctx.ellipse(-0.4, 0, 6.4, 0.35, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#2b2d31'; ctx.fillRect(-6.1, -1.6, 11.6, 0.7);
+  ctx.translate(0, bob);
+  // Aufbau
+  ctx.fillStyle = '#d61f1a';
+  ctx.beginPath(); ctx.roundRect(-6.4, -3.6, 8.9, 2.3, 0.25); ctx.fill();
+  // Rollläden mit Lamellen
+  for (const x0 of [-6.0, -3.5, -1.0]) {
+    ctx.fillStyle = '#b9bec5'; ctx.fillRect(x0, -3.35, 2.2, 1.3);
+    ctx.strokeStyle = 'rgba(80,85,95,0.6)'; ctx.lineWidth = 0.05;
+    ctx.beginPath();
+    for (let y = -3.2; y < -2.05; y += 0.16) { ctx.moveTo(x0, y); ctx.lineTo(x0 + 2.2, y); }
+    ctx.stroke();
+    ctx.fillStyle = '#6b7079'; ctx.fillRect(x0 + 0.9, -2.15, 0.4, 0.08);   // Griff
   }
-  const on = (time * 4) % 1 < 0.5;
-  ctx.fillStyle = on ? '#3d7bff' : '#123a99';
-  ctx.fillRect(4.2, -4.1, 0.9, 0.5);
+  // Leuchtstreifen: weiß mit Schriftzug, hinten rot-weiß schraffiert
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(-6.4, -1.95, 11.9, 0.5);
+  ctx.save(); ctx.beginPath(); ctx.rect(-6.4, -1.95, 1.4, 0.5); ctx.clip();
+  ctx.fillStyle = '#d61f1a';
+  for (let x = -7; x < -4.8; x += 0.5) { ctx.beginPath(); ctx.moveTo(x, -1.45); ctx.lineTo(x + 0.25, -1.45); ctx.lineTo(x + 0.75, -1.95); ctx.lineTo(x + 0.5, -1.95); ctx.fill(); }
   ctx.restore();
-  if (on) glowDot(X + d * 4.6 * s, Y - 3.9 * s, 4 * s, '#5a8cff');
+  ctx.save(); ctx.translate(-1.5, -1.68); ctx.scale(d, 1);   // Schrift nicht spiegeln
+  ctx.fillStyle = '#d61f1a'; ctx.font = 'bold 0.42px system-ui, -apple-system, sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('FEUERWEHR', 0, 0);
+  ctx.restore();
+  // Fahrerhaus mit schräger Front
+  ctx.fillStyle = '#d61f1a';
+  poly([[2.5, -3.7], [4.5, -3.7], [5.6, -2.4], [5.6, -1.3], [2.5, -1.3]]); ctx.fill();
+  ctx.fillStyle = '#1d2a3a';
+  poly([[4.45, -3.5], [5.35, -2.45], [4.6, -2.45], [4.05, -3.5]]); ctx.fill();         // Frontscheibe
+  ctx.fillStyle = '#9fd3ff';
+  ctx.beginPath(); ctx.roundRect(2.8, -3.45, 1.05, 0.95, 0.1); ctx.fill();               // Seitenfenster
+  ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.fillRect(2.9, -3.35, 0.3, 0.75);
+  ctx.strokeStyle = 'rgba(90,10,10,0.6)'; ctx.lineWidth = 0.06;
+  ctx.beginPath(); ctx.roundRect(2.7, -3.55, 1.3, 2.2, 0.1); ctx.stroke();                // Tür
+  ctx.fillStyle = '#2b2d31'; ctx.fillRect(4.1, -3.1, 0.12, 0.6);                           // Spiegel
+  ctx.fillStyle = '#ffeaa0'; ctx.fillRect(5.42, -1.85, 0.2, 0.3);                          // Scheinwerfer
+  ctx.fillStyle = '#9aa0a8'; ctx.fillRect(5.3, -1.45, 0.6, 0.3);                           // Stoßstange
+  // Werfer auf dem Dach, zielt beim Löschen hoch aufs Feuer
+  const aim = k.at ? -35 * DEG + Math.sin(time * 1.5) * 4 * DEG : 0;
+  ctx.fillStyle = '#9aa0a8'; ctx.fillRect(0.7, -3.95, 0.6, 0.35);
+  ctx.save(); ctx.translate(1, -3.9); ctx.rotate(aim);
+  ctx.fillStyle = '#c9ced5'; ctx.fillRect(0, -0.14, 1.6, 0.28);
+  ctx.fillStyle = '#6b7079'; ctx.fillRect(1.45, -0.18, 0.2, 0.36);
+  ctx.restore();
+  // Blaulicht: vorne auf dem Fahrerhaus und hinten auf dem Aufbau, abwechselnd
+  const ph = (time * 5) % 1, onA = ph < 0.25 || (ph > 0.5 && ph < 0.6), onB = !onA && ph < 0.75;
+  ctx.fillStyle = '#2b2d31'; ctx.fillRect(2.9, -3.85, 1.4, 0.15);
+  ctx.fillStyle = onA ? '#4d8bff' : '#123a99'; ctx.fillRect(2.95, -4.05, 0.55, 0.22);
+  ctx.fillStyle = onB ? '#4d8bff' : '#123a99'; ctx.fillRect(3.7, -4.05, 0.55, 0.22);
+  ctx.fillStyle = onB ? '#4d8bff' : '#123a99'; ctx.fillRect(-6.2, -3.85, 0.5, 0.25);
+  ctx.restore();
+  // Räder drehen sich beim Fahren
+  for (const x of [-4.6, -3.0, 3.4]) {
+    const wx = X + d * x * s, wy = Y - 0.72 * s, r = 0.72 * s, a = k.x / 0.72 * d;
+    ctx.fillStyle = '#1b1b1f'; ctx.beginPath(); ctx.arc(wx, wy, r, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#a7adb5'; ctx.beginPath(); ctx.arc(wx, wy, r * 0.45, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#5b626d';
+    for (let i = 0; i < 5; i++) { const b = a + i * Math.PI * 0.4; ctx.beginPath(); ctx.arc(wx + Math.cos(b) * r * 0.28, wy + Math.sin(b) * r * 0.28, r * 0.07, 0, Math.PI * 2); ctx.fill(); }
+  }
+  for (const [x, y, on] of [[3.22, -3.95, onA], [3.97, -3.95, onB], [-5.95, -3.75, onB]]) if (on) glowDot(X + d * x * s, Y + (y + bob) * s, 4 * s, '#5a8cff');
+  if (moving) glowDot(X + d * 5.6 * s, Y - 1.7 * s, 2.5 * s, '#fff3c0');
+  // Mannschaft in silbernen Schutzanzügen steigt aus, einer hält den Schlauch
+  if (k.atT > 0.8) for (let i = 0; i < 2; i++) drawFirefighter(k, i);
+}
+
+function drawFirefighter(k, i) {
+  const x = crewX(k, i), X = sx(x), Y = sy(0) - 3, s = Math.max(1.4, S * 0.55), d = k.dir;
+  const walking = k.atT < 2.4, step = walking ? Math.sin(time * 12 + i * 2) * 0.5 : 0;
+  if (i === 0) {
+    // Schlauch vom Auto zur Hand
+    ctx.strokeStyle = '#c8a04a'; ctx.lineWidth = Math.max(1, s * 0.25);
+    ctx.beginPath(); ctx.moveTo(sx(k.x + d * 1.5), Y - 1.2 * S); ctx.quadraticCurveTo((sx(k.x + d * 1.5) + X) / 2, Y, X + d * 0.6 * s, Y - 2.4 * s); ctx.stroke();
+  }
+  ctx.strokeStyle = '#8e949c'; ctx.lineWidth = Math.max(1, s * 0.35);
+  ctx.beginPath();
+  ctx.moveTo(X, Y - 1.6 * s); ctx.lineTo(X - step * s, Y);
+  ctx.moveTo(X, Y - 1.6 * s); ctx.lineTo(X + step * s, Y);
+  ctx.stroke();
+  ctx.fillStyle = '#c9ced5'; ctx.fillRect(X - 0.5 * s, Y - 3.3 * s, 1 * s, 1.8 * s);
+  ctx.fillStyle = '#ffd34d'; ctx.fillRect(X - 0.5 * s, Y - 2.2 * s, 1 * s, 0.25 * s);      // Leuchtstreifen
+  ctx.fillStyle = '#ffd34d'; ctx.beginPath(); ctx.arc(X, Y - 3.75 * s, 0.55 * s, Math.PI, 0); ctx.fill();   // Helm
+  ctx.fillStyle = '#f1c9a5'; ctx.fillRect(X - 0.35 * s, Y - 3.75 * s, 0.7 * s, 0.45 * s);
+  if (i === 0) { ctx.fillStyle = '#6b7079'; ctx.fillRect(X + (d > 0 ? 0.3 : -1.1) * s, Y - 2.6 * s, 0.8 * s, 0.25 * s); }   // Strahlrohr
 }
 
 function drawPerson(q) {
@@ -1229,6 +1310,11 @@ function drawWreckFx() {
   if (!c) return;
   if (p.crash === 'sea') { if (c.boat) drawBoat(c.boat); return; }
   const G = sy(0) - 3;
+  if (c.foam > 0) {
+    const fs = fires(), x0 = sx(fs[0]), x1 = sx(fs[fs.length - 1]), w = (x1 - x0) / 2 + 14 * S * Math.max(PT().k, 0.5) * c.foam;
+    ctx.fillStyle = 'rgba(250,252,255,0.9)';
+    for (let i = -2; i <= 2; i++) { ctx.beginPath(); ctx.ellipse((x0 + x1) / 2 + i * w * 0.4, G, w * 0.35, 1.2 * S * c.foam, 0, Math.PI, 0); ctx.fill(); }
+  }
   if (c.fire > 0) for (const fx of fires()) drawFire(sx(fx), G - p.drop * S * 0.5, 9 * S * Math.max(PT().k, 0.55) * c.fire);
   if (c.stopT !== null && c.t > c.stopT + 0.5 && !c.soft) { drawSlide(true); if (!c.broken) drawSlide(false); }
   for (const q of c.people) drawPerson(q);
