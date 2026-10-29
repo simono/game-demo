@@ -78,7 +78,8 @@ let state = 'menu';       // menu, flying, crashed, done
 let p, cam, pax, particles = [], contrail = [], result = null;
 let resultT = 0, welcomeT = 0, shake = 0, farX = 0, time = 0;
 
-let VR = 75;              // Abhebetempo in m/s, hängt vom Flugzeug ab
+let VR = 75;
+const MACH1 = 343;        // Schallgeschwindigkeit in m/s, 1235 km/h              // Abhebetempo in m/s, hängt vom Flugzeug ab
 const ROPE = 45, TOW_TOP = 220;
 function newFlight() {
   stopMusic();
@@ -268,9 +269,9 @@ function updateEngine() {
     eng.wg.gain.setTargetAtTime(towing ? 0.05 : 0, t, 0.4);
     return;
   }
-  const t = AC.currentTime, th = p.throttle;
-  eng.lp.frequency.setTargetAtTime(250 + th * 1100, t, 0.3);
-  eng.g.gain.setTargetAtTime(0.15 + th * 0.35, t, 0.3);
+  const t = AC.currentTime, th = p.throttle, ab = PT().concorde ? clamp((th - 0.75) * 4, 0, 1) : 0;
+  eng.lp.frequency.setTargetAtTime(250 + th * 1100 + ab * 1500, t, 0.3);
+  eng.g.gain.setTargetAtTime(0.15 + th * 0.35 + ab * 0.15, t, 0.3);
   eng.whine.frequency.setTargetAtTime(700 + th * 1600, t, 0.5);
   eng.wg.gain.setTargetAtTime(0.006 + th * 0.016, t, 0.3);
 }
@@ -592,6 +593,12 @@ function update(dt) {
     if (w.turb > 2) shake = Math.max(shake, 1.5);
   }
   if (PT().glider) updateGlider(dt);
+  if (PT().concorde && !p.boomed && p.v > MACH1) {
+    p.boomed = true; p.boomT = 0;
+    boom(); shake = 7;
+    pax.t = 0; say('💥 Überschall! Wir sind schneller als der Schall!');
+  }
+  if (p.boomT !== undefined) p.boomT += dt;
   if (p.rev > 0.5 && p.v > 15 && PT().engines.length && Math.random() < 0.6) {
     // Schubumkehr wirbelt Wasser, Schnee oder Staub nach vorne
     const [x] = localToWorld(PT().engines[0][0] + 4, 0);
@@ -1269,6 +1276,8 @@ function hint() {
   if (p.v < VR - 9) return ['⚠️ Zu langsam! Mehr Schub und Nase runter!', true];
   if (p.gear > 0.5 && p.v > 110 && dist > 5000) return ['Fahrwerk einfahren! Sonst bremst es dich.', true];
   if (dist < 5000 && !p.gearDown) return ['Fahrwerk ausfahren! ⚙️', true];
+  if (dist < 25000 && p.v > 160) return ['Langsamer werden! Schub weg, bald kommt die Landung.', true];
+  if (PT().concorde && p.v > 200 && p.v < MACH1 && !p.boomed && dist > 30000) return ['Volle Kraft für den Nachbrenner! 🔥 Schaffst du Überschall?', false];
   if (dist < 8000 && p.v > VR + 30) return ['Zu schnell für die Landung! Schub weg.', true];
   if (dist < GLIDE_LEN + 3000 && Math.abs(p.z) > 40) return [`Die Landebahn ist ${side} – schau aufs Radar`, true];
   if (dist >= GLIDE_LEN + 3000 && Math.abs(p.hdg) > 25 * DEG) return [`${R.name} liegt ${p.hdg > 0 ? 'links ◀' : 'rechts ▶'}`, false];
@@ -1479,6 +1488,7 @@ function drawWheel(x, y) {
 const lerp2 = (A, B, t) => [A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t];
 
 function drawWingExtras(T) {
+  if (T.noFlaps) return;
   const [rf, tf, tb, rb] = T.wing;
   // Landeklappen klappen hinten am Flügel nach unten und hinten
   if (EXT.flaps > 0.02) {
@@ -1619,6 +1629,26 @@ const PLANES = {
     wing: [[6, -3.9], [-8, -3.3], [-8.6, -2.6], [5, -2.9]], winglet: null,
     engines: [], gear: { top: 4.2, len: 0.3, nose: [], main: [[12]] },
     nose: [33, 1], nav: [-8.4, -2.9], tail: [-38, -0.4], beacon: [-4, -3.5], strobe: [-8.4, -2.9] },
+  concorde: { name: 'Concorde', short: 'Concorde', k: 0.78, vr: 88, thrust: 10, agile: 1.2, pax: [92, 100], gearH: 8.4,
+    drag: 5.5e-5, concorde: true,
+    // die Nase klappt zum Starten und Landen runter, damit die Piloten die Bahn sehen
+    body() {
+      const a = DROOP * DEG, c = Math.cos(a), sn = Math.sin(a);
+      const n = (x, y) => [27 + (x - 27) * c - (y + 1) * sn, -1 + (x - 27) * sn + (y + 1) * c];
+      ctx.moveTo(-38, -0.8); ctx.lineTo(-30, -2.4); ctx.lineTo(27, -2.4);
+      ctx.bezierCurveTo(...n(33, -2.2), ...n(38, -0.6), ...n(41.5, 0.4));
+      ctx.bezierCurveTo(...n(38, 1.4), ...n(33, 2.4), ...n(27, 2.4));
+      ctx.lineTo(-26, 2.4); ctx.bezierCurveTo(-32, 2.2, -36, 0.8, -38, -0.8);
+    },
+    fin: [[-22, -2.3], [-33, -14], [-37, -14], [-37.6, -1.2]], stab: [],
+    stripe: 1.2, logo: [-33.4, -8, 4.5], label: [-14, -0.1, 0.9],
+    winRows: [{ y: -1.6, x0: -24, x1: 21.5, step: 1.1, skip: [] }],
+    doors: [[23, -2]],
+    cockpit: [[24.2, -2.3], [26.8, -2.3], [27.4, -1.5], [24.2, -1.5]],
+    wing: [[10, 1.8], [-29, 1.3], [-30.2, 2.4], [6, 2.4]], winglet: null, noFlaps: true,
+    nacelle: [-27, -9, 2.3, 4.6], engines: [[-27.5, 3.5]],
+    gear: { top: 2.4, len: 5, nose: [24], main: [[-6.6, -4.8]] },
+    nose: [40, 0.6], nav: [-29.6, 1.8], tail: [-38, -0.8], beacon: [0, -2.6], strobe: [-30, 1.8] },
 };
 const PLANE_KEYS = Object.keys(PLANES);
 let planeKey = 'a380';
@@ -1649,9 +1679,10 @@ function drawWindows(T, color) {
   }
 }
 
-let EXT = { flaps: 0, spoil: 0, rev: 0 };
+let EXT = { flaps: 0, spoil: 0, rev: 0 }, DROOP = 0;
 function drawPlaneType(T, gear, lights, ext = { flaps: 0, spoil: 0, rev: 0 }) {
   EXT = ext;
+  DROOP = 11 * gear;
   if (T === PLANES.a380) return drawA380(gear, lights);
   // Seitenleitwerk mit Logo
   ctx.fillStyle = BLUE;
@@ -1730,6 +1761,28 @@ function drawPlaneType(T, gear, lights, ext = { flaps: 0, spoil: 0, rev: 0 }) {
   drawWingExtras(T);
   for (const [x, y, k, shade] of T.under || []) {
     ctx.save(); ctx.translate(x, y); ctx.scale(k, k); drawEngine(0, 0, shade); ctx.restore();
+  }
+  if (T.nacelle) {
+    // zwei Triebwerke nebeneinander in einer Gondel unter dem Flügel
+    const [x0, x1, y0, y1] = T.nacelle;
+    if (lights && EXT.throttle > 0.75) {
+      // Nachbrenner: Feuerstrahl hinten raus
+      const f = (EXT.throttle - 0.75) * 4, L = (6 + Math.random() * 2) * f, ym = (y0 + y1) / 2 + 0.3;
+      const fg = ctx.createLinearGradient(x0, 0, x0 - L, 0);
+      fg.addColorStop(0, 'rgba(255,255,255,0.95)'); fg.addColorStop(0.25, 'rgba(255,190,60,0.9)'); fg.addColorStop(1, 'rgba(255,80,20,0)');
+      ctx.fillStyle = fg;
+      ctx.beginPath(); ctx.moveTo(x0, ym - 1); ctx.lineTo(x0 - L, ym); ctx.lineTo(x0, ym + 1); ctx.closePath(); ctx.fill();
+    }
+    const ng = ctx.createLinearGradient(0, y0, 0, y1);
+    ng.addColorStop(0, '#e9edf2'); ng.addColorStop(1, '#a9b2bd');
+    ctx.fillStyle = ng;
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y0); ctx.lineTo(x1 - 1.5, y1); ctx.lineTo(x0 + 0.5, y1); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(60,70,90,0.5)'; ctx.lineWidth = 0.12; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo((x0 + x1) / 2, y0); ctx.lineTo((x0 + x1) / 2, y1); ctx.stroke();
+    ctx.fillStyle = GREEN; ctx.fillRect(x1 - 3, y0, 0.5, y1 - y0);
+    ctx.fillStyle = '#2a2f38';
+    ctx.beginPath(); ctx.moveTo(x1, y0); ctx.lineTo(x1 - 1.5, y1); ctx.lineTo(x1 - 0.5, y1); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#4a4f57'; ctx.fillRect(x0 - 0.8, y0 + 0.5, 0.8, y1 - y0 - 0.8);
   }
   if (T.rear) {
     // Triebwerk hinten am Rumpf
@@ -2343,6 +2396,10 @@ function drawPlane() {
     drawPlaneType(PT(), p.gear, state === 'flying', p);
     ctx.restore();
   }
+  if (p.boomT < 1.5) {
+    ctx.strokeStyle = `rgba(255,255,255,${0.8 * (1 - p.boomT / 1.5)})`; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(X, sy(p.y), (20 + p.boomT * 300) * S * 0.3, 0, Math.PI * 2); ctx.stroke();
+  }
   if (p.crash === 'sea') {
     // Wasser schwappt über den sinkenden Flieger
     const gy = sy(0);
@@ -2796,7 +2853,7 @@ function drawMenu(dt) {
       ctx.fillStyle = '#ffd34d';
       ctx.beginPath(); ctx.roundRect(r.x + 3, r.y + 3, r.w - 6, r.h - 6, 10); ctx.fill();
     }
-    txt(`✈ ${PLANES[k].short}`, r.x + r.w / 2, r.y + sh / 2, 15 * u, k === planeKey ? '#1d2433' : '#fff');
+    txt(PLANES[k].short, r.x + r.w / 2, r.y + sh / 2, Math.min(15 * u, segW / 5.2), k === planeKey ? '#1d2433' : '#fff');
     return r;
   });
   // Pfeile, um das Ziel auszusuchen
