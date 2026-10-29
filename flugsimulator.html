@@ -76,7 +76,7 @@ const BLUE = '#1f4fd1', GREEN = '#1fb84f';
 // ── Spielzustand ───────────────────────────────────────────────────
 let state = 'menu';       // menu, flying, crashed, done
 let p, cam, pax, particles = [], contrail = [], result = null;
-let rockets = [], balloons = [], hits = 0, fireCd = 0;
+let rockets = [], balloons = [], hits = 0, fireCd = 0, crates = [], zones = [], drops = 0;
 let resultT = 0, welcomeT = 0, shake = 0, farX = 0, time = 0;
 
 let VR = 75;
@@ -97,6 +97,7 @@ function newFlight() {
   }
   particles = []; contrail = []; result = null;
   rockets = []; hits = 0; fireCd = 0; balloons = PT().weapon ? makeBalloons() : [];
+  crates = []; drops = 0; zones = PT().cargo ? makeZones() : []; p.ramp = 0; p.rampT = 0;
   state = 'flying'; welcomeT = 4; shake = 0; flash = 0; bolt = null; nextBolt = 5;
   pointers.clear();
   startEngine();
@@ -154,7 +155,7 @@ function buttons() {
     right: { x: W() - m - b, y: middle, w: b, h: b },
     view:  { x: W() - m - b, y: middle - gh - 10, w: b, h: gh },
   };
-  if (PT().weapon) bs.fire = { x: padX - b - 10, y: middle - b - 10, w: b, h: b };
+  if (PT().weapon || PT().cargo) bs.fire = { x: padX - b - 10, y: middle - b - 10, w: b, h: b };
   // Fahrwerk und Bremse unten in der Mitte; wenn dort kein Platz ist, über dem Schub
   if (W() / 2 + 16 + gw <= bs.left.x && W() / 2 - 16 - gw >= m + b + 60) {
     bs.gear = { x: W() / 2 - gw - 6, y: H() - m - gh, w: gw, h: gh };
@@ -601,6 +602,7 @@ function update(dt) {
   }
   if (PT().glider) updateGlider(dt);
   if (PT().weapon) updateWeapon(dt);
+  if (PT().cargo) updateCargo(dt);
   if (PT().supersonic && !p.boomed && p.v > MACH1) {
     p.boomed = true; p.boomT = 0;
     boom(); shake = 7;
@@ -677,7 +679,10 @@ function landed() {
   if (pax.mood > 45) applause();
 }
 
-function balloonScore() { return PT().weapon ? ` 🎈 Ballons getroffen: ${hits} von ${balloons.length}!` : ''; }
+function balloonScore() {
+  if (PT().cargo) return ` 📦 Pakete im Ziel: ${drops} von ${zones.length}!`;
+  return PT().weapon ? ` 🎈 Ballons getroffen: ${hits} von ${balloons.length}!` : '';
+}
 function finish(r) {
   r.pax = paxVerdict(r) + balloonScore();
   result = r;
@@ -895,6 +900,90 @@ function balloonHint() {
   const km = ((b.x - p.x) / 1000).toFixed(1).replace('.', ',');
   if (nextBalloon(p.x, p.y, 2000) === b) return [`🎈 Ballon in ${km} km – Feuer! 🚀`, false];
   return [`🎈 Ballon in ${km} km – flieg ${b.a > p.y ? 'höher ▲' : 'tiefer ▼'}`, false];
+}
+
+// ── Hilfspakete abwerfen (nur der A400M) ───────────────────────────
+function makeZones() {
+  const out = [];
+  for (let x = 5000; x < DEST - GLIDE_LEN - 4500; x += 2200 + Math.random() * 1500) {
+    if (landFactor(x - 300) < 1 || landFactor(x + 300) < 1) continue;   // nicht ins Meer
+    out.push({ x, done: false, near: false });
+  }
+  return out;
+}
+// Kiste fällt erst frei, dann geht der Fallschirm auf und bremst
+function stepCrate(c, dt) {
+  c.t += dt;
+  if (c.t > 1.2) { c.va += (-6 - c.va) * Math.min(1, 2.5 * dt); c.vx += (WX().wind * 0.5 - c.vx) * Math.min(1, 0.9 * dt); }
+  else { c.va -= 9.81 * dt; c.vx *= 1 - 0.15 * dt; }
+  c.x += c.vx * dt; c.a += c.va * dt;
+}
+function landingX() {
+  const c = { x: p.x - 10, a: p.y, vx: p.v * Math.cos(p.pitch * DEG), va: p.v * Math.sin(p.pitch * DEG), t: 0 };
+  for (let i = 0; i < 4000 && c.a > 0; i++) stepCrate(c, 0.1);
+  return c.x;
+}
+function updateCargo(dt) {
+  fireCd -= dt;
+  p.rampT -= dt;
+  // kurz vor der Abwurfzone geht die Rampe von allein auf, damit du gleich abwerfen kannst
+  if (!p.onGround && (held('fire') || zones.some(z => !z.done && Math.abs(landingX() - z.x) < 1500))) p.rampT = 1.5;
+  p.ramp += clamp((p.rampT > 0 ? 1 : 0) - p.ramp, -0.6 * dt, 0.6 * dt);
+  if (held('fire') && !p.onGround && p.ramp > 0.9 && fireCd <= 0) {
+    fireCd = 0.5;
+    const [x, a] = localToWorld(-26, 2);
+    crates.push({ x, a, vx: p.v * Math.cos(p.pitch * DEG), va: p.v * Math.sin(p.pitch * DEG), t: 0 });
+    clunk();
+  }
+  for (const c of crates) {
+    stepCrate(c, dt);
+    if (c.a > 0) continue;
+    c.a = 0; c.landed = true;
+    for (let k = 0; k < 12; k++) particles.push({ x: c.x, a: 0.5, vx: (Math.random() - 0.5) * 12, va: 2 + Math.random() * 3, life: 1.2, max: 1.2, r: 1, grow: 2, color: '200,190,170' });
+    const z = zones.reduce((b, z) => !z.done && (!b || Math.abs(z.x - c.x) < Math.abs(b.x - c.x)) ? z : b, null);
+    const d = z ? Math.abs(z.x - c.x) : 1e9;
+    pax.t = 0;
+    if (d < 80) { z.done = true; drops++; chime(); say(drops === 1 ? 'Volltreffer! 📦 Die Leute unten freuen sich!' : `Schon ${drops} Pakete im Ziel! 📦`); }
+    else if (d < 250) say('Knapp daneben! Etwas früher oder später abwerfen.');
+  }
+  crates = crates.filter(c => !c.landed);
+}
+function drawCargo() {
+  const gy = sy(0) - 3;
+  for (const z of zones) {
+    const X = sx(z.x);
+    if (X < -100 || X > W() + 100) continue;
+    // Zielkreuz am Boden und oranger Rauch zeigen die Abwurfzone
+    const rw = 60 * S, rh = Math.max(4, 3 * S);
+    for (const [k, c] of [[1, '#ffffff'], [0.66, '#ff5a1a'], [0.33, '#ffffff']]) {
+      ctx.fillStyle = z.done ? 'rgba(80,200,90,0.85)' : c;
+      ctx.beginPath(); ctx.ellipse(X, gy + rh * 1.6, rw * k, rh * k, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    if (!z.done && Math.random() < 0.3) particles.push({ x: z.x + 70, a: 1, vx: WX().wind * 2 + 2, va: 5, life: 4, max: 4, r: 1.5, grow: 2.2, color: '255,130,40' });
+    if (z.done) { ctx.fillStyle = '#8b5a2b'; ctx.fillRect(X - 1 * S, gy - 2 * S, 2 * S, 2 * S); }
+  }
+  for (const c of crates) {
+    const X = sx(c.x), Y = sy(c.a) - 3;
+    if (c.t > 1.2) {
+      const o = Math.min(1, (c.t - 1.2) * 2), r = 6 * S * o;
+      ctx.strokeStyle = 'rgba(60,60,60,0.7)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(X, Y); ctx.lineTo(X - r, Y - 7 * S * o); ctx.moveTo(X, Y); ctx.lineTo(X + r, Y - 7 * S * o); ctx.stroke();
+      for (let i = 0; i < 4; i++) {
+        ctx.fillStyle = i % 2 ? '#ffffff' : '#ff7a1a';
+        ctx.beginPath(); ctx.arc(X, Y - 7 * S * o, r, Math.PI + i * Math.PI / 4, Math.PI + (i + 1) * Math.PI / 4); ctx.lineTo(X, Y - 7 * S * o); ctx.fill();
+      }
+    }
+    ctx.fillStyle = '#8b5a2b'; ctx.fillRect(X - 1.2 * S, Y - 1.2 * S, 2.4 * S, 2.4 * S);
+    ctx.strokeStyle = '#5e3b1a'; ctx.lineWidth = Math.max(1, 0.2 * S); ctx.strokeRect(X - 1.2 * S, Y - 1.2 * S, 2.4 * S, 2.4 * S);
+  }
+}
+function cargoHint() {
+  const z = zones.find(z => !z.done && z.x > p.x - 200 && z.x - p.x < 8000);
+  if (!z) return null;
+  const off = landingX() - z.x;
+  if (Math.abs(off) < 70) return ['📦 Jetzt abwerfen! Halt den Knopf gedrückt', false];
+  if (off < 0) return [`📦 Abwurfzone in ${((z.x - p.x) / 1000).toFixed(1).replace('.', ',')} km – noch warten …`, false];
+  return null;
 }
 
 // ── Segelflug ──────────────────────────────────────────────────────
@@ -1464,6 +1553,7 @@ function hint() {
   if (PT().supersonic && p.v > 200 && p.v < MACH1 && !p.boomed && dist > 30000) return ['Volle Kraft für den Nachbrenner! 🔥 Schaffst du Überschall?', false];
   if (dist < 8000 && p.v > VR + 30) return ['Zu schnell für die Landung! Schub weg.', true];
   if (PT().weapon && !p.onGround && dist > GLIDE_LEN + 3000) { const bh = balloonHint(); if (bh) return bh; }
+  if (PT().cargo && !p.onGround && dist > GLIDE_LEN + 3000) { const ch = cargoHint(); if (ch) return ch; }
   if (dist < GLIDE_LEN + 3000 && Math.abs(p.z) > 40) return [`Die Landebahn ist ${side} – schau aufs Radar`, true];
   if (dist >= GLIDE_LEN + 3000 && Math.abs(p.hdg) > 25 * DEG) return [`${R.name} liegt ${p.hdg > 0 ? 'links ◀' : 'rechts ▶'}`, false];
   if (dist < 1500 && p.y < 30) return ['Gleich am Boden: Nase ganz leicht hoch ▲', false];
@@ -1834,6 +1924,53 @@ const PLANES = {
     nacelle: [-27, -9, 2.3, 4.6], engines: [[-27.5, 3.5]],
     gear: { top: 2.4, len: 5, nose: [24], main: [[-6.6, -4.8]] },
     nose: [40, 0.6], nav: [-29.6, 1.8], tail: [-38, -0.8], beacon: [0, -2.6], strobe: [-30, 1.8] },
+  a400m: { name: 'Airbus A400M', short: 'A400M', k: 0.6, vr: 58, thrust: 4.8, agile: 1.2, pax: [4, 8], gearH: 6.5,
+    drag: 1.3e-4, cargo: true, noFlaps: true, paint: ['#a3abb0', '#8d969c', '#6d767c'], labelText: 'Henrik Air Force',
+    body() {
+      ctx.moveTo(-38.5, -3.2); ctx.lineTo(-24, -4.5); ctx.lineTo(24, -4.5);
+      ctx.bezierCurveTo(30, -4.5, 35, -2.5, 36.5, 0.5); ctx.bezierCurveTo(36.5, 3, 33, 4.3, 28, 4.3);
+      ctx.lineTo(-12, 4.3); ctx.bezierCurveTo(-22, 4.2, -32, 0, -38.5, -2.2);
+    },
+    fin: [[-24, -4.4], [-33, -19], [-38, -19], [-38.6, -3.2]], stab: [[-30, -18.6], [-40, -20], [-41, -19.2], [-32, -17.8]],
+    stripe: 1.4, logo: [-34.6, -12, 5], label: [-10, -3, 1.3],
+    winRows: [{ y: -1.6, x0: -8, x1: 15, step: 4.5, skip: [], oval: true }],
+    doors: [[20, -2.6], [-12, -2.6]],
+    cockpit: [[27, -3.4], [31, -3.4], [33.2, -1.8], [27, -1.9]],
+    wing: [[8, -4.3], [-12, -4.8], [-13, -4.1], [0, -3.7]], winglet: null,
+    engines: [[-3, -3.6]],
+    gear: { top: 4.3, len: 1.2, nose: [26], main: [[-6, -2.4, 1.2]] },
+    nose: [34, 2], nav: [-13, -4.4], tail: [-38.6, -3], beacon: [0, -4.9], strobe: [-13, -4.5],
+    draw(lights) {
+      // Heckrampe: klappt zum Abwerfen unten auf
+      const r = EXT.ramp || 0;
+      if (r > 0.02) {
+        const a = (-8 + r * 36) * DEG, hx = -14, hy = 4.2, L = 12, tx = hx - L * Math.cos(a), ty = hy + L * Math.sin(a);
+        ctx.fillStyle = '#2a2f38';
+        poly([[hx, hy], [tx, ty], [-30, -0.2], [-22, -1]]); ctx.fill();          // dunkler Laderaum
+        ctx.fillStyle = '#7d868c';
+        poly([[hx, hy], [tx, ty], [tx + 0.2, ty - 0.6], [hx + 0.2, hy - 0.6]]); ctx.fill();
+      }
+      // Fahrwerksverkleidung unten am Rumpf
+      ctx.fillStyle = '#7d868c';
+      ctx.beginPath(); ctx.roundRect(-9, 3.4, 13, 1.8, 0.8); ctx.fill();
+      // vier Propellertriebwerke, man sieht zwei: hinten das äußere, vorne das innere
+      const spin = time * (8 + 30 * (EXT.throttle ?? (lights ? 0.3 : 0)));
+      for (const [x, y, shade] of [[1.5, -4.2, true], [4.5, -3.6, false]]) {
+        const g = ctx.createLinearGradient(0, y - 1, 0, y + 1);
+        g.addColorStop(0, shade ? '#9aa3a8' : '#b4bcc1'); g.addColorStop(1, shade ? '#6d767c' : '#80898f');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.roundRect(x - 9, y - 1, 10, 2, 0.9); ctx.fill();
+        ctx.fillStyle = '#2a2f38'; ctx.fillRect(x - 8.6, y + 0.4, 1.2, 0.6);       // Auspuff
+        ctx.fillStyle = '#5b626d';
+        ctx.beginPath(); ctx.moveTo(x + 1, y - 0.8); ctx.quadraticCurveTo(x + 2.6, y, x + 1, y + 0.8); ctx.closePath(); ctx.fill();   // Spinner
+        ctx.fillStyle = 'rgba(60,65,75,0.18)';                                     // Propellerscheibe von der Seite
+        ctx.beginPath(); ctx.ellipse(x + 1.2, y, 0.45, 4.4, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(40,45,55,0.75)'; ctx.lineWidth = 0.32; ctx.lineCap = 'round';
+        ctx.beginPath();
+        for (let i = 0; i < 8; i++) { const c = Math.cos(spin + i * Math.PI / 4); if (c > 0) { ctx.moveTo(x + 1.2, y); ctx.lineTo(x + 1.2 + 0.3 * c, y + 4.3 * Math.sin(spin + i * Math.PI / 4)); } }
+        ctx.stroke(); ctx.lineCap = 'butt';
+      }
+    } },
   jet: { name: 'Kampfjet', short: 'Kampfjet', k: 0.22, vr: 72, thrust: 14, agile: 2.2, pax: [1, 1], gearH: 6,
     drag: 6e-5, supersonic: true, maxPitch: 35, weapon: true, paint: ['#b4bdc7', '#98a3ae', '#76818d'], labelText: 'Henrik Air Force',
     body() {
@@ -3048,6 +3185,7 @@ function drawHUD() {
   const alt = a => base - (a / CEILING) * (mh - 12);
   if (!PT().glider) { ctx.beginPath(); ctx.moveTo(mx(DEST - GLIDE_LEN), alt(glideAlt(DEST - GLIDE_LEN))); ctx.lineTo(mx(DEST), base); ctx.stroke(); }
   ctx.setLineDash([]);
+  for (const z of zones) if (!z.done) { ctx.fillStyle = '#ff7a1a'; ctx.fillRect(mx(z.x) - 2, base - 3, 4, 3); }
   for (const b of balloons) if (!b.hit) { ctx.fillStyle = b.c; ctx.beginPath(); ctx.arc(mx(b.x), alt(b.a), 2.5, 0, Math.PI * 2); ctx.fill(); }
   txt('FRA', mx(0) + 2, my + 9 * u, 9 * u, 'rgba(255,255,255,0.8)', 'left');
   txt(R.code, mx(DEST) + 10, my + 9 * u, 9 * u, 'rgba(255,255,255,0.8)', 'left');
@@ -3088,7 +3226,8 @@ function drawHUD() {
   else drawButton(bs.gear, p.gearDown ? '⚙️ raus' : '⚙️ drin', 'Fahrwerk', false, p.gearDown ? '#7dff9a' : '#ffd34d');
   drawButton(bs.brake, '🛑', 'Bremse', held('brake'));
   drawButton(bs.view, '👁️', view === 'cockpit' ? 'Außen' : 'Cockpit', false);
-  if (bs.fire) drawButton(bs.fire, '🚀', `Feuer · 🎈${hits}`, held('fire'), '#ff9a2a');
+  if (bs.fire && PT().cargo) drawButton(bs.fire, '📦', `Abwurf · ✅${drops}`, held('fire'), '#ffd34d');
+  else if (bs.fire) drawButton(bs.fire, '🚀', `Feuer · 🎈${hits}`, held('fire'), '#ff9a2a');
   drawButton(bs.left, '◀', 'links', held('left'));
   drawButton(bs.right, '▶', 'rechts', held('right'));
   // Radar links über den Knöpfen
@@ -3825,7 +3964,7 @@ function loop(ts) {
         worldClouds(true);
         drawNightOutside(gy);
         if (PT().glider) drawTowPlane();
-        drawBalloons();
+        drawBalloons(); drawCargo();
         drawPlaneNight();
         drawParticles();
         drawWreckFx();
@@ -3834,7 +3973,7 @@ function loop(ts) {
         drawContrails();
         drawShadow();
         if (PT().glider) drawTowPlane();
-        drawBalloons();
+        drawBalloons(); drawCargo();
         drawPlane();
         drawParticles();
         drawWreckFx();
